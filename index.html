@@ -94,6 +94,19 @@
 <link rel="stylesheet" href="/index.css">
 </head>
 <body>
+    <script>
+      // OAuth Callback Handler for AI Studio Preview
+      if (window.location.pathname === '/auth/callback' || window.location.pathname === '/auth/callback/') {
+        if (window.opener) {
+          window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
+          window.close();
+        } else {
+          window.location.href = '/';
+        }
+        // Stop further execution to avoid loading the full app in the popup
+        window.stop();
+      }
+    </script>
     <div id="root"></div>
 <script type="module" src="/index.tsx"></script>
 </body>
