@@ -1,0 +1,8 @@
+{
+  "name": "Wexo - Réseau Social",
+  "description": "Une plateforme sociale tout-en-un avec espace de travail intelligent, vidéos, jeux et messagerie intégrée.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
