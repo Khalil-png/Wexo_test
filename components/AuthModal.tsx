@@ -13,7 +13,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
   const [step, setStep] = useState<'form' | 'verify'>('form');
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
-  const [loginPseudo, setLoginPseudo] = useState(''); // Nouveau state pour le pseudo à la connexion
+  const [isDummyEmail, setIsDummyEmail] = useState(false);
+  const [loginPseudo, setLoginPseudo] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
@@ -42,10 +43,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
   };
 
   useEffect(() => {
-    if (type === 'signup' && step === 'form') {
+    if (step === 'form') {
       generateRandomAvatar();
     }
-  }, [type, step]);
+  }, [step]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,19 +59,49 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
           throw new Error("Les mots de passe ne correspondent pas.");
         }
 
+        const cleanUsername = username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        // Utilisation d'un timestamp pour rendre l'email unique à chaque milliseconde
+        const finalEmail = email.trim() || `${cleanUsername}${Date.now()}@gmail.com`;
+        const usingDummy = !email.trim();
+        setIsDummyEmail(usingDummy);
+
         const { data, error: signUpError } = await supabase.auth.signUp({
-          email,
+          email: finalEmail,
           password,
           options: {
             data: {
               username: username,
-              avatar_url: selectedAvatar,
+              // On ne met PLUS l'avatar ici pour éviter de faire exploser la taille du jeton JWT
             },
             emailRedirectTo: window.location.origin
           }
         });
 
-        if (signUpError) throw signUpError;
+        if (signUpError) {
+          if (signUpError.message.includes('rate limit')) {
+            throw new Error("Trop de tentatives d'inscription. Veuillez désactiver 'Confirm Email' dans votre console Supabase ou attendre une heure.");
+          }
+          throw signUpError;
+        }
+
+        // --- CRÉATION DU PROFIL DANS LA TABLE 'profiles' ---
+        if (data.user) {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .upsert([{
+              id: data.user.id,
+              username: username,
+              avatar_url: selectedAvatar,
+              email: finalEmail,
+              updated_at: new Date().toISOString()
+            }]);
+          
+          if (profileError) {
+            console.error("Erreur lors de la création du profil:", profileError);
+            // On ne bloque pas l'utilisateur ici car le compte Auth est créé
+          }
+        }
+
         setStep('verify');
       } else {
         // --- CONNEXION PAR PSEUDO ---
@@ -172,16 +203,28 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
   const applyCrop = () => {
     if (!tempImage || !imgRef.current || !maskRef.current) return;
     const canvas = document.createElement('canvas');
-    canvas.width = 512; canvas.height = 512;
+    // Réduction de la taille pour éviter de saturer la base de données (150x150 est idéal pour un avatar)
+    canvas.width = 150; 
+    canvas.height = 150;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.translate(256, 256);
+    
+    // Fond blanc pour le JPEG (qui ne gère pas la transparence)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 150, 150);
+    
+    ctx.translate(75, 75);
     ctx.rotate((rotation * Math.PI) / 180);
-    const displayToCanvasScale = 512 / maskRef.current.offsetWidth;
+    
+    // Ajustement de l'échelle pour la nouvelle taille de 150px
+    const displayToCanvasScale = 150 / maskRef.current.offsetWidth;
     ctx.scale(zoom * displayToCanvasScale, zoom * displayToCanvasScale);
+    
     ctx.translate(offset.x / zoom, offset.y / zoom);
     ctx.drawImage(imgRef.current, -imgRef.current.clientWidth / 2, -imgRef.current.clientHeight / 2, imgRef.current.clientWidth, imgRef.current.clientHeight);
-    setSelectedAvatar(canvas.toDataURL('image/png'));
+    
+    // Utilisation de JPEG avec compression (0.7 = 70% de qualité) pour un poids plume
+    setSelectedAvatar(canvas.toDataURL('image/jpeg', 0.7));
     setIsCustomAvatar(true);
     setShowCropper(false);
   };
@@ -197,6 +240,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
     setLoading(true);
     setError(null);
     try {
+      // Stocker l'avatar actuel comme fallback si Google n'en a pas
+      if (selectedAvatar) {
+        localStorage.setItem('wexo_google_fallback_avatar', selectedAvatar);
+      }
+      
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -290,7 +338,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
                     <div className="relative group">
                       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
                       <div onClick={generateRandomAvatar} className={`relative w-24 h-24 rounded-full border-4 border-slate-800 bg-slate-800 p-1 overflow-hidden transition-all ${!isCustomAvatar ? 'cursor-pointer hover:scale-105' : ''}`}>
-                        <img src={selectedAvatar} className="w-full h-full object-cover" alt="Avatar" />
+                        <img src={selectedAvatar || undefined} className="w-full h-full object-cover" alt="Avatar" />
                         {!isCustomAvatar && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><RefreshCw size={24} className="text-white" /></div>}
                       </div>
                       <button type="button" onClick={() => fileInputRef.current?.click()} className="absolute bottom-0 right-0 bg-sky-500 p-2 rounded-full border-4 border-slate-900 shadow-lg hover:bg-sky-400 transition-colors"><Download size={14} className="text-white" /></button>
@@ -302,7 +350,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
                   </div>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input required type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-800 border-none rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-sky-500" />
+                    <input type="email" placeholder="Email (Optionnel)" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-800 border-none rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-sky-500" />
                   </div>
                 </>
               ) : (
@@ -374,27 +422,44 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
           <div className="animate-in slide-in-from-right-4 duration-500">
             <div className="text-center mb-8">
               <div className="w-20 h-20 bg-sky-500/10 text-sky-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl shadow-sky-500/5">
-                <MailCheck size={40} />
+                {isDummyEmail ? <ShieldCheck size={40} /> : <MailCheck size={40} />}
               </div>
-              <h2 className="text-2xl font-bold text-white tracking-tight">Vérifiez votre boîte mail</h2>
+              <h2 className="text-2xl font-bold text-white tracking-tight">
+                {isDummyEmail ? 'Compte créé avec succès !' : 'Vérifiez votre boîte mail'}
+              </h2>
               <p className="text-slate-400 text-sm mt-3 leading-relaxed">
-                Un email de confirmation vient d'être envoyé par <span className="text-sky-400 font-bold">Supabase</span> à l'adresse suivante :
+                {isDummyEmail 
+                  ? "Votre compte a été créé sans adresse email. Vous pouvez maintenant vous connecter avec votre pseudo."
+                  : "Un email de confirmation vient d'être envoyé par Supabase à l'adresse suivante :"}
               </p>
-              <div className="mt-2 py-2 px-4 bg-slate-800/50 rounded-xl inline-block border border-slate-700/50">
-                <span className="text-sky-300 font-mono text-sm">{email}</span>
-              </div>
+              {!isDummyEmail && (
+                <div className="mt-2 py-2 px-4 bg-slate-800/50 rounded-xl inline-block border border-slate-700/50">
+                  <span className="text-sky-300 font-mono text-sm">{email}</span>
+                </div>
+              )}
             </div>
 
-            <div className="bg-slate-800/30 rounded-[2rem] p-6 border border-slate-700/50 space-y-4 mb-8">
-              <div className="flex gap-4">
-                <div className="w-8 h-8 rounded-full bg-slate-700/50 flex items-center justify-center text-xs font-bold text-slate-300 flex-shrink-0">1</div>
-                <p className="text-xs text-slate-400 leading-relaxed">Ouvrez l'email envoyé par <span className="text-slate-200">Supabase Auth</span>.</p>
+            {isDummyEmail ? (
+              <div className="bg-amber-500/10 rounded-[2rem] p-6 border border-amber-500/20 space-y-4 mb-8">
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-xs font-bold text-amber-500 flex-shrink-0">!</div>
+                  <p className="text-xs text-amber-200 leading-relaxed">
+                    <span className="font-bold">Attention :</span> Sans email, vous ne pourrez pas récupérer votre mot de passe en cas d'oubli.
+                  </p>
+                </div>
               </div>
-              <div className="flex gap-4">
-                <div className="w-8 h-8 rounded-full bg-slate-700/50 flex items-center justify-center text-xs font-bold text-slate-300 flex-shrink-0">2</div>
-                <p className="text-xs text-slate-400 leading-relaxed">Cliquez sur le lien <span className="text-slate-200">"Confirm your email"</span> pour activer votre compte Wexo.</p>
+            ) : (
+              <div className="bg-slate-800/30 rounded-[2rem] p-6 border border-slate-700/50 space-y-4 mb-8">
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 rounded-full bg-slate-700/50 flex items-center justify-center text-xs font-bold text-slate-300 flex-shrink-0">1</div>
+                  <p className="text-xs text-slate-400 leading-relaxed">Ouvrez l'email envoyé par <span className="text-slate-200">Supabase Auth</span>.</p>
+                </div>
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 rounded-full bg-slate-700/50 flex items-center justify-center text-xs font-bold text-slate-300 flex-shrink-0">2</div>
+                  <p className="text-xs text-slate-400 leading-relaxed">Cliquez sur le lien <span className="text-slate-200">"Confirm your email"</span> pour activer votre compte Wexo.</p>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="space-y-3">
               <button 

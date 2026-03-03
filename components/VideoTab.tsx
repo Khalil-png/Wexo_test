@@ -84,6 +84,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
     const { data, error } = await supabase
       .from('videos')
       .select('*')
+      .eq('is_short', false)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -418,7 +419,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                   ) : comments.length > 0 ? (
                     comments.map(comment => (
                       <div key={comment.id} className="flex gap-4 group">
-                        <img src={comment.avatar_url} className="w-10 h-10 rounded-full flex-shrink-0 border border-white/10" alt="" />
+                        <img src={comment.avatar_url || undefined} className="w-10 h-10 rounded-full flex-shrink-0 border border-white/10" alt="" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-[11px] font-black text-white">@{comment.username}</span>

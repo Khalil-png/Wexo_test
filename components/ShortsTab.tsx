@@ -150,6 +150,8 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
   const [showPlayIcon, setShowPlayIcon] = useState(false);
   const [showSharePopup, setShowSharePopup] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [volume, setVolume] = useState(1);
 
   useEffect(() => {
     if (isActive && videoRef.current) {
@@ -251,8 +253,42 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
 
   const toggleMute = () => {
     if (!videoRef.current) return;
-    videoRef.current.muted = !videoRef.current.muted;
-    setIsMuted(videoRef.current.muted);
+    const newMuted = !videoRef.current.muted;
+    videoRef.current.muted = newMuted;
+    setIsMuted(newMuted);
+    if (!newMuted && volume === 0) {
+      setVolume(0.5);
+      videoRef.current.volume = 0.5;
+    }
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const val = parseFloat(e.target.value);
+    setVolume(val);
+    if (videoRef.current) {
+      videoRef.current.volume = val;
+      const isMute = val === 0;
+      videoRef.current.muted = isMute;
+      setIsMuted(isMute);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (videoRef.current) {
+      const p = (videoRef.current.currentTime / videoRef.current.duration) * 100;
+      setProgress(p || 0);
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const val = parseFloat(e.target.value);
+    if (videoRef.current) {
+      const time = (val / 100) * videoRef.current.duration;
+      videoRef.current.currentTime = time;
+      setProgress(val);
+    }
   };
 
   const handleShare = (e: React.MouseEvent) => {
@@ -281,6 +317,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
             src={short.url}
             loop
             playsInline
+            onTimeUpdate={handleTimeUpdate}
             className="h-full w-full object-contain cursor-pointer bg-black"
             onClick={togglePlay}
           />
@@ -306,16 +343,32 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
             <div className="flex gap-3">
               <button 
                 onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-                className="p-2.5 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-md transition-all"
+                className="p-2.5 bg-black/60 hover:bg-white hover:text-black text-white rounded-full backdrop-blur-md transition-all"
               >
                 {isPaused ? <Play size={20} fill="white" /> : <Pause size={20} fill="white" />}
               </button>
-              <button 
-                onClick={(e) => { e.stopPropagation(); toggleMute(); }}
-                className="p-2.5 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-md transition-all"
-              >
-                {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-              </button>
+              <div className="flex items-center bg-[#0f0f0f] hover:bg-black rounded-full px-3 py-2 transition-all group/volume backdrop-blur-md border border-white/5 shadow-2xl">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); toggleMute(); }}
+                  className="text-white p-1 hover:scale-110 transition-transform"
+                >
+                  {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                </button>
+                <div className="w-0 group-hover/volume:w-24 overflow-hidden transition-all duration-300 flex items-center">
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.01" 
+                    value={isMuted ? 0 : volume} 
+                    onChange={handleVolumeChange}
+                    className="volume-slider w-20 h-1 mx-2 cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, #ffffff ${isMuted ? 0 : volume * 100}%, rgba(255,255,255,0.2) ${isMuted ? 0 : volume * 100}%)`
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -355,6 +408,22 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Progress Bar (YouTube Style) - Inside Video Container */}
+          <div className="absolute bottom-0 left-0 right-0 h-1 z-30 flex items-center group/progress">
+            <input 
+              type="range"
+              min="0"
+              max="100"
+              step="0.1"
+              value={progress}
+              onChange={handleSeek}
+              className="progress-slider"
+              style={{
+                background: `linear-gradient(to right, #ffffff ${progress}%, rgba(255,255,255,0.2) ${progress}%)`
+              }}
+            />
           </div>
         </div>
 

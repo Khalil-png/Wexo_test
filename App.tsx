@@ -49,13 +49,51 @@ const App: React.FC = () => {
   }, []);
 
   const fetchProfile = async (userId: string) => {
+    // Tentative de récupération du profil existant
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
     
-    if (!error) setProfile(data);
+    if (error && error.code === 'PGRST116') {
+      // Profil inexistant : on tente de le créer à partir des métadonnées
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        const metadata = user.user_metadata;
+        const fallbackAvatar = localStorage.getItem('wexo_google_fallback_avatar');
+        
+        // Récupérer le pseudo depuis les métadonnées ou l'email
+        const metaUsername = metadata.username || metadata.given_name || metadata.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'Utilisateur';
+        
+        // Récupérer l'avatar
+        const metaAvatar = metadata.avatar_url || metadata.picture || fallbackAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`;
+
+        const newProfile = {
+          id: userId,
+          username: metaUsername,
+          avatar_url: metaAvatar,
+          email: user.email,
+          updated_at: new Date().toISOString()
+        };
+
+        const { data: createdProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert([newProfile])
+          .select()
+          .single();
+        
+        if (!createError) {
+          setProfile(createdProfile);
+          localStorage.removeItem('wexo_google_fallback_avatar');
+        } else {
+          console.error("Erreur lors de la création automatique du profil:", createError);
+        }
+      }
+    } else if (!error) {
+      setProfile(data);
+    }
   };
 
   const handleTabChange = (id: TabId) => {

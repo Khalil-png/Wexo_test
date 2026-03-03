@@ -12,7 +12,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
     <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-6">
       <div className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src={post.avatar} className="w-10 h-10 rounded-full" alt="avatar" />
+          <img src={post.avatar || undefined} className="w-10 h-10 rounded-full" alt="avatar" />
           <div>
             <h4 className="font-semibold text-sm">{post.author}</h4>
             <p className="text-xs text-slate-500">{post.timestamp}</p>
