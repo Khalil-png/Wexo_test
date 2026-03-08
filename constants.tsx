@@ -42,9 +42,11 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'admin-panel', label: 'Panel Admin', icon: 'ShieldCheck', group: 'admin' },
 ];
 
+export const DEFAULT_AVATAR = "https://media-mrs2-3.cdn.whatsapp.net/v/t61.24694-24/644467015_2018251549106358_8533803138920450960_n.jpg?stp=dst-jpg_s96x96_tt6&ccb=11-4&oh=01_Q5Aa4AGGPgTKxpiLgwEWK8Z-76sy4RFP7piQYK46ru_YoVLHWA&oe=69B8FD30&_nc_sid=5e03e0&_nc_cat=108";
+
 export const getIcon = (iconName: string, active: boolean) => {
   const size = 20;
-  const color = active ? '#38bdf8' : '#94a3b8';
+  const color = active ? '#ffffff' : '#94a3b8';
   const strokeWidth = active ? 2.5 : 2;
 
   switch (iconName) {

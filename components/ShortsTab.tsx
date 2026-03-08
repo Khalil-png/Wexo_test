@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Heart, MessageCircle, Share2, Music, Loader2, UserPlus, UserCheck, Play, Zap, Tv, Plus, TrendingUp, ThumbsUp, ThumbsDown, MessageSquare, Repeat, Pause, Volume2, VolumeX, Copy, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { DEFAULT_AVATAR } from '../constants';
 import { supabase } from '../services/supabase';
 import { Video } from '../types';
+import { generateSnowflake } from '../utils/snowflake';
 
 interface ShortsTabProps {
   user?: any;
@@ -96,20 +98,20 @@ const ShortsTab: React.FC<ShortsTabProps> = ({ user, profile }) => {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="text-sky-500 animate-spin" size={40} />
+      <div className="h-full flex items-center justify-center bg-[#0f0f0f]">
+        <Loader2 className="text-white animate-spin" size={40} />
       </div>
     );
   }
 
   if (shorts.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-center p-10">
-        <div className="w-20 h-20 bg-slate-900 rounded-3xl flex items-center justify-center mb-6 border border-slate-800">
+      <div className="h-full flex flex-col items-center justify-center text-center p-10 bg-[#0f0f0f]">
+        <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mb-6 border border-white/10">
           <Music size={40} className="text-slate-700" />
         </div>
         <h3 className="text-xl font-black text-white mb-2 uppercase tracking-tighter">Aucun Short disponible</h3>
-        <p className="text-slate-500 text-sm max-w-xs">Soyez le premier à publier un Short depuis l'onglet "Ma chaîne" !</p>
+        <p className="text-slate-400 text-sm max-w-xs">Soyez le premier à publier un Short depuis l'onglet "Ma chaîne" !</p>
       </div>
     );
   }
@@ -118,7 +120,7 @@ const ShortsTab: React.FC<ShortsTabProps> = ({ user, profile }) => {
     <div 
       ref={containerRef}
       onScroll={handleScroll}
-      className="shorts-container h-full w-full overflow-y-scroll snap-y snap-mandatory no-scrollbar bg-black"
+      className="shorts-container h-full w-full overflow-y-scroll snap-y snap-mandatory no-scrollbar bg-[#0f0f0f]"
     >
       {shorts.map((short, index) => (
         <ShortItem 
@@ -215,7 +217,11 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
       setLikeCount(prev => prev - 1);
       setLiked(false);
     } else {
-      await supabase.from('video_likes').insert([{ video_id: short.id, user_id: user.id }]);
+      await supabase.from('video_likes').insert([{ 
+        id: generateSnowflake(),
+        video_id: short.id, 
+        user_id: user.id 
+      }]);
       setLikeCount(prev => prev + 1);
       setLiked(true);
     }
@@ -230,7 +236,11 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
       setIsSubscribed(false);
       setSubscriberCount(prev => prev - 1);
     } else {
-      await supabase.from('subscriptions').insert([{ follower_id: user.id, creator_id: short.creator_id }]);
+      await supabase.from('subscriptions').insert([{ 
+        id: generateSnowflake(),
+        follower_id: user.id, 
+        creator_id: short.creator_id 
+      }]);
       setIsSubscribed(true);
       setSubscriberCount(prev => prev + 1);
     }
@@ -299,14 +309,14 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
 
   const copyToClipboard = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = `${window.location.origin}/?short=${short.id}`;
+    const url = `https://wexo.netlify.app/?short=${short.id}`;
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="h-full w-full snap-start relative flex items-center justify-center bg-slate-950 overflow-hidden">
+    <div className="h-full w-full snap-start relative flex items-center justify-center bg-[#0f0f0f] overflow-hidden">
       {/* Main Content Area (Centered) */}
       <div className="relative flex items-center gap-6 h-full w-full max-w-screen-xl px-4 justify-center">
         
@@ -377,7 +387,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
             <div className="flex flex-col gap-3 pointer-events-auto">
               <div className="flex items-center gap-3">
                 <img 
-                  src={short.creator_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${short.creator_id}`} 
+                  src={short.creator_avatar || DEFAULT_AVATAR} 
                   className="w-9 h-9 rounded-full border border-white/20"
                   alt=""
                 />
@@ -388,7 +398,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
                 {user && user.id !== short.creator_id && (
                   <button 
                     onClick={handleSubscribe}
-                    className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${isSubscribed ? 'bg-white/20 text-white' : 'bg-white text-black hover:bg-sky-500 hover:text-white'}`}
+                    className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${isSubscribed ? 'bg-white/20 text-white' : 'bg-white text-black hover:bg-white/20 hover:text-white'}`}
                   >
                     {isSubscribed ? 'Abonné' : "S'abonner"}
                   </button>
@@ -402,7 +412,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
               <div className="flex items-center gap-2">
                 <Music size={14} className="text-white" />
                 <div className="overflow-hidden whitespace-nowrap w-full">
-                  <p className="text-[10px] font-black text-white uppercase tracking-widest animate-marquee inline-block">
+                  <p className="text-[10px] font-black text-white leading-relaxed animate-marquee inline-block">
                     Son original - {short.creator_name} • {short.title}
                   </p>
                 </div>
@@ -432,7 +442,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           <div className="flex flex-col items-center gap-2">
             <button 
               onClick={handleLike}
-              className={`w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20'}`}
+              className={`w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20 shadow-sm border border-white/10'}`}
             >
               <Heart size={28} fill={liked ? "currentColor" : "none"} />
             </button>
@@ -440,7 +450,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           </div>
 
           <div className="flex flex-col items-center gap-2">
-            <button className="w-14 h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 transition-all">
+            <button className="w-14 h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all">
               <MessageSquare size={28} />
             </button>
             <span className="text-[13px] font-bold text-white">2,3k</span>
@@ -449,32 +459,33 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           <div className="flex flex-col items-center gap-2 relative">
             <button 
               onClick={handleShare}
-              className="w-14 h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 transition-all"
+              className="w-14 h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
             >
               <Share2 size={28} />
             </button>
             <span className="text-[13px] font-bold text-white">Partager</span>
 
             {showSharePopup && (
-              <div className="absolute bottom-full mb-4 right-0 w-72 bg-[#282828] border border-white/10 rounded-xl p-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 z-50 pointer-events-auto">
+              <div className="absolute bottom-full mb-4 right-0 w-72 bg-[#1a1a1a] border border-white/10 rounded-xl p-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 z-50 pointer-events-auto">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="text-sm font-bold text-white">Partager</h4>
                   <button onClick={(e) => { e.stopPropagation(); setShowSharePopup(false); }} className="text-slate-400 hover:text-white">
                     <X size={20} />
                   </button>
                 </div>
-                <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-lg p-3">
+                <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg p-3">
                   <input 
                     type="text" 
                     readOnly 
-                    value={`${window.location.origin}/?short=${short.id}`}
-                    className="bg-transparent text-xs text-slate-300 outline-none flex-1 truncate"
+                    value={`https://wexo.netlify.app/?short=${short.id}`}
+                    className="bg-transparent text-xs text-slate-400 outline-none flex-1 truncate"
                   />
                   <button 
                     onClick={copyToClipboard}
-                    className="px-4 py-1.5 bg-sky-500 text-white text-xs font-bold rounded-full hover:bg-sky-400 transition-colors flex items-center gap-2"
+                    className="w-10 h-10 bg-white text-black rounded-lg hover:bg-slate-200 transition-all active:scale-95 flex items-center justify-center shadow-lg flex-shrink-0"
+                    title={copied ? "Copié !" : "Copier le lien"}
                   >
-                    {copied ? <><Check size={14} /> Copié</> : 'Copier'}
+                    {copied ? <Check size={18} className="text-emerald-600" /> : <Copy size={18} />}
                   </button>
                 </div>
               </div>
@@ -482,7 +493,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           </div>
 
           <div className="mt-4">
-            <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-white/20 animate-spin-slow shadow-lg">
+            <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-white/10 animate-spin-slow shadow-lg">
               <img 
                 src={short.thumbnail_url || `https://picsum.photos/seed/${short.id}/100/100`} 
                 className="w-full h-full object-cover" 
@@ -500,7 +511,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
             const container = document.querySelector('.shorts-container');
             if (container) container.scrollBy({ top: -container.clientHeight, behavior: 'smooth' });
           }}
-          className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all"
+          className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-sm border border-white/10"
         >
           <ChevronUp size={24} />
         </button>
@@ -509,7 +520,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
             const container = document.querySelector('.shorts-container');
             if (container) container.scrollBy({ top: container.clientHeight, behavior: 'smooth' });
           }}
-          className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all"
+          className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-sm border border-white/10"
         >
           <ChevronDown size={24} />
         </button>

@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
+import { Search, Play, Heart, MessageCircle, Share2, Plus, ArrowLeft, Loader2, Sparkles, User as UserIcon, Info, AlertCircle, Upload, Trash2, Edit2, CheckCircle2, Zap } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { Video } from '../types';
-import { Upload, Plus, Play, Trash2, Edit2, AlertCircle, CheckCircle2, Loader2, Zap } from 'lucide-react';
+import { DEFAULT_AVATAR } from '../constants';
+import { generateSnowflake } from '../utils/snowflake';
 
 interface MyChannelTabProps {
   user: any;
@@ -27,6 +29,9 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
   const [isShort, setIsShort] = useState(false);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+
+  const categories = ['Jeux vidéo', 'Récent', 'Nouveautés', 'Animation', 'Musique'];
 
   useEffect(() => {
     if (user) {
@@ -48,6 +53,25 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       setVideos(data || []);
     }
     setLoading(false);
+  };
+
+  const formatRelativeDate = (dateString: string) => {
+    if (!dateString) return "il y a quelques instants";
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return `il y a ${diffInSeconds} secondes`;
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) return `il y a ${diffInMinutes} minute${diffInMinutes > 1 ? 's' : ''}`;
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `il y a ${diffInHours} heure${diffInHours > 1 ? 's' : ''}`;
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 30) return `il y a ${diffInDays} jour${diffInDays > 1 ? 's' : ''}`;
+    const diffInMonths = Math.floor(diffInDays / 30);
+    if (diffInMonths < 12) return `il y a ${diffInMonths} mois`;
+    const diffInYears = Math.floor(diffInMonths / 12);
+    return `il y a ${diffInYears} an${diffInYears > 1 ? 's' : ''}`;
   };
 
   const uploadFile = async (file: File, bucket: string) => {
@@ -113,16 +137,18 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       const { error: dbError } = await supabase
         .from('videos')
         .insert({
+          id: generateSnowflake(),
           title: title || 'Sans titre',
           description: description || '',
           url: videoUrl,
           thumbnail_url: finalThumbnailUrl,
           creator_id: user.id,
           creator_name: profile?.username || user.email?.split('@')[0] || 'Utilisateur',
-          creator_avatar: profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+          creator_avatar: profile?.avatar_url || DEFAULT_AVATAR,
           is_short: isShort,
           views: 0,
-          likes: 0
+          likes: 0,
+          categories: selectedCategories
         });
 
       if (dbError) {
@@ -138,6 +164,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       setDescription('');
       setVideoFile(null);
       setThumbnailFile(null);
+      setSelectedCategories([]);
       setShowUploadModal(false);
       fetchMyVideos();
       setTimeout(() => setSuccess(null), 3000);
@@ -193,12 +220,12 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
   if (!user) {
     return (
       <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in duration-700">
-        <div className="w-20 h-20 bg-sky-500/10 rounded-3xl flex items-center justify-center text-sky-500 mb-8 border border-sky-500/20 shadow-xl shadow-sky-500/5">
-          <AlertCircle size={40} />
+        <div className="text-slate-700 mb-8">
+          <Info size={48} />
         </div>
         <h2 className="text-3xl font-black text-white mb-4 tracking-tighter">Connexion requise</h2>
-        <p className="text-slate-500 text-sm max-w-sm font-medium leading-relaxed">
-          Vous devez être connecté pour accéder à votre chaîne et publier des vidéos.
+        <p className="text-slate-400 text-sm max-w-sm font-medium leading-relaxed">
+          Vous devez être connecté pour pouvoir accéder à votre chaîne et publier des vidéos.
         </p>
       </div>
     );
@@ -206,12 +233,11 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
 
   return (
     <div className="w-full space-y-10 animate-in fade-in duration-700">
-      {/* Header de la chaîne */}
-      <div className="relative group overflow-hidden bg-slate-900/20 border-2 border-slate-800/40 rounded-[2.5rem] p-8 sm:p-12 flex flex-col sm:flex-row items-center gap-8 shadow-inner">
+      <div className="relative group overflow-hidden bg-white/5 border-2 border-white/10 rounded-3xl p-8 sm:p-12 flex flex-col sm:flex-row items-center gap-8">
         <div className="relative">
-          <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-[2rem] overflow-hidden border-4 border-slate-800 shadow-2xl">
+          <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden border-4 border-white/10 shadow-2xl">
             <img 
-              src={profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} 
+              src={profile?.avatar_url || DEFAULT_AVATAR} 
               alt="Avatar" 
               className="w-full h-full object-cover"
             />
@@ -222,13 +248,13 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
           <h2 className="text-3xl sm:text-4xl font-black text-white mb-2 tracking-tighter">
             {profile?.username || user.email?.split('@')[0]}
           </h2>
-          <p className="text-slate-500 text-sm font-medium mb-6">
+          <p className="text-slate-400 text-sm font-medium mb-6">
             {videos.length} vidéo{videos.length > 1 ? 's' : ''} • Créateur Wexo
           </p>
           
           <button 
             onClick={() => setShowUploadModal(true)}
-            className="bg-sky-500 text-white hover:bg-sky-400 font-black text-[10px] uppercase tracking-[0.2em] px-8 py-4 rounded-2xl shadow-xl shadow-sky-500/20 transition-all active:scale-95 flex items-center gap-3 mx-auto sm:mx-0"
+            className="bg-white text-black hover:bg-slate-200 font-black text-[10px] uppercase tracking-[0.2em] px-8 py-4 rounded-2xl shadow-xl shadow-white/5 transition-all active:scale-95 flex items-center gap-3 mx-auto sm:mx-0"
           >
             <Plus size={16} /> Publier une vidéo
           </button>
@@ -239,55 +265,57 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       <div className="space-y-6">
         <div className="flex items-center justify-between px-2">
           <h3 className="text-xl font-black text-white tracking-tight">Mes Vidéos</h3>
-          <div className="h-px flex-1 bg-slate-800/50 mx-6 hidden sm:block"></div>
+          <div className="h-px flex-1 bg-white/10 mx-6 hidden sm:block"></div>
         </div>
 
         {loading ? (
           <div className="flex justify-center py-20">
-            <Loader2 className="text-sky-500 animate-spin" size={40} />
+            <Loader2 className="text-white animate-spin" size={40} />
           </div>
         ) : videos.length === 0 ? (
-          <div className="py-20 flex flex-col items-center justify-center text-center bg-slate-900/10 rounded-[3rem] border-2 border-slate-800 border-dashed">
-            <Play size={48} className="text-slate-800 mb-4" />
-            <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Aucune vidéo publiée</p>
+          <div className="py-20 flex flex-col items-center justify-center text-center bg-white/5 rounded-[3rem] border-2 border-white/10 border-dashed">
+            <Play size={48} className="text-slate-700 mb-4" />
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Aucune vidéo publiée</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {videos.map((video) => (
-              <div key={video.id} className="group bg-slate-900/40 border border-slate-800/50 rounded-3xl overflow-hidden hover:border-sky-500/30 transition-all duration-300">
-                <div className="relative aspect-video overflow-hidden">
-                  <img src={video.thumbnail_url || undefined} alt={video.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+              <div key={video.id} className="group bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/10 hover:border-white/30 transition-all duration-300 shadow-sm p-1">
+                <div className="relative aspect-video overflow-hidden rounded-xl">
+                  <img src={video.thumbnail_url || undefined} alt={video.title} className="w-full h-full object-cover transition-transform duration-700" />
                   
                   {video.is_short && (
-                    <div className="absolute top-3 left-3 px-2 py-1 bg-sky-500 text-white text-[8px] font-black uppercase tracking-widest rounded-md flex items-center gap-1 shadow-lg">
+                    <div className="absolute top-3 left-3 px-2 py-1 bg-white text-black text-[8px] font-black uppercase tracking-widest rounded-md flex items-center gap-1 shadow-lg z-20">
                       <Zap size={10} fill="currentColor" /> Short
                     </div>
                   )}
-
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                    <button className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform">
-                      <Play size={20} fill="black" />
-                    </button>
-                  </div>
                 </div>
-                <div className="p-5">
-                  <h4 className="text-white font-bold text-lg mb-1 line-clamp-1">{video.title}</h4>
-                  <p className="text-slate-500 text-xs mb-4 line-clamp-2">{video.description}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">
-                      {video.views} vues
-                    </span>
-                    <div className="flex gap-1">
-                      <button className="p-2.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all active:scale-90">
-                        <Edit2 size={18} />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(video.id)}
-                        className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all active:scale-90"
-                        title="Supprimer"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                <div className="p-3">
+                  <div className="flex gap-3">
+                    <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 border border-white/10">
+                      <img src={profile?.avatar_url || DEFAULT_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-white font-bold text-sm mb-1 line-clamp-2 leading-tight">{video.title}</h4>
+                      <div className="flex items-center gap-2 flex-wrap mb-3">
+                        <p className="text-slate-400 text-[10px] font-black">{profile?.username || user.email?.split('@')[0]}</p>
+                        <span className="text-slate-700 text-[9px]">•</span>
+                        <span className="text-[9px] font-bold text-slate-500">{video.views} vues</span>
+                        <span className="text-slate-700 text-[9px]">•</span>
+                        <span className="text-[9px] font-bold text-slate-500">{formatRelativeDate(video.created_at)}</span>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <button className="flex-1 flex items-center justify-center gap-2 py-2 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5">
+                          <Edit2 size={14} /> Modifier
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(video.id)}
+                          className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-500/5 hover:bg-red-500/10 text-slate-400 hover:text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-red-500/5"
+                        >
+                          <Trash2 size={14} /> Supprimer
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -300,18 +328,18 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       {/* Modal d'upload */}
       {showUploadModal && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 sm:p-6">
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xl" onClick={() => !uploading && setShowUploadModal(false)}></div>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-xl" onClick={() => !uploading && setShowUploadModal(false)}></div>
           
-          <div className="relative w-full max-w-xl bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+          <div className="relative w-full max-w-xl bg-[#1a1a1a] border border-white/10 rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="p-8 sm:p-10">
               <div className="flex items-center justify-between mb-8">
                 <div>
                   <h2 className="text-2xl font-black text-white tracking-tighter">Publier une vidéo</h2>
-                  <p className="text-slate-500 text-xs font-medium uppercase tracking-widest mt-1">Partagez votre contenu</p>
+                  <p className="text-slate-400 text-xs font-medium uppercase tracking-widest mt-1">Partagez votre contenu</p>
                 </div>
                 <button 
                   onClick={() => setShowUploadModal(false)}
-                  className="p-2 text-slate-500 hover:text-white bg-slate-800/50 rounded-xl transition-colors"
+                  className="p-2 text-slate-400 hover:text-white bg-white/10 rounded-xl transition-colors"
                 >
                   <Plus size={20} className="rotate-45" />
                 </button>
@@ -326,7 +354,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Ex: Mon premier vlog"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl py-4 px-6 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 text-white transition-all"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-sm focus:outline-none focus:ring-2 focus:ring-white/20 text-white transition-all"
                   />
                 </div>
 
@@ -336,7 +364,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Dites-en plus sur votre vidéo..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl py-4 px-6 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 text-white transition-all min-h-[100px] resize-none"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-sm focus:outline-none focus:ring-2 focus:ring-white/20 text-white transition-all min-h-[100px] resize-none"
                   />
                 </div>
 
@@ -354,7 +382,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                       />
                       <label 
                         htmlFor="video-upload"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-2xl py-4 px-6 text-xs text-slate-400 cursor-pointer hover:border-sky-500/50 transition-all flex items-center gap-2 overflow-hidden"
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-xs text-slate-500 cursor-pointer hover:border-white/50 transition-all flex items-center gap-2 overflow-hidden"
                       >
                         <Play size={14} className="flex-shrink-0" />
                         <span className="truncate">{videoFile ? videoFile.name : "Choisir une vidéo"}</span>
@@ -373,7 +401,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                       />
                       <label 
                         htmlFor="thumbnail-upload"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-2xl py-4 px-6 text-xs text-slate-400 cursor-pointer hover:border-sky-500/50 transition-all flex items-center gap-2 overflow-hidden"
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-xs text-slate-500 cursor-pointer hover:border-white/50 transition-all flex items-center gap-2 overflow-hidden"
                       >
                         <Upload size={14} className="flex-shrink-0" />
                         <span className="truncate">{thumbnailFile ? thumbnailFile.name : "Choisir une image"}</span>
@@ -382,18 +410,44 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 p-4 bg-slate-950/50 border border-slate-800 rounded-2xl">
+                <div className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-2xl">
                   <input 
                     type="checkbox" 
                     id="isShort"
                     checked={isShort}
                     onChange={(e) => setIsShort(e.target.checked)}
-                    className="w-5 h-5 rounded-lg bg-slate-900 border-slate-800 text-sky-500 focus:ring-sky-500/20"
+                    className="w-5 h-5 rounded-lg bg-[#0f0f0f] border-white/10 text-white focus:ring-white/20"
                   />
                   <label htmlFor="isShort" className="flex items-center gap-2 cursor-pointer">
-                    <Zap size={16} className={isShort ? "text-sky-500" : "text-slate-500"} />
-                    <span className="text-xs font-black uppercase tracking-widest text-slate-300">Marquer comme Short (Format Vertical)</span>
+                    <Zap size={16} className={isShort ? "text-white" : "text-slate-500"} />
+                    <span className="text-xs font-black uppercase tracking-widest text-white">Marquer comme Short (Format Vertical)</span>
                   </label>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Catégories (Plusieurs choix possibles)</label>
+                  <div className="flex flex-wrap gap-2">
+                    {categories.map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => {
+                          if (selectedCategories.includes(cat)) {
+                            setSelectedCategories(prev => prev.filter(c => c !== cat));
+                          } else {
+                            setSelectedCategories(prev => [...prev, cat]);
+                          }
+                        }}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                          selectedCategories.includes(cat) 
+                            ? 'bg-white text-black border-white' 
+                            : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {error && (
@@ -406,7 +460,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                 <button 
                   type="submit"
                   disabled={uploading}
-                  className="w-full bg-white text-black hover:bg-sky-500 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed font-black text-[10px] uppercase tracking-[0.2em] py-5 rounded-2xl shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3"
+                  className="w-full bg-white text-black hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed font-black text-[10px] uppercase tracking-[0.2em] py-5 rounded-2xl shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3"
                 >
                   {uploading ? (
                     <>
@@ -435,15 +489,15 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       {/* Modal de suppression multi-étapes */}
       {deleteModalStep && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm" onClick={() => setDeleteModalStep(null)}></div>
-          <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-[2rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteModalStep(null)}></div>
+          <div className="relative w-full max-w-md bg-[#1a1a1a] border border-white/10 rounded-[2rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
             {deleteModalStep === 'confirm' ? (
               <div className="text-center">
-                <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-500 mx-auto mb-6">
+                <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center text-red-400 mx-auto mb-6">
                   <Trash2 size={32} />
                 </div>
                 <h3 className="text-xl font-black text-white mb-2">Supprimer la vidéo ?</h3>
-                <p className="text-slate-400 text-sm mb-8">Cette action est irréversible. Êtes-vous sûr de vouloir continuer ?</p>
+                <p className="text-slate-500 text-sm mb-8">Cette action est irréversible. Êtes-vous sûr de vouloir continuer ?</p>
                 <div className="flex flex-col gap-3">
                   <button 
                     onClick={() => setDeleteModalStep('download')}
@@ -453,7 +507,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                   </button>
                   <button 
                     onClick={() => setDeleteModalStep(null)}
-                    className="w-full py-4 bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-slate-700 transition-all"
+                    className="w-full py-4 bg-white/10 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-white/20 transition-all"
                   >
                     Annuler
                   </button>
@@ -461,31 +515,31 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
               </div>
             ) : (
               <div className="text-center">
-                <div className="w-16 h-16 bg-sky-500/10 rounded-2xl flex items-center justify-center text-sky-500 mx-auto mb-6">
+                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-white mx-auto mb-6">
                   <Upload size={32} className="rotate-180" />
                 </div>
                 <h3 className="text-xl font-black text-white mb-2">Sauvegarder avant ?</h3>
-                <p className="text-slate-400 text-sm mb-8">Voulez-vous télécharger la vidéo sur votre appareil avant sa suppression définitive ?</p>
+                <p className="text-slate-500 text-sm mb-8">Voulez-vous télécharger la vidéo sur votre appareil avant sa suppression définitive ?</p>
                 <div className="flex flex-col gap-3">
                   <button 
                     onClick={async () => {
                       await downloadVideo();
                       confirmDelete();
                     }}
-                    className="w-full py-4 bg-sky-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-sky-400 transition-all flex items-center justify-center gap-2"
+                    className="w-full py-4 bg-white text-black font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
                   >
                     <Upload size={14} className="rotate-180" /> Télécharger et supprimer
                   </button>
                   <div className="grid grid-cols-2 gap-3">
                     <button 
                       onClick={() => setDeleteModalStep(null)}
-                      className="py-4 bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-slate-700 transition-all"
+                      className="py-4 bg-white/10 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-white/20 transition-all"
                     >
                       Annuler
                     </button>
                     <button 
                       onClick={confirmDelete}
-                      className="py-4 bg-red-500/10 text-red-500 border border-red-500/20 font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-red-500/20 transition-all"
+                      className="py-4 bg-red-500/10 text-red-400 border border-red-500/20 font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-red-500/20 transition-all"
                     >
                       Non, supprimer
                     </button>

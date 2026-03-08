@@ -14,14 +14,14 @@ const LogoutModal: React.FC<LogoutModalProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4">
-      <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-8 animate-in zoom-in slide-in-from-top-10 duration-300">
-        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+      <div className="w-full max-w-sm bg-[#1a1a1a] border border-white/10 rounded-3xl p-8 animate-in zoom-in slide-in-from-top-10 duration-300">
+        <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center text-red-400 mx-auto mb-6">
           <AlertCircle size={32} />
         </div>
         
-        <h2 className="text-xl font-bold text-center mb-2">Déconnexion</h2>
-        <p className="text-slate-400 text-center text-sm mb-8">Êtes-vous sûr de vouloir vous déconnecter de Wexo ?</p>
+        <h2 className="text-xl font-bold text-center text-white mb-2">Déconnexion</h2>
+        <p className="text-slate-500 text-center text-sm mb-8">Êtes-vous sûr de vouloir vous déconnecter de Wexo ?</p>
         
         <div className="flex flex-col gap-3">
           <button 
@@ -32,7 +32,7 @@ const LogoutModal: React.FC<LogoutModalProps> = ({ onClose }) => {
           </button>
           <button 
             onClick={onClose}
-            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-2xl transition-all"
+            className="w-full bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-2xl transition-all"
           >
             Annuler
           </button>

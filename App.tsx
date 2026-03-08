@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import HomeTab from './components/HomeTab';
@@ -14,9 +15,12 @@ import AuthModal from './components/AuthModal';
 import LogoutModal from './components/LogoutModal';
 import { TabId, Workspace as WorkspaceType } from './types';
 import { supabase } from './services/supabase';
+import { DEFAULT_AVATAR } from './constants';
 import { HelpCircle, AlertTriangle, X, Construction } from 'lucide-react';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<TabId>('accueil');
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
@@ -29,6 +33,30 @@ const App: React.FC = () => {
     message: '',
     show: false
   });
+
+  // Sync activeTab with URL path
+  useEffect(() => {
+    const path = location.pathname.substring(1); // remove leading slash
+    if (path) {
+      // Map path to TabId
+      const tabMap: Record<string, TabId> = {
+        'accueil': 'accueil',
+        'video': 'video',
+        'shorts': 'shorts',
+        'workspace': 'workspace',
+        'messages': 'message',
+        'ma-chaine': 'ma-chaine',
+        'jeux': 'jeux',
+        'posts': 'posts',
+        'aide': 'aide'
+      };
+      if (tabMap[path]) {
+        setActiveTab(tabMap[path]);
+      }
+    } else {
+      setActiveTab('accueil');
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -49,7 +77,6 @@ const App: React.FC = () => {
   }, []);
 
   const fetchProfile = async (userId: string) => {
-    // Tentative de récupération du profil existant
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -57,18 +84,13 @@ const App: React.FC = () => {
       .single();
     
     if (error && error.code === 'PGRST116') {
-      // Profil inexistant : on tente de le créer à partir des métadonnées
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
         const metadata = user.user_metadata;
         const fallbackAvatar = localStorage.getItem('wexo_google_fallback_avatar');
-        
-        // Récupérer le pseudo depuis les métadonnées ou l'email
         const metaUsername = metadata.username || metadata.given_name || metadata.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'Utilisateur';
-        
-        // Récupérer l'avatar
-        const metaAvatar = metadata.avatar_url || metadata.picture || fallbackAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`;
+        const metaAvatar = metadata.avatar_url || metadata.picture || fallbackAvatar || DEFAULT_AVATAR;
 
         const newProfile = {
           id: userId,
@@ -87,8 +109,6 @@ const App: React.FC = () => {
         if (!createError) {
           setProfile(createdProfile);
           localStorage.removeItem('wexo_google_fallback_avatar');
-        } else {
-          console.error("Erreur lors de la création automatique du profil:", createError);
         }
       }
     } else if (!error) {
@@ -97,7 +117,26 @@ const App: React.FC = () => {
   };
 
   const handleTabChange = (id: TabId) => {
-    setActiveTab(id);
+    // Map TabId to path
+    const pathMap: Record<TabId, string> = {
+      'accueil': '/',
+      'video': '/video',
+      'shorts': '/shorts',
+      'workspace': '/workspace',
+      'message': '/messages',
+      'ma-chaine': '/ma-chaine',
+      'jeux': '/jeux',
+      'posts': '/posts',
+      'aide': '/aide',
+      'historique': '/historique',
+      'playlists': '/playlists',
+      'likes': '/likes',
+      'abonnement': '/abonnement',
+      'parametres': '/parametres',
+      'commentaire': '/commentaire',
+      'admin-panel': '/admin-panel'
+    };
+    navigate(pathMap[id] || '/');
     setIsSidebarOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -135,11 +174,11 @@ const App: React.FC = () => {
                 <Construction size={40} />
              </div>
              <h2 className="text-3xl font-black text-white mb-4 tracking-tighter">Bientôt disponible</h2>
-             <p className="text-slate-500 text-sm max-w-sm font-medium leading-relaxed">
+             <p className="text-slate-400 text-sm max-w-sm font-medium leading-relaxed">
                 Cette section est encore en construction. Nos équipes travaillent dur pour vous offrir le meilleur service d'assistance.
              </p>
              <div className="mt-12 flex gap-4">
-                <button onClick={() => handleTabChange('accueil')} className="px-8 py-4 bg-slate-900 border border-slate-800 text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-slate-800 transition-colors">
+                <button onClick={() => handleTabChange('accueil')} className="px-8 py-4 bg-white text-black text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-slate-200 transition-colors">
                    Retour à l'accueil
                 </button>
              </div>
@@ -165,7 +204,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-sky-500/30 overflow-x-hidden">
+    <div className="min-h-screen bg-[#0f0f0f] text-white flex flex-col selection:bg-sky-500/30 overflow-x-hidden">
       <div className={`fixed top-0 left-0 right-0 z-[200] flex justify-center p-4 transition-all duration-700 transform ${notification.show ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
         <div className="bg-red-500/10 backdrop-blur-xl border border-red-500/30 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 max-w-md w-full">
           <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center text-red-500 flex-shrink-0"><AlertTriangle size={20} /></div>
@@ -180,6 +219,8 @@ const App: React.FC = () => {
         onOpenAuth={(type) => setAuthModal(type)} 
         onOpenLogout={() => setShowLogoutModal(true)} 
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+        onTabChange={handleTabChange}
+        activeTab={activeTab}
       />
       
       <div className="flex flex-1 w-full relative">
@@ -192,7 +233,7 @@ const App: React.FC = () => {
         
         <main className={`flex-1 w-full lg:ml-72 transition-all duration-500 ${
           (activeTab === 'message' || activeTab === 'shorts')
-            ? 'p-0 pt-20 h-screen overflow-hidden' 
+            ? 'p-0 pt-20 h-screen overflow-hidden bg-[#0f0f0f]' 
             : 'p-4 sm:p-10 md:p-14 pt-[125px] lg:pt-[105px] pb-10'
         }`}>
           <div className={`${
@@ -204,13 +245,9 @@ const App: React.FC = () => {
           }`}>
             {(!activeWorkspace && activeTab !== 'message' && activeTab !== 'video' && activeTab !== 'shorts') && (
               <div className="mb-4 sm:mb-5 animate-in slide-in-from-left duration-700">
-                <div className="flex items-center gap-3 mb-1">
-                    <span className="text-[9px] font-black uppercase tracking-[0.5em] text-sky-500">Flux Wexo</span>
-                </div>
                 <h1 className="text-3xl sm:text-5xl font-black capitalize text-white tracking-tighter leading-none mb-3">
                   {activeTab.replace('-', ' ')}
                 </h1>
-                <div className="h-1.5 w-14 bg-sky-500 rounded-full shadow-[0_5px_15px_rgba(56,189,248,0.4)]"></div>
               </div>
             )}
             
@@ -224,6 +261,14 @@ const App: React.FC = () => {
       {authModal && <AuthModal type={authModal} onClose={() => setAuthModal(null)} onTriggerVerifyWarning={showVerifyWarning} />}
       {showLogoutModal && <LogoutModal onClose={() => setShowLogoutModal(false)} />}
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
   );
 };
 

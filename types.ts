@@ -95,4 +95,5 @@ export interface Video {
   is_short?: boolean;
   creator_name?: string;
   creator_avatar?: string;
+  categories?: string[];
 }

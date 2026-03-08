@@ -1,7 +1,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Mail, Lock, User, Download, Loader2, ArrowRight, RefreshCw, RotateCcw, ArrowLeft, MoreVertical, ShieldCheck, MailCheck, ExternalLink } from 'lucide-react';
+import { X, Mail, Lock, User, Download, Loader2, ArrowRight, RefreshCw, RotateCcw, ArrowLeft, MoreVertical, ShieldCheck, MailCheck, ExternalLink, Camera, Upload } from 'lucide-react';
 import { supabase } from '../services/supabase';
+import { generateSnowflake } from '../utils/snowflake';
+import { DEFAULT_AVATAR } from '../constants';
 
 interface AuthModalProps {
   type: 'login' | 'signup';
@@ -18,9 +20,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState('');
+  const [selectedAvatar, setSelectedAvatar] = useState(DEFAULT_AVATAR);
   const [isCustomAvatar, setIsCustomAvatar] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [showAvatarMenu, setShowAvatarMenu] = useState(false);
 
   // States for interactive cropping
   const [showCropper, setShowCropper] = useState(false);
@@ -35,18 +39,45 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
   const fileInputRef = useRef<HTMLInputElement>(null);
   const maskRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
-  const generateRandomAvatar = () => {
-    if (isCustomAvatar) return;
-    const randomSeed = Math.random().toString(36).substring(7);
-    setSelectedAvatar(`https://api.dicebear.com/7.x/avataaars/svg?seed=${randomSeed}`);
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setShowCamera(true);
+      setShowAvatarMenu(false);
+    } catch (err) {
+      setError("Impossible d'accéder à la caméra. Vérifiez les permissions.");
+    }
   };
 
-  useEffect(() => {
-    if (step === 'form') {
-      generateRandomAvatar();
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach(track => track.stop());
+      videoRef.current.srcObject = null;
     }
-  }, [step]);
+    setShowCamera(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        setTempImage(dataUrl);
+        setShowCropper(true);
+        stopCamera();
+      }
+    }
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,10 +120,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
           const { error: profileError } = await supabase
             .from('profiles')
             .upsert([{
-              id: data.user.id,
+              id: data.user.id,        // Utilisation de l'ID Auth comme ID Profil pour la cohérence
+              auth_id: data.user.id,   // Lien avec Supabase Auth
               username: username,
-              avatar_url: selectedAvatar,
-              email: finalEmail,
+              email: finalEmail,       // Ajout de l'email
+              avatar_url: selectedAvatar || DEFAULT_AVATAR,
               updated_at: new Date().toISOString()
             }]);
           
@@ -287,6 +319,41 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
     return () => window.removeEventListener('message', handleMessage);
   }, [onClose]);
 
+  if (showCamera) {
+    return (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black">
+        <div className="w-full max-w-2xl bg-[#0a0a0a] md:rounded-[2.5rem] overflow-hidden flex flex-col h-full md:h-[90vh]">
+          <div className="flex items-center justify-between p-6 border-b border-white/5 bg-[#111111]">
+            <button onClick={stopCamera} className="text-white hover:bg-white/10 p-2 rounded-full transition-colors"><ArrowLeft size={24} /></button>
+            <h2 className="text-white font-medium text-lg">Prendre une photo</h2>
+            <div className="w-10"></div>
+          </div>
+          <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+            <video 
+              ref={videoRef} 
+              autoPlay 
+              playsInline 
+              className="w-full h-full object-cover mirror"
+              style={{ transform: 'scaleX(-1)' }}
+            />
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              <div className="w-[min(70vw,380px)] aspect-square rounded-full border-2 border-white/30 shadow-[0_0_0_2000px_rgba(0,0,0,0.5)]"></div>
+            </div>
+          </div>
+          <div className="p-8 bg-[#111111] border-t border-white/5 flex flex-col items-center">
+            <button 
+              onClick={capturePhoto} 
+              className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-transform"
+            >
+              <div className="w-16 h-16 border-4 border-black rounded-full"></div>
+            </button>
+            <p className="mt-4 text-slate-500 text-[10px] font-black uppercase tracking-widest">Cliquez pour capturer</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (showCropper && tempImage) {
     return (
       <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black select-none">
@@ -305,10 +372,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
             </div>
           </div>
           <div className="p-8 bg-[#111111] border-t border-white/5 space-y-8 flex flex-col items-center">
-            <input type="range" min={minZoom} max={minZoom + 3} step="0.01" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-full max-w-sm h-1 bg-white/20 rounded-full appearance-none accent-sky-400" />
+            <input type="range" min={minZoom} max={minZoom + 3} step="0.01" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-full max-w-sm h-1 bg-white/20 rounded-full appearance-none accent-white" />
             <div className="flex gap-12">
               <button onClick={() => setRotation(r => (r - 90) % 360)} className="w-14 h-14 bg-white/5 hover:bg-white/10 rounded-2xl flex items-center justify-center transition-all"><RotateCcw size={24} className="text-white" /></button>
-              <button onClick={applyCrop} className="min-w-[180px] bg-sky-400 text-slate-900 font-black uppercase text-xs tracking-widest py-4 px-10 rounded-full shadow-xl">Terminer</button>
+              <button onClick={applyCrop} className="min-w-[180px] bg-white text-slate-900 font-black uppercase text-xs tracking-widest py-4 px-10 rounded-full shadow-xl">Terminer</button>
             </div>
           </div>
         </div>
@@ -317,16 +384,16 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-20 bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl p-8 relative animate-in zoom-in duration-300">
-        <button onClick={onClose} className="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors"><X size={24} /></button>
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-20 bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="w-full max-w-md bg-[#1a1a1a] border border-white/10 rounded-[2.5rem] shadow-2xl p-8 relative animate-in zoom-in duration-300">
+        <button onClick={onClose} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X size={24} /></button>
         
         {step === 'form' ? (
           <>
             <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-sky-500 rounded-2xl flex items-center justify-center font-bold text-white text-2xl mx-auto shadow-lg shadow-sky-500/20 mb-4">W</div>
+              <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center font-bold text-black text-2xl mx-auto shadow-lg shadow-white/5 mb-4">W</div>
               <h2 className="text-2xl font-bold text-white tracking-tight">{type === 'signup' ? 'Créer un compte' : 'Bon retour sur Wexo'}</h2>
-              <p className="text-slate-500 text-sm mt-2">{type === 'signup' ? 'Commencez l\'aventure avec nous.' : 'Utilisez votre pseudo pour vous connecter.'}</p>
+              <p className="text-slate-400 text-sm mt-2">{type === 'signup' ? 'Commencez l\'aventure avec nous.' : 'Utilisez votre pseudo pour vous connecter.'}</p>
             </div>
 
             {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-xl mb-6 text-center animate-in fade-in slide-in-from-top-2">{error}</div>}
@@ -335,44 +402,73 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
               {type === 'signup' ? (
                 <>
                   <div className="flex flex-col items-center gap-4 mb-6">
-                    <div className="relative group">
+                    <div className="relative">
                       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
-                      <div onClick={generateRandomAvatar} className={`relative w-24 h-24 rounded-full border-4 border-slate-800 bg-slate-800 p-1 overflow-hidden transition-all ${!isCustomAvatar ? 'cursor-pointer hover:scale-105' : ''}`}>
+                      
+                      <div 
+                        onClick={() => setShowAvatarMenu(!showAvatarMenu)} 
+                        className="relative w-28 h-28 rounded-full border-4 border-white/10 bg-white/5 p-1 overflow-hidden cursor-pointer hover:scale-105 transition-all shadow-xl group"
+                      >
                         <img src={selectedAvatar || undefined} className="w-full h-full object-cover" alt="Avatar" />
-                        {!isCustomAvatar && <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><RefreshCw size={24} className="text-white" /></div>}
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Camera size={24} className="text-white" />
+                        </div>
                       </div>
-                      <button type="button" onClick={() => fileInputRef.current?.click()} className="absolute bottom-0 right-0 bg-sky-500 p-2 rounded-full border-4 border-slate-900 shadow-lg hover:bg-sky-400 transition-colors"><Download size={14} className="text-white" /></button>
+
+                      {showAvatarMenu && (
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl p-2 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2">
+                          <button 
+                            type="button"
+                            onClick={startCamera}
+                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 text-white rounded-xl transition-colors"
+                          >
+                            <Camera size={18} className="text-slate-400" />
+                            <span className="text-xs font-bold">Caméra</span>
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              fileInputRef.current?.click();
+                              setShowAvatarMenu(false);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 text-white rounded-xl transition-colors"
+                          >
+                            <Upload size={18} className="text-slate-400" />
+                            <span className="text-xs font-bold">Télécharger</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input required type="text" placeholder="Pseudo" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-slate-800 border-none rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-sky-500" />
+                    <input required type="text" placeholder="Pseudo" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
                   </div>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input type="email" placeholder="Email (Optionnel)" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-800 border-none rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-sky-500" />
+                    <input type="email" placeholder="Email (Optionnel)" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
                   </div>
                 </>
               ) : (
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                  <input required type="text" placeholder="Votre Pseudo" value={loginPseudo} onChange={(e) => setLoginPseudo(e.target.value)} className="w-full bg-slate-800 border-none rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-sky-500" />
+                  <input required type="text" placeholder="Votre Pseudo" value={loginPseudo} onChange={(e) => setLoginPseudo(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
                 </div>
               )}
               
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                <input required type="password" placeholder="Mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-800 border-none rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-sky-500" />
+                <input required type="password" placeholder="Mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
               </div>
 
               {type === 'signup' && (
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                  <input required type="password" placeholder="Confirmer le mot de passe" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full bg-slate-800 border-none rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-sky-500" />
+                  <input required type="password" placeholder="Confirmer le mot de passe" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
                 </div>
               )}
 
-              <button disabled={loading} type="submit" className="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-4 rounded-2xl shadow-lg shadow-sky-500/20 transition-all flex items-center justify-center gap-2 mt-4 active:scale-95">
+              <button disabled={loading} type="submit" className="w-full bg-white hover:bg-slate-200 text-black font-bold py-4 rounded-2xl shadow-lg shadow-white/5 transition-all flex items-center justify-center gap-2 mt-4 active:scale-95">
                 {loading ? <Loader2 className="animate-spin" size={20} /> : (
                   <>
                     {type === 'signup' ? "S'inscrire" : "Se connecter"}
@@ -383,10 +479,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
 
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-800"></div>
+                  <div className="w-full border-t border-white/10"></div>
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-slate-900 px-2 text-slate-500 font-bold tracking-widest">Ou continuer avec</span>
+                  <span className="bg-[#1a1a1a] px-2 text-slate-500 font-bold tracking-widest">Ou continuer avec</span>
                 </div>
               </div>
 
@@ -394,7 +490,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
                 type="button"
                 onClick={handleGoogleLogin}
                 disabled={loading}
-                className="w-full bg-white hover:bg-slate-100 text-slate-900 font-bold py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 active:scale-95"
+                className="w-full bg-white/5 hover:bg-white/10 text-white font-bold py-4 rounded-2xl shadow-sm border border-white/10 transition-all flex items-center justify-center gap-3 active:scale-95"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path
@@ -421,7 +517,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
         ) : (
           <div className="animate-in slide-in-from-right-4 duration-500">
             <div className="text-center mb-8">
-              <div className="w-20 h-20 bg-sky-500/10 text-sky-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl shadow-sky-500/5">
+              <div className="w-20 h-20 bg-white/10 text-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl shadow-white/5">
                 {isDummyEmail ? <ShieldCheck size={40} /> : <MailCheck size={40} />}
               </div>
               <h2 className="text-2xl font-bold text-white tracking-tight">
@@ -433,8 +529,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
                   : "Un email de confirmation vient d'être envoyé par Supabase à l'adresse suivante :"}
               </p>
               {!isDummyEmail && (
-                <div className="mt-2 py-2 px-4 bg-slate-800/50 rounded-xl inline-block border border-slate-700/50">
-                  <span className="text-sky-300 font-mono text-sm">{email}</span>
+                <div className="mt-2 py-2 px-4 bg-white/10 rounded-xl inline-block border border-white/10">
+                  <span className="text-white font-mono text-sm">{email}</span>
                 </div>
               )}
             </div>
@@ -443,20 +539,20 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
               <div className="bg-amber-500/10 rounded-[2rem] p-6 border border-amber-500/20 space-y-4 mb-8">
                 <div className="flex gap-4">
                   <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-xs font-bold text-amber-500 flex-shrink-0">!</div>
-                  <p className="text-xs text-amber-200 leading-relaxed">
+                  <p className="text-xs text-amber-400 leading-relaxed">
                     <span className="font-bold">Attention :</span> Sans email, vous ne pourrez pas récupérer votre mot de passe en cas d'oubli.
                   </p>
                 </div>
               </div>
             ) : (
-              <div className="bg-slate-800/30 rounded-[2rem] p-6 border border-slate-700/50 space-y-4 mb-8">
+              <div className="bg-white/5 rounded-[2rem] p-6 border border-white/10 space-y-4 mb-8">
                 <div className="flex gap-4">
-                  <div className="w-8 h-8 rounded-full bg-slate-700/50 flex items-center justify-center text-xs font-bold text-slate-300 flex-shrink-0">1</div>
-                  <p className="text-xs text-slate-400 leading-relaxed">Ouvrez l'email envoyé par <span className="text-slate-200">Supabase Auth</span>.</p>
+                  <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-slate-400 flex-shrink-0">1</div>
+                  <p className="text-xs text-slate-400 leading-relaxed">Ouvrez l'email envoyé par <span className="text-white">Supabase Auth</span>.</p>
                 </div>
                 <div className="flex gap-4">
-                  <div className="w-8 h-8 rounded-full bg-slate-700/50 flex items-center justify-center text-xs font-bold text-slate-300 flex-shrink-0">2</div>
-                  <p className="text-xs text-slate-400 leading-relaxed">Cliquez sur le lien <span className="text-slate-200">"Confirm your email"</span> pour activer votre compte Wexo.</p>
+                  <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-slate-400 flex-shrink-0">2</div>
+                  <p className="text-xs text-slate-400 leading-relaxed">Cliquez sur le lien <span className="text-white">"Confirm your email"</span> pour activer votre compte Wexo.</p>
                 </div>
               </div>
             )}
@@ -464,19 +560,19 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
             <div className="space-y-3">
               <button 
                 onClick={handleUnderstand} 
-                className="w-full bg-white text-slate-900 font-bold py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95"
+                className="w-full bg-white text-black font-bold py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95"
               >
                 J'ai compris
               </button>
               <button 
                 onClick={() => setStep('form')}
-                className="w-full py-2 text-slate-500 hover:text-slate-300 text-[10px] font-bold uppercase tracking-widest transition-colors"
+                className="w-full py-2 text-slate-500 hover:text-white text-[10px] font-bold uppercase tracking-widest transition-colors"
               >
                 Modifier mon adresse email
               </button>
             </div>
             
-            <p className="text-center text-[9px] text-slate-600 mt-8 uppercase tracking-[0.2em]">
+            <p className="text-center text-[9px] text-slate-500 mt-8 uppercase tracking-[0.2em]">
               Propulsé par Supabase Security
             </p>
           </div>

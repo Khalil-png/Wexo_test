@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, Zap, TrendingUp, Tv, PlayCircle, Sparkles, Loader2, Play, Heart, MessageCircle, Send, X, Plus, Volume2, VolumeX, Copy, Check, ThumbsUp, ThumbsDown, Share2 } from 'lucide-react';
+import { Search, Zap, TrendingUp, Tv, PlayCircle, Video as VideoIcon, Loader2, Play, Heart, MessageCircle, Send, X, Plus, Volume2, VolumeX, Copy, Check, ThumbsUp, ThumbsDown, Share2, ArrowLeft, Sparkles } from 'lucide-react';
 import { supabase } from '../services/supabase';
+import { generateSnowflake } from '../utils/snowflake';
 import { Video } from '../types';
+import { DEFAULT_AVATAR } from '../constants';
 
 interface Comment {
   id: string;
@@ -10,6 +12,8 @@ interface Comment {
   avatar_url: string;
   content: string;
   created_at: string;
+  likes?: number;
+  hasLiked?: boolean;
 }
 
 interface VideoTabProps {
@@ -17,6 +21,29 @@ interface VideoTabProps {
   user?: any;
   profile?: any;
 }
+
+// Icône de caméra de film personnalisée
+const MovieCameraIcon = ({ size = 16, className = "" }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2.5" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    {/* Corps de la caméra */}
+    <rect x="2" y="10" width="14" height="10" rx="2" />
+    {/* Objectif */}
+    <path d="m16 13 5-3v10l-5-3" />
+    {/* Bobines sur le dessus */}
+    <circle cx="6" cy="6" r="3" />
+    <circle cx="12" cy="6" r="3" />
+  </svg>
+);
 
 const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,17 +63,46 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
   const [loadingComments, setLoadingComments] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [showDateTooltip, setShowDateTooltip] = useState(false);
+  const [selectedTag, setSelectedTag] = useState('Tout');
 
-  const tags = ['Tout', 'Design', 'Code', 'Gaming', 'Musique', 'Shorts'];
+  const tags = ['Tout', 'Jeux vidéo', 'Récent', 'Nouveautés', 'Animation', 'Musique'];
 
   useEffect(() => {
     fetchVideos();
+    
+    // Check for video ID in URL
+    const params = new URLSearchParams(window.location.search);
+    const videoId = params.get('video');
+    if (videoId) {
+      fetchVideoById(videoId);
+    }
   }, []);
+
+  const fetchVideoById = async (id: string) => {
+    const { data, error } = await supabase
+      .from('videos')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (!error && data) {
+      setSelectedVideo(data);
+    }
+  };
 
   useEffect(() => {
     if (selectedVideo) {
+      // Update URL when video is selected
+      const url = new URL(window.location.href);
+      url.searchParams.set('video', selectedVideo.id);
+      window.history.pushState({}, '', url);
       fetchVideoData();
       incrementViews(selectedVideo.id);
+    } else {
+      // Clear video param when closing player
+      const url = new URL(window.location.href);
+      url.searchParams.delete('video');
+      window.history.pushState({}, '', url);
     }
   }, [selectedVideo]);
 
@@ -106,7 +162,37 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
       .eq('video_id', selectedVideo.id)
       .order('created_at', { ascending: false });
     
-    setComments(commentsData || []);
+    let processedComments = (commentsData || []) as Comment[];
+
+    // Fetch comment likes counts and user likes
+    if (processedComments.length > 0) {
+      const commentIds = processedComments.map(c => c.id);
+      
+      // Get counts
+      const { data: likesCounts } = await supabase
+        .from('comment_likes')
+        .select('comment_id')
+        .in('comment_id', commentIds);
+      
+      // Get user likes
+      let userLikedIds: string[] = [];
+      if (user) {
+        const { data: userLikes } = await supabase
+          .from('comment_likes')
+          .select('comment_id')
+          .eq('user_id', user.id)
+          .in('comment_id', commentIds);
+        userLikedIds = userLikes?.map(l => l.comment_id) || [];
+      }
+
+      processedComments = processedComments.map(comment => ({
+        ...comment,
+        likes: likesCounts?.filter(l => l.comment_id === comment.id).length || 0,
+        hasLiked: userLikedIds.includes(comment.id)
+      }));
+    }
+    
+    setComments(processedComments);
 
     // Fetch Likes
     const { count } = await supabase
@@ -155,7 +241,11 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
       setIsSubscribed(false);
       setSubscriberCount(prev => prev - 1);
     } else {
-      await supabase.from('subscriptions').insert([{ follower_id: user.id, creator_id: selectedVideo.creator_id }]);
+      await supabase.from('subscriptions').insert([{ 
+        id: generateSnowflake(),
+        follower_id: user.id, 
+        creator_id: selectedVideo.creator_id 
+      }]);
       setIsSubscribed(true);
       setSubscriberCount(prev => prev + 1);
     }
@@ -167,7 +257,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
   };
 
   const copyToClipboard = () => {
-    const url = `${window.location.origin}/?video=${selectedVideo?.id}`;
+    const url = `https://wexo.netlify.app/?video=${selectedVideo?.id}`;
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -185,9 +275,36 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
       setLikeCount(prev => prev - 1);
       setHasLiked(false);
     } else {
-      await supabase.from('video_likes').insert([{ video_id: selectedVideo.id, user_id: user.id }]);
+      await supabase.from('video_likes').insert([{ 
+        id: generateSnowflake(),
+        video_id: selectedVideo.id, 
+        user_id: user.id 
+      }]);
       setLikeCount(prev => prev + 1);
       setHasLiked(true);
+    }
+  };
+
+  const handleCommentLike = async (commentId: string) => {
+    if (!user) return;
+
+    const comment = comments.find(c => c.id === commentId);
+    if (!comment) return;
+
+    if (comment.hasLiked) {
+      await supabase.from('comment_likes').delete().match({ comment_id: commentId, user_id: user.id });
+      setComments(prev => prev.map(c => 
+        c.id === commentId ? { ...c, hasLiked: false, likes: (c.likes || 1) - 1 } : c
+      ));
+    } else {
+      await supabase.from('comment_likes').insert([{ 
+        id: generateSnowflake(),
+        comment_id: commentId, 
+        user_id: user.id 
+      }]);
+      setComments(prev => prev.map(c => 
+        c.id === commentId ? { ...c, hasLiked: true, likes: (c.likes || 0) + 1 } : c
+      ));
     }
   };
 
@@ -196,25 +313,42 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
     if (!user || !newComment.trim() || !selectedVideo) return;
 
     const comment = {
+      id: generateSnowflake(),
       video_id: selectedVideo.id,
       user_id: user.id,
       username: profile?.username || user.email?.split('@')[0],
-      avatar_url: profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-      content: newComment
+      avatar_url: profile?.avatar_url || DEFAULT_AVATAR,
+      content: newComment,
+      likes: 0,
+      hasLiked: false
     };
 
-    const { data, error } = await supabase.from('video_comments').insert([comment]).select().single();
+    const { data, error } = await supabase.from('video_comments').insert([{
+      id: comment.id,
+      video_id: comment.video_id,
+      user_id: comment.user_id,
+      username: comment.username,
+      avatar_url: comment.avatar_url,
+      content: comment.content
+    }]).select().single();
 
     if (!error && data) {
-      setComments(prev => [data, ...prev]);
+      setComments(prev => [{ ...data, likes: 0, hasLiked: false }, ...prev]);
       setNewComment('');
     }
   };
 
-  const filteredVideos = videos.filter(v => 
-    v.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    v.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredVideos = videos.filter(v => {
+    const matchesSearch = v.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         v.description.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    if (selectedTag === 'Tout') return matchesSearch;
+    
+    // Check if video has the selected category
+    // We handle both array and string (if it was stored as string before)
+    const videoCategories = v.categories || [];
+    return matchesSearch && videoCategories.includes(selectedTag);
+  });
 
   return (
     <div className="w-full animate-in fade-in duration-700">
@@ -223,21 +357,23 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
         <div className="flex flex-col lg:flex-row gap-8 pb-20">
           {/* Colonne Principale (Gauche) */}
           <div className="flex-1 min-w-0">
+            {/* Bouton Retour déplacé en dehors du rectangle */}
+            <button 
+              onClick={() => setSelectedVideo(null)}
+              className="mb-6 flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-xl transition-all border border-white/10 group active:scale-95"
+            >
+              <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Retour</span>
+            </button>
+
             {/* Lecteur Vidéo - Format Rectangle (16:9) */}
-            <div className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-2xl group mb-6 border border-white/5">
+            <div className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-2xl group mb-6 border border-white/10">
               <video 
                 src={selectedVideo.url} 
                 controls 
                 autoPlay
                 className="w-full h-full object-contain"
               />
-              <button 
-                onClick={() => setSelectedVideo(null)}
-                className="absolute top-4 left-4 z-10 p-2 bg-black/60 hover:bg-white hover:text-black text-white rounded-full backdrop-blur-md transition-all opacity-0 group-hover:opacity-100 flex items-center gap-2 px-3"
-              >
-                <X size={16} />
-                <span className="text-[10px] font-black uppercase tracking-widest">Retour</span>
-              </button>
             </div>
 
             {/* Titre et Infos */}
@@ -250,7 +386,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                 <div className="flex items-center gap-3">
                   <div className="relative">
                     <img 
-                      src={selectedVideo.creator_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedVideo.creator_id}`} 
+                      src={selectedVideo.creator_avatar || DEFAULT_AVATAR} 
                       className="w-10 h-10 rounded-full border border-white/10" 
                       alt="" 
                     />
@@ -259,7 +395,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                     <p className="text-sm font-black text-white flex items-center gap-1">
                       {selectedVideo.creator_name}
                     </p>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</p>
                   </div>
                   
                   <div className="flex items-center gap-2">
@@ -280,12 +416,12 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 md:pb-0">
+                <div className="flex items-center gap-2 pb-2 md:pb-0">
                   <button 
                     onClick={handleLike}
                     className={`flex items-center gap-2 px-6 py-2 rounded-full transition-all text-[14px] font-bold active:scale-90 ${hasLiked ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
                   >
-                    <Heart size={20} fill={hasLiked ? "currentColor" : "none"} className={hasLiked ? "text-red-500" : "text-white"} /> 
+                    <Heart size={20} fill={hasLiked ? "currentColor" : "none"} className={hasLiked ? "text-red-500" : "text-slate-400"} /> 
                     {likeCount}
                   </button>
                   
@@ -298,27 +434,33 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                     </button>
                     
                     {showSharePopup && (
-                      <div className="absolute bottom-full mb-4 right-0 w-80 bg-[#282828] border border-white/10 rounded-xl p-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 z-50">
+                      <div className="absolute bottom-full mb-4 right-0 md:right-auto md:left-1/2 md:-translate-x-1/2 w-72 sm:w-80 bg-[#1a1a1a] border border-white/10 rounded-2xl p-5 shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-in fade-in slide-in-from-bottom-4 duration-300 z-50">
                         <div className="flex items-center justify-between mb-4">
-                          <h4 className="text-sm font-bold text-white">Partager</h4>
-                          <button onClick={() => setShowSharePopup(false)} className="text-slate-400 hover:text-white">
-                            <X size={20} />
+                          <h4 className="text-sm font-black text-white uppercase tracking-tight">Partager la vidéo</h4>
+                          <button onClick={() => setShowSharePopup(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+                            <X size={18} />
                           </button>
                         </div>
-                        <div className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-lg p-3">
-                          <input 
-                            type="text" 
-                            readOnly 
-                            value={`${window.location.origin}/?video=${selectedVideo.id}`}
-                            className="bg-transparent text-xs text-slate-300 outline-none flex-1 truncate"
-                          />
-                          <button 
-                            onClick={copyToClipboard}
-                            className="px-4 py-1.5 bg-sky-500 text-white text-xs font-bold rounded-full hover:bg-sky-400 transition-colors flex items-center gap-2"
-                          >
-                            {copied ? <><Check size={14} /> Copié</> : 'Copier'}
-                          </button>
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-3 group hover:border-white/20 transition-all">
+                            <input 
+                              type="text" 
+                              readOnly 
+                              value={`https://wexo.netlify.app/?video=${selectedVideo.id}`}
+                              className="bg-transparent text-xs text-slate-400 outline-none flex-1 truncate font-medium"
+                            />
+                            <button 
+                              onClick={copyToClipboard}
+                              className="w-10 h-10 bg-white text-black rounded-xl hover:bg-slate-200 transition-all active:scale-95 flex items-center justify-center shadow-lg flex-shrink-0"
+                              title={copied ? "Copié !" : "Copier le lien"}
+                            >
+                              {copied ? <Check size={18} className="text-emerald-600" /> : <Copy size={18} />}
+                            </button>
+                          </div>
+                          <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest text-center">Lien direct vers wexo.netlify.app</p>
                         </div>
+                        {/* Arrow */}
+                        <div className="absolute top-full right-6 md:right-auto md:left-1/2 md:-translate-x-1/2 border-8 border-transparent border-t-[#1a1a1a]"></div>
                       </div>
                     )}
                   </div>
@@ -353,11 +495,11 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                     )}
                   </div>
                 </div>
-                <p className={`text-sm text-white leading-relaxed whitespace-pre-wrap ${!isDescriptionExpanded ? 'line-clamp-[7]' : ''}`}>
+                <p className={`text-sm text-slate-300 leading-relaxed whitespace-pre-wrap ${!isDescriptionExpanded ? 'line-clamp-[7]' : ''}`}>
                   {selectedVideo.description || "Aucune description fournie."}
                 </p>
                 {selectedVideo.description && selectedVideo.description.length > 0 && (
-                  <button className="mt-2 text-sm font-bold text-white hover:text-slate-300 transition-colors">
+                  <button className="mt-2 text-sm font-bold text-white hover:text-slate-400 transition-colors">
                     {isDescriptionExpanded ? 'Moins' : 'Plus'}
                   </button>
                 )}
@@ -375,7 +517,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                 {/* Input Commentaire */}
                 <div className="flex gap-4 mb-10">
                   <img 
-                    src={profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id || 'guest'}`} 
+                    src={profile?.avatar_url || DEFAULT_AVATAR} 
                     className="w-10 h-10 rounded-full border border-white/10 flex-shrink-0" 
                     alt="" 
                   />
@@ -387,20 +529,20 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                           value={newComment}
                           onChange={(e) => setNewComment(e.target.value)}
                           placeholder="Ajouter un commentaire..."
-                          className="w-full bg-transparent border-b border-white/10 py-2 text-sm text-white outline-none focus:border-white transition-all"
+                          className="w-full bg-transparent border-b border-white/10 py-2 text-sm text-white outline-none focus:border-white/30 transition-all"
                         />
                         <div className="flex justify-end gap-2 mt-2 opacity-0 group-focus-within:opacity-100 transition-opacity">
                           <button 
                             type="button" 
                             onClick={() => setNewComment('')}
-                            className="px-4 py-2 text-[10px] font-black text-white uppercase tracking-widest hover:bg-white/10 rounded-full"
+                            className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-white/5 rounded-full"
                           >
                             Annuler
                           </button>
                           <button 
                             type="submit"
                             disabled={!newComment.trim()}
-                            className="px-4 py-2 bg-sky-500 disabled:bg-slate-800 text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg shadow-sky-500/20"
+                            className="px-4 py-2 bg-white disabled:bg-white/20 text-black text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg"
                           >
                             Commenter
                           </button>
@@ -415,28 +557,32 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                 {/* Liste des commentaires */}
                 <div className="space-y-8">
                   {loadingComments ? (
-                    <div className="flex justify-center py-10"><Loader2 className="animate-spin text-sky-500" /></div>
+                    <div className="flex justify-center py-10"><Loader2 className="animate-spin text-white" /></div>
                   ) : comments.length > 0 ? (
                     comments.map(comment => (
                       <div key={comment.id} className="flex gap-4 group">
                         <img src={comment.avatar_url || undefined} className="w-10 h-10 rounded-full flex-shrink-0 border border-white/10" alt="" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[11px] font-black text-white">@{comment.username}</span>
-                            <span className="text-[10px] font-medium text-slate-500">il y a 1 heure</span>
+                            <span className={`text-[11px] font-black ${comment.user_id === selectedVideo.creator_id ? 'bg-white text-black px-2 py-0.5 rounded' : 'text-white'}`}>
+                              @{comment.username}
+                            </span>
+                            <span className="text-[10px] font-medium text-slate-500">{formatRelativeDate(comment.created_at)}</span>
                           </div>
                           <p className="text-sm text-slate-300 leading-relaxed mb-3">{comment.content}</p>
                           <div className="flex items-center gap-4">
                             <div className="flex items-center gap-1">
-                              <button className="p-1.5 hover:bg-white/10 rounded-full transition-colors">
-                                <Heart size={14} className="text-slate-500" />
+                              <button 
+                                onClick={() => handleCommentLike(comment.id)}
+                                className={`p-1.5 rounded-full transition-colors ${comment.hasLiked ? 'bg-red-500/10 text-red-500' : 'hover:bg-white/5 text-slate-500'}`}
+                              >
+                                <Heart size={14} fill={comment.hasLiked ? "currentColor" : "none"} />
                               </button>
-                              <span className="text-[10px] font-bold text-slate-500">12</span>
-                              <button className="p-1.5 hover:bg-white/10 rounded-full transition-colors">
-                                <TrendingUp size={14} className="text-slate-500 rotate-180" />
-                              </button>
+                              <span className={`text-[10px] font-bold ${comment.hasLiked ? 'text-red-500' : 'text-slate-500'}`}>
+                                {comment.likes || 0}
+                              </span>
                             </div>
-                            <button className="text-[10px] font-black text-white uppercase tracking-widest hover:bg-white/10 px-3 py-1.5 rounded-full transition-all">
+                            <button className="text-[10px] font-black text-white hover:bg-white/5 px-3 py-1.5 rounded-full transition-all">
                               Répondre
                             </button>
                           </div>
@@ -445,8 +591,8 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                     ))
                   ) : (
                     <div className="text-center py-10 opacity-30">
-                      <MessageCircle size={40} className="mx-auto mb-4" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Aucun commentaire pour le moment</p>
+                      <MessageCircle size={40} className="mx-auto mb-4 text-white" />
+                      <p className="text-[10px] font-black uppercase tracking-widest text-white">Aucun commentaire pour le moment</p>
                     </div>
                   )}
                 </div>
@@ -462,7 +608,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                 {['Tout', 'De la série', 'Similaires'].map((tag, i) => (
                   <button 
                     key={tag} 
-                    className={`flex-shrink-0 px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${i === 0 ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                    className={`flex-shrink-0 px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${i === 0 ? 'bg-[#272727] text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
                   >
                     {tag}
                   </button>
@@ -478,16 +624,16 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                     setSelectedVideo(video);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className="flex gap-3 group cursor-pointer"
+                  className="flex gap-3 group cursor-pointer p-2 -m-2 rounded-xl hover:bg-white/5 transition-all duration-300"
                 >
-                  <div className="relative w-40 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-slate-900 border border-white/5">
-                    <img src={video.thumbnail_url || undefined} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
-                    <div className="absolute bottom-1 right-1 bg-black/80 px-1 py-0.5 rounded text-[9px] font-bold text-white">
+                  <div className="relative w-40 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-white/5 border border-white/10">
+                    <img src={video.thumbnail_url || undefined} className="w-full h-full object-cover transition-transform duration-500" alt="" />
+                    <div className="absolute bottom-1 right-1 bg-black/80 px-1 py-0.5 rounded text-[9px] font-bold text-white z-20">
                       12:34
                     </div>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-xs font-bold text-white line-clamp-2 leading-snug mb-1 group-hover:text-sky-400 transition-colors">
+                    <h4 className="text-xs font-bold text-white line-clamp-2 leading-snug mb-1 group-hover:text-white transition-colors">
                       {video.title}
                     </h4>
                     <p className="text-[10px] font-medium text-slate-500 mb-0.5 flex items-center gap-1">
@@ -510,36 +656,33 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
         <div className="space-y-10">
           {/* Header spécifique à l'onglet Vidéo */}
           <div className="mb-8 animate-in slide-in-from-left duration-700">
-            <div className="flex items-center gap-3 mb-1">
-                <span className="text-[9px] font-black uppercase tracking-[0.5em] text-sky-500">Flux Wexo</span>
-            </div>
             <h1 className="text-3xl sm:text-5xl font-black capitalize text-white tracking-tighter leading-none mb-3">
               Vidéos
             </h1>
-            <div className="h-1.5 w-14 bg-sky-500 rounded-full shadow-[0_5px_15px_rgba(56,189,248,0.4)]"></div>
           </div>
 
           {/* Barre de recherche Vidéo */}
           <div className="space-y-6">
             <div className="relative group w-full max-w-2xl mx-auto">
               <div className="relative">
-                <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-sky-400 transition-colors" size={20} />
+                <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-white transition-colors" size={20} />
                 <input 
                   type="text" 
                   placeholder="Rechercher une vidéo..." 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl py-3.5 pl-14 pr-6 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 text-white transition-all shadow-xl"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-14 pr-6 text-sm focus:outline-none focus:ring-2 focus:ring-white/10 text-white transition-all shadow-xl"
                 />
               </div>
             </div>
 
             {/* Tags */}
             <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 px-1 max-w-3xl mx-auto justify-start sm:justify-center">
-              {tags.map((tag, i) => (
+              {tags.map((tag) => (
                 <button 
                   key={tag} 
-                  className={`flex-shrink-0 px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 ${i === 0 ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20' : 'bg-slate-900/50 text-slate-400 border border-slate-800'}`}
+                  onClick={() => setSelectedTag(tag)}
+                  className={`flex-shrink-0 px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 ${selectedTag === tag ? 'bg-white text-black' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
                 >
                   {tag}
                 </button>
@@ -549,7 +692,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
 
           {loading ? (
             <div className="flex justify-center py-20">
-              <Loader2 className="text-sky-500 animate-spin" size={40} />
+              <Loader2 className="text-white animate-spin" size={40} />
             </div>
           ) : filteredVideos.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -557,28 +700,24 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                 <div 
                   key={video.id} 
                   onClick={() => setSelectedVideo(video)}
-                  className="group bg-slate-900/40 border border-slate-800/50 rounded-3xl overflow-hidden hover:border-sky-500/30 transition-all duration-300 cursor-pointer"
+                  className="group bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/10 hover:border-white/30 transition-all duration-300 cursor-pointer shadow-sm p-1"
                 >
-                  <div className="relative aspect-video overflow-hidden">
-                    <img src={video.thumbnail_url || undefined} alt={video.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center transform scale-90 group-hover:scale-100 transition-transform">
-                        <Play size={20} fill="black" />
-                      </div>
-                    </div>
+                  <div className="relative aspect-video overflow-hidden rounded-xl">
+                    <img src={video.thumbnail_url || undefined} alt={video.title} className="w-full h-full object-cover transition-transform duration-700" />
                   </div>
-                  <div className="p-5">
+                  <div className="p-3">
                     <div className="flex gap-3">
-                      <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 border border-slate-800">
-                        <img src={video.creator_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${video.creator_id}`} alt="Avatar" className="w-full h-full object-cover" />
+                      <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 border border-white/10">
+                        <img src={video.creator_avatar || DEFAULT_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <h4 className="text-white font-bold text-sm mb-1 line-clamp-2 leading-tight">{video.title}</h4>
-                        <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{video.creator_name}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-[9px] font-bold text-slate-600">{video.views} vues</span>
-                          <span className="text-slate-800">•</span>
-                          <span className="text-[9px] font-bold text-slate-600">Il y a 2 jours</span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-slate-400 text-[10px] font-black">{video.creator_name}</p>
+                          <span className="text-slate-700 text-[9px]">•</span>
+                          <span className="text-[9px] font-bold text-slate-500">{video.views} vues</span>
+                          <span className="text-slate-700 text-[9px]">•</span>
+                          <span className="text-[9px] font-bold text-slate-500">{formatRelativeDate(video.created_at)}</span>
                         </div>
                       </div>
                     </div>
@@ -588,38 +727,28 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
             </div>
           ) : (
             /* État vide optimisé */
-            <div className="relative group overflow-hidden bg-slate-900/20 border-2 border-slate-800/40 rounded-[2.5rem] py-16 flex flex-col items-center justify-center text-center px-6 shadow-inner">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-sky-500/5 rounded-full blur-[80px]"></div>
+            <div className="relative group overflow-hidden bg-white/5 border-2 border-white/10 rounded-3xl py-16 flex flex-col items-center justify-center text-center px-6 shadow-inner">
               
               <div className="relative z-10 mb-8">
-                  <div className="w-20 h-20 bg-slate-950 rounded-[1.8rem] flex items-center justify-center text-slate-800 shadow-2xl border border-slate-800 group-hover:border-sky-500/50 transition-colors">
-                      <PlayCircle size={44} className="text-slate-700 group-hover:text-sky-500 transition-colors" />
+                  <div className="w-20 h-20 bg-white/5 rounded-2xl flex items-center justify-center text-slate-700 shadow-2xl border border-white/10 group-hover:border-white/30 transition-colors">
+                      <PlayCircle size={44} className="text-slate-600 group-hover:text-white transition-colors" />
                   </div>
-                  <div className="absolute -top-1 -right-1 w-9 h-9 bg-sky-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-sky-500/30">
-                      <Zap size={16} fill="white" />
+                  <div className="absolute -top-1 -right-1 w-9 h-9 bg-white rounded-xl flex items-center justify-center text-black shadow-lg">
+                      <Zap size={16} fill="black" />
                   </div>
               </div>
               
               <div className="relative z-10 max-w-lg">
                   <h3 className="text-3xl font-black text-white mb-3 tracking-tighter leading-none">Wexo Vidéo</h3>
                   <p className="text-slate-400 text-sm leading-relaxed font-medium mb-10 max-w-xs mx-auto">
-                      Il n'y a aucune vidéo ou publiez-en vous-même.
+                      Il n'y a aucune vidéo pour le moment, cliquer si dessous pour poster votre propre vidéo
                   </p>
                   
-                  <div className="flex flex-wrap justify-center gap-4 mb-10">
-                      <div className="flex items-center gap-2 bg-slate-950/80 px-4 py-3 rounded-xl border border-slate-800/50 text-[8px] font-black uppercase tracking-widest text-slate-500">
-                          <TrendingUp size={12} className="text-emerald-500" /> Intelligent
-                      </div>
-                      <div className="flex items-center gap-2 bg-slate-950/80 px-4 py-3 rounded-xl border border-slate-800/50 text-[8px] font-black uppercase tracking-widest text-slate-500">
-                          <Tv size={12} className="text-sky-500" /> Flux HD
-                      </div>
-                  </div>
-    
                   <button 
                     onClick={onBecomeCreator}
-                    className="bg-white text-black hover:bg-sky-500 hover:text-white font-black text-[10px] uppercase tracking-[0.2em] px-10 py-5 rounded-2xl shadow-2xl transition-all active:scale-95 flex items-center gap-3 mx-auto"
+                    className="bg-white text-black hover:bg-slate-200 font-black text-[10px] uppercase tracking-[0.2em] px-10 py-5 rounded-2xl shadow-2xl transition-all active:scale-95 flex items-center gap-3 mx-auto"
                   >
-                      <Sparkles size={16} /> Devenir Créateur
+                      <MovieCameraIcon size={18} /> Devenir Créateur
                   </button>
               </div>
             </div>
