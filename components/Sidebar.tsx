@@ -3,17 +3,19 @@ import React from 'react';
 import { NAV_ITEMS, getIcon } from '../constants';
 import { TabId } from '../types';
 import { ChevronRight, X } from 'lucide-react';
+import { isApp } from '../src/utils/device';
 
 interface SidebarProps {
   activeTab: TabId;
   onTabChange: (id: TabId) => void;
   isOpen: boolean;
   onClose: () => void;
+  profile?: any;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClose }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClose, profile }) => {
   const NavButton: React.FC<{ item: any }> = ({ item }) => (
-    <button
+      <button
       onClick={() => onTabChange(item.id)}
       className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all duration-200 group mb-1 ${
         activeTab === item.id 
@@ -23,7 +25,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
     >
       <div className="flex items-center gap-4">
         {getIcon(item.icon, activeTab === item.id)}
-        <span className={`font-bold text-[15px] tracking-tight ${activeTab === item.id ? 'text-white' : 'text-slate-300'}`}>
+        <span className={`font-bold text-[15px] tracking-tight text-white`}>
           {item.label}
         </span>
       </div>
@@ -31,16 +33,27 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
     </button>
   );
 
-  const primaryItems = NAV_ITEMS.filter(item => item.group === 'primary');
-  const libraryItems = NAV_ITEMS.filter(item => item.group === 'library');
-  const personalItems = NAV_ITEMS.filter(item => item.group === 'personal');
-  const adminItems = NAV_ITEMS.filter(item => item.group === 'admin');
+  const filteredNavItems = NAV_ITEMS.filter(item => {
+    if (item.id === 'telecharger' && isApp()) return false;
+    return true;
+  });
+
+  const primaryItems = filteredNavItems.filter(item => item.group === 'primary');
+  const libraryItems = filteredNavItems.filter(item => item.group === 'library');
+  const personalItems = filteredNavItems.filter(item => item.group === 'personal');
+  
+  const isAdmin = profile?.role === 'admin' || profile?.email === 'ky.chaine@gmail.com';
+  const adminItems = filteredNavItems.filter(item => {
+    if (item.group !== 'admin') return false;
+    if (item.id === 'admin-panel') return isAdmin;
+    return true; // Envoyer un commentaire est public
+  });
 
   return (
     <>
       {/* Overlay fond sombre sur mobile */}
       <div 
-        className={`fixed inset-0 bg-slate-900/40 backdrop-blur-md z-[60] transition-opacity duration-300 lg:hidden ${
+        className={`fixed inset-0 bg-slate-900/60 z-[60] transition-opacity duration-300 lg:hidden ${
           isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
         onClick={onClose}
@@ -53,12 +66,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
         
         {/* Logo Section - mb-8 pour laisser respirer le premier bouton Accueil */}
         <div className="flex items-center gap-4 px-8 mb-8">
-          <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center font-black text-black text-xl">
-            W
-          </div>
-          <span className="text-2xl font-black text-white tracking-tighter">WEXO</span>
+          <img 
+            src="https://files.catbox.moe/wkn44b.png" 
+            alt="Wexo Logo" 
+            className="w-12 h-12 object-contain"
+            referrerPolicy="no-referrer"
+          />
+          <span className="text-2xl font-bold text-white tracking-tight">WEXO</span>
           
-          <button onClick={onClose} className="lg:hidden ml-auto p-2 text-slate-400 hover:text-white bg-white/5 rounded-xl">
+          <button onClick={onClose} className="lg:hidden ml-auto p-2 text-slate-400 hover:text-white bg-white/5 rounded-2xl">
             <X size={20} />
           </button>
         </div>
@@ -68,27 +84,27 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
         </div>
 
         <div className="mt-8 px-5 space-y-1">
-          <h3 className="px-4 text-[11px] font-black text-slate-400 tracking-widest mb-4">Bibliothèque</h3>
+          <h3 className="px-4 text-xs font-bold text-slate-400 mb-4">Bibliothèque</h3>
           {libraryItems.map(item => <NavButton key={item.id} item={item} />)}
         </div>
 
         <div className="mt-8 px-5 space-y-1">
-          <h3 className="px-4 text-[11px] font-black text-slate-400 tracking-widest mb-4">Compte</h3>
+          <h3 className="px-4 text-xs font-bold text-slate-400 mb-4">Compte</h3>
           {personalItems.map(item => <NavButton key={item.id} item={item} />)}
         </div>
 
         {adminItems.length > 0 && (
           <div className="mt-8 px-5 space-y-1">
-            <h3 className="px-4 text-[11px] font-black text-slate-400 tracking-widest mb-4">Admin</h3>
+            <h3 className="px-4 text-xs font-bold text-slate-400 mb-4">Administration</h3>
             {adminItems.map(item => <NavButton key={item.id} item={item} />)}
           </div>
         )}
 
         <div className="mt-auto px-8 pt-12">
-          <div className="p-5 bg-white/5 rounded-3xl border border-white/5 text-center">
-            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3">Wexo Cloud</p>
-            <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-              <div className="bg-white h-full w-1/2 shadow-[0_0_10px_rgba(255,255,255,0.3)]"></div>
+          <div className="p-5 bg-white/5 rounded-2xl border border-white/5 text-center">
+            <p className="text-[10px] font-bold text-slate-500 mb-3">Wexo Cloud</p>
+            <div className="w-full bg-white/10 h-1.5 rounded-2xl overflow-hidden">
+              <div className="bg-white h-full w-1/2"></div>
             </div>
           </div>
         </div>

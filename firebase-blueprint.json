@@ -1,0 +1,350 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Information about a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique identifier for the user" },
+        "display_id": { "type": "string", "description": "The numeric ID displayed to users (Discord-like)" },
+        "username": { "type": "string", "description": "The user's chosen display name" },
+        "avatar_url": { "type": "string", "description": "The URL to the user's profile picture" },
+        "email": { "type": "string", "format": "email", "description": "The user's email address" },
+        "created_at": { "type": "string", "format": "date-time", "description": "When the profile was created" },
+        "is_verified": { "type": "boolean", "description": "Whether the user has the verified badge" },
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "The user's role" },
+        "auth_method": { "type": "string", "description": "Method used for authentication (google, password, anonymous)" }
+      },
+      "required": ["id", "username"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "A social media post",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "content": { "type": "string" },
+        "media_url": { "type": "string" },
+        "media_type": { "type": "string", "enum": ["image", "video", "post"] },
+        "likes": { "type": "integer" },
+        "comments": { "type": "integer" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "is_appropriate": { "type": "boolean" },
+        "language": { "type": "string" }
+      },
+      "required": ["id", "user_id", "content"]
+    },
+    "Video": {
+      "title": "Video",
+      "description": "A video uploaded to the platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "url": { "type": "string" },
+        "thumbnail_url": { "type": "string" },
+        "creator_id": { "type": "string" },
+        "creator_name": { "type": "string" },
+        "creator_avatar": { "type": "string" },
+        "views": { "type": "integer" },
+        "likes": { "type": "integer" },
+        "is_short": { "type": "boolean" },
+        "categories": { "type": "array", "items": { "type": "string" } },
+        "created_at": { "type": "string", "format": "date-time" },
+        "is_appropriate": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["analyzing", "publishing", "ready", "error"] }
+      },
+      "required": ["id", "title", "url", "creator_id"]
+    },
+    "Call": {
+      "title": "Call",
+      "description": "A record of a call between two users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "caller_id": { "type": "string" },
+        "receiver_id": { "type": "string" },
+        "type": { "type": "string", "enum": ["audio", "video"] },
+        "status": { "type": "string", "enum": ["incoming", "outgoing", "missed", "completed"] },
+        "duration": { "type": "integer" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "caller_id", "receiver_id", "status"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A direct message between users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sender_id": { "type": "string" },
+        "receiver_id": { "type": "string" },
+        "text": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "file_url": { "type": "string" },
+        "file_name": { "type": "string" },
+        "file_type": { "type": "string" },
+        "file_size": { "type": "integer" },
+        "is_deleted_for_everyone": { "type": "boolean" },
+        "deleted_for_me_by": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "sender_id", "receiver_id"]
+    },
+    "Friendship": {
+      "title": "Friendship",
+      "description": "A friendship between two users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "requester_id": { "type": "string" },
+        "receiver_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "requester_id", "receiver_id", "status"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "type": { "type": "string", "enum": ["message", "friend_request", "call"] },
+        "sender_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["unread", "read"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "user_id", "type", "sender_id", "status"]
+    },
+    "VideoView": {
+      "title": "Video View",
+      "description": "A record of a user viewing a video",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "video_id": { "type": "string" },
+        "view_count": { "type": "integer" },
+        "last_view_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "video_id", "view_count"]
+    },
+    "AppSettings": {
+      "title": "App Settings",
+      "description": "Global application configuration and versioning",
+      "type": "object",
+      "properties": {
+        "latest_version_pc": { "type": "string", "description": "Latest version available for PC" },
+        "latest_version_mobile": { "type": "string", "description": "Latest version available for Mobile" },
+        "last_update_timestamp": { "type": "string", "format": "date-time", "description": "Timestamp of the last update trigger" },
+        "apk_url": { "type": "string", "description": "URL to the latest Android APK" },
+        "exe_url": { "type": "string", "description": "URL to the latest Windows EXE" }
+      }
+    },
+    "PostLike": {
+      "title": "Post Like",
+      "description": "A record of a user liking a post",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "post_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "post_id"]
+    },
+    "VideoLike": {
+      "title": "Video Like",
+      "description": "A record of a user liking a video",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "video_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "video_id"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "A record of a user following a creator",
+      "type": "object",
+      "properties": {
+        "follower_id": { "type": "string" },
+        "creator_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["follower_id", "creator_id"]
+    },
+    "VideoComment": {
+      "title": "Video Comment",
+      "description": "A comment on a video",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "video_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "text": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "video_id", "user_id", "text"]
+    },
+    "PostComment": {
+      "title": "Post Comment",
+      "description": "A comment on a post",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "post_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "text": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "post_id", "user_id", "text"]
+    },
+    "CommentLike": {
+      "title": "Comment Like",
+      "description": "A record of a user liking a comment",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "comment_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "comment_id"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "A report of inappropriate content",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reporter_id": { "type": "string" },
+        "target_id": { "type": "string" },
+        "target_type": { "type": "string", "enum": ["post", "video", "comment", "user"] },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "dismissed"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "reporter_id", "target_id", "target_type", "reason"]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "description": "A collaborative workspace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "owner_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "owner_id"]
+    },
+    "WorkspaceMember": {
+      "title": "Workspace Member",
+      "description": "A member of a workspace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workspace_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "admin", "member"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspace_id", "user_id", "role"]
+    },
+    "WorkspaceProject": {
+      "title": "Workspace Project",
+      "description": "A project within a workspace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workspace_id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["video", "image", "doc"] },
+        "thumbnail_url": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "workspace_id", "name", "type"]
+    }
+  },
+  "firestore": {
+    "/settings/app_config": {
+      "schema": "AppSettings",
+      "description": "Global app configuration"
+    },
+    "/profiles/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Social media posts"
+    },
+    "/videos/{videoId}": {
+      "schema": "Video",
+      "description": "Uploaded videos"
+    },
+    "/calls/{callId}": {
+      "schema": "Call",
+      "description": "Call history"
+    },
+    "/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Direct messages"
+    },
+    "/friendships/{friendshipId}": {
+      "schema": "Friendship",
+      "description": "User friendships"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications"
+    },
+    "/video_views/{viewId}": {
+      "schema": "VideoView",
+      "description": "User video views tracking"
+    },
+    "/video_likes/{likeId}": {
+      "schema": "VideoLike",
+      "description": "Video likes"
+    },
+    "/post_likes/{likeId}": {
+      "schema": "PostLike",
+      "description": "Post likes"
+    },
+    "/post_comments/{commentId}": {
+      "schema": "PostComment",
+      "description": "Post comments"
+    },
+    "/subscriptions/{subId}": {
+      "schema": "Subscription",
+      "description": "User subscriptions/follows"
+    },
+    "/video_comments/{commentId}": {
+      "schema": "VideoComment",
+      "description": "Video comments"
+    },
+    "/comment_likes/{likeId}": {
+      "schema": "CommentLike",
+      "description": "Comment likes"
+    },
+    "/reports/{reportId}": {
+      "schema": "Report",
+      "description": "Content reports"
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": "Workspace",
+      "description": "Collaborative workspaces"
+    },
+    "/workspace_members/{memberId}": {
+      "schema": "WorkspaceMember",
+      "description": "Workspace membership"
+    },
+    "/workspace_projects/{projectId}": {
+      "schema": "WorkspaceProject",
+      "description": "Projects within workspaces"
+    }
+  }
+}

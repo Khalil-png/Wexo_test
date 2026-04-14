@@ -1,9 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, MessageCircle, Share2, Music, Loader2, UserPlus, UserCheck, Play, Zap, Tv, Plus, TrendingUp, ThumbsUp, ThumbsDown, MessageSquare, Repeat, Pause, Volume2, VolumeX, Copy, Check, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { renderTextWithEmojis } from '../utils/emoji';
+import { Heart, MessageCircle, Share2, Music, Loader2, UserPlus, UserCheck, Play, Zap, Tv, Plus, TrendingUp, ThumbsUp, ThumbsDown, MessageSquare, Repeat, Pause, Volume2, VolumeX, Copy, Check, X, ChevronUp, ChevronDown, Captions, User } from 'lucide-react';
 import { DEFAULT_AVATAR } from '../constants';
-import { supabase } from '../services/supabase';
+import { auth, db } from '../firebase';
+import { useClickOutside } from '../utils/hooks';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  deleteDoc, 
+  updateDoc, 
+  increment,
+  getDocs,
+  limit,
+  serverTimestamp,
+  arrayUnion
+} from 'firebase/firestore';
 import { Video } from '../types';
 import { generateSnowflake } from '../utils/snowflake';
+import Username from './Username';
 
 interface ShortsTabProps {
   user?: any;
@@ -18,22 +38,61 @@ const ShortsTab: React.FC<ShortsTabProps> = ({ user, profile }) => {
 
   useEffect(() => {
     fetchShorts();
-  }, []);
+  }, [user?.uid]);
 
   const fetchShorts = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('videos')
-      .select('*')
-      .eq('is_short', true)
-      .order('created_at', { ascending: false });
+    
+    try {
+      const videosRef = collection(db, 'videos');
+      const q = query(
+        videosRef,
+        where('is_short', '==', true)
+      );
 
-    if (error) {
-      console.error('Error fetching shorts:', error);
-    } else {
-      setShorts(data || []);
+      const snapshot = await getDocs(q);
+      const allShorts = await Promise.all(snapshot.docs.map(async (d) => {
+        const data = d.data();
+        const profileRef = doc(db, 'profiles', data.creator_id);
+        const profileSnap = await getDoc(profileRef);
+        const profileData = profileSnap.exists() ? profileSnap.data() : null;
+        
+        return { 
+          id: d.id, 
+          ...data,
+          creator_display_name: profileData?.display_name || profileData?.username || data.creator_name
+        } as Video;
+      }));
+
+      // Filter based on phased publication
+      let filteredShorts = allShorts.filter(short => {
+        if (short.is_promoted) return true;
+        if (user?.uid && short.target_user_ids?.includes(user.uid)) return true;
+        if (user?.uid && short.creator_id === user.uid) return true; // Always show own shorts
+        return false;
+      });
+
+      // Sort based on recommendation system and popularity
+      const userPrefs = profile?.preferences || {};
+      
+      filteredShorts.sort((a, b) => {
+        const scoreA = a.type ? (userPrefs[a.type] || 0) : 0;
+        const scoreB = b.type ? (userPrefs[b.type] || 0) : 0;
+        
+        if (scoreA !== scoreB) return scoreB - scoreA;
+        
+        const popA = (a.likes || 0) + (a.views || 0);
+        const popB = (b.likes || 0) + (b.views || 0);
+        
+        return popB - popA;
+      });
+
+      setShorts(filteredShorts);
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching shorts:', err);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleScroll = () => {
@@ -61,13 +120,11 @@ const ShortsTab: React.FC<ShortsTabProps> = ({ user, profile }) => {
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
-      // Si on est déjà en train d'animer, on bloque les autres inputs
       if (isAnimating.current) {
         e.preventDefault();
         return;
       }
 
-      // Seuil pour éviter les micro-scrolls accidentels (plus sensible)
       if (Math.abs(e.deltaY) < 10) return;
 
       e.preventDefault();
@@ -77,7 +134,6 @@ const ShortsTab: React.FC<ShortsTabProps> = ({ user, profile }) => {
       const itemHeight = container.clientHeight;
       const currentScroll = container.scrollTop;
       
-      // Calcul de l'index cible basé sur la position actuelle
       const currentIndex = Math.round(currentScroll / itemHeight);
       const nextIndex = Math.max(0, Math.min(shorts.length - 1, currentIndex + direction));
       
@@ -86,7 +142,6 @@ const ShortsTab: React.FC<ShortsTabProps> = ({ user, profile }) => {
         behavior: 'smooth'
       });
 
-      // On débloque après la fin de l'animation
       setTimeout(() => {
         isAnimating.current = false;
       }, 500);
@@ -107,10 +162,10 @@ const ShortsTab: React.FC<ShortsTabProps> = ({ user, profile }) => {
   if (shorts.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center p-10 bg-[#0f0f0f]">
-        <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mb-6 border border-white/10">
+        <div className="w-20 h-20 bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10">
           <Music size={40} className="text-slate-700" />
         </div>
-        <h3 className="text-xl font-black text-white mb-2 uppercase tracking-tighter">Aucun Short disponible</h3>
+        <h3 className="text-xl font-bold text-white mb-2 tracking-tighter">Aucun Short disponible</h3>
         <p className="text-slate-400 text-sm max-w-xs">Soyez le premier à publier un Short depuis l'onglet "Ma chaîne" !</p>
       </div>
     );
@@ -151,9 +206,95 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
   const [showPauseIcon, setShowPauseIcon] = useState(false);
   const [showPlayIcon, setShowPlayIcon] = useState(false);
   const [showSharePopup, setShowSharePopup] = useState(false);
+  const sharePopupRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
+
+  useClickOutside(sharePopupRef, () => setShowSharePopup(false));
+  const [copiedId, setCopiedId] = useState(false);
   const [progress, setProgress] = useState(0);
   const [volume, setVolume] = useState(1);
+  const [showSubtitles, setShowSubtitles] = useState(true);
+  const [currentSubtitle, setCurrentSubtitle] = useState<string | null>(null);
+
+  const hasCountedFirstView = useRef(false);
+  const hasCountedSecondView = useRef(false);
+  const maxViewsReached = useRef(false);
+  const lastStatsUpdate = useRef(0);
+
+  useEffect(() => {
+    hasCountedFirstView.current = false;
+    hasCountedSecondView.current = false;
+    maxViewsReached.current = false;
+    lastStatsUpdate.current = 0;
+  }, [short.id]);
+
+  const incrementView = async () => {
+    if (!user?.uid) return;
+    
+    const videoRef = doc(db, 'videos', short.id);
+    await updateDoc(videoRef, {
+      views: increment(1)
+    });
+
+    const userViewRef = doc(db, 'video_views', `${user.uid}_${short.id}`);
+    const userViewSnap = await getDoc(userViewRef);
+    const currentCount = userViewSnap.exists() ? userViewSnap.data().view_count : 0;
+    
+    await setDoc(userViewRef, {
+      user_id: user.uid, 
+      video_id: short.id, 
+      view_count: currentCount + 1,
+      last_view_at: serverTimestamp()
+    }, { merge: true });
+
+    if (short.type) {
+      const profileRef = doc(db, 'profiles', user.uid);
+      const profileSnap = await getDoc(profileRef);
+      const prefs = profileSnap.data()?.preferences || {};
+      prefs[short.type] = (prefs[short.type] || 0) + 1;
+      await updateDoc(profileRef, { preferences: prefs });
+    }
+  };
+
+  const updateWatchStats = async (percentage: number) => {
+    if (!user?.uid) return;
+    
+    const videoRef = doc(db, 'videos', short.id);
+    const videoSnap = await getDoc(videoRef);
+    if (!videoSnap.exists()) return;
+
+    let stats = videoSnap.data().watch_stats || [];
+    const userStatIndex = stats.findIndex((s: any) => s.user_id === user.uid);
+    if (userStatIndex > -1) {
+      stats[userStatIndex].watch_percentage = Math.max(stats[userStatIndex].watch_percentage, percentage);
+    } else {
+      stats.push({ user_id: user.uid, watch_percentage: percentage });
+    }
+
+    // Check for promotion to 100% (Phase 2)
+    let isPromoted = videoSnap.data().is_promoted;
+    const targetUserIds = videoSnap.data().target_user_ids || [];
+    
+    if (!isPromoted && targetUserIds.length > 0) {
+      const targetUsersStats = stats.filter((s: any) => targetUserIds.includes(s.user_id));
+      const reachedTargetCount = targetUsersStats.length;
+      const totalTargetCount = targetUserIds.length;
+      
+      const highWatchCount = targetUsersStats.filter((s: any) => s.watch_percentage >= 80).length;
+      const watchCriteriaMet = highWatchCount >= (totalTargetCount * 0.6);
+      
+      const likeRatioMet = likeCount >= (reachedTargetCount * 0.6);
+
+      if (watchCriteriaMet && likeRatioMet) {
+        isPromoted = true;
+      }
+    }
+
+    await updateDoc(videoRef, { 
+      watch_stats: stats,
+      is_promoted: isPromoted
+    });
+  };
 
   useEffect(() => {
     if (isActive && videoRef.current) {
@@ -170,58 +311,54 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
     if (isActive) {
       checkInteractions();
     }
-  }, [user, isActive]);
+  }, [user?.uid, isActive]);
 
   const checkInteractions = async () => {
-    if (user) {
-      // Check Like
-      const { data: like } = await supabase
-        .from('video_likes')
-        .select('*')
-        .eq('video_id', short.id)
-        .eq('user_id', user.id)
-        .single();
-      setLiked(!!like);
+    if (!user?.uid) return;
 
-      // Check Sub
-      const { data: sub } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('follower_id', user.id)
-        .eq('creator_id', short.creator_id)
-        .single();
-      setIsSubscribed(!!sub);
-    }
+    // Check Like
+    const likeRef = doc(db, 'video_likes', `${user.uid}_${short.id}`);
+    const likeSnap = await getDoc(likeRef);
+    setLiked(likeSnap.exists());
+
+    // Check Sub
+    const subRef = doc(db, 'subscriptions', `${user.uid}_${short.creator_id}`);
+    const subSnap = await getDoc(subRef);
+    setIsSubscribed(subSnap.exists());
 
     // Get Like Count
-    const { count } = await supabase
-      .from('video_likes')
-      .select('*', { count: 'exact', head: true })
-      .eq('video_id', short.id);
-    setLikeCount(count || 0);
+    const videoRef = doc(db, 'videos', short.id);
+    const videoSnap = await getDoc(videoRef);
+    setLikeCount(videoSnap.data()?.likes || 0);
 
     // Get Subscriber Count
-    const { count: subCount } = await supabase
-      .from('subscriptions')
-      .select('*', { count: 'exact', head: true })
-      .eq('creator_id', short.creator_id);
-    setSubscriberCount(subCount || 0);
+    const subsRef = collection(db, 'subscriptions');
+    const sq = query(subsRef, where('creator_id', '==', short.creator_id));
+    const sSnap = await getDocs(sq);
+    setSubscriberCount(sSnap.size);
   };
 
   const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!user) return;
+    if (!user?.uid) return;
+
+    const likeId = `${user.uid}_${short.id}`;
+    const likeRef = doc(db, 'video_likes', likeId);
+    const videoRef = doc(db, 'videos', short.id);
 
     if (liked) {
-      await supabase.from('video_likes').delete().match({ video_id: short.id, user_id: user.id });
+      await deleteDoc(likeRef);
+      await updateDoc(videoRef, { likes: increment(-1) });
       setLikeCount(prev => prev - 1);
       setLiked(false);
     } else {
-      await supabase.from('video_likes').insert([{ 
+      await setDoc(likeRef, {
         id: generateSnowflake(),
         video_id: short.id, 
-        user_id: user.id 
-      }]);
+        user_id: user.uid,
+        created_at: serverTimestamp()
+      });
+      await updateDoc(videoRef, { likes: increment(1) });
       setLikeCount(prev => prev + 1);
       setLiked(true);
     }
@@ -229,18 +366,22 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
 
   const handleSubscribe = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!user || user.id === short.creator_id) return;
+    if (!user?.uid || user.uid === short.creator_id) return;
+
+    const subId = `${user.uid}_${short.creator_id}`;
+    const subRef = doc(db, 'subscriptions', subId);
 
     if (isSubscribed) {
-      await supabase.from('subscriptions').delete().match({ follower_id: user.id, creator_id: short.creator_id });
+      await deleteDoc(subRef);
       setIsSubscribed(false);
       setSubscriberCount(prev => prev - 1);
     } else {
-      await supabase.from('subscriptions').insert([{ 
+      await setDoc(subRef, {
         id: generateSnowflake(),
-        follower_id: user.id, 
-        creator_id: short.creator_id 
-      }]);
+        follower_id: user.uid, 
+        creator_id: short.creator_id,
+        created_at: serverTimestamp()
+      });
       setIsSubscribed(true);
       setSubscriberCount(prev => prev + 1);
     }
@@ -286,8 +427,34 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
-      const p = (videoRef.current.currentTime / videoRef.current.duration) * 100;
+      const current = videoRef.current.currentTime;
+      const total = videoRef.current.duration;
+      const p = (current / total) * 100;
       setProgress(p || 0);
+
+      // Subtitles logic
+      if (short.transcription && showSubtitles) {
+        const activeSub = short.transcription.find(s => current >= s.start && current <= s.end);
+        setCurrentSubtitle(activeSub ? activeSub.text : null);
+      } else {
+        setCurrentSubtitle(null);
+      }
+
+      // View counting logic
+      if (p >= 50 && !maxViewsReached.current) {
+        if (!hasCountedFirstView.current) {
+          hasCountedFirstView.current = true;
+          incrementView();
+        } else if (videoRef.current.paused && !hasCountedSecondView.current) {
+          // Second view logic
+        }
+      }
+
+      // Periodic watch stats update
+      if (Math.abs(p - lastStatsUpdate.current) >= 5) {
+        lastStatsUpdate.current = p;
+        updateWatchStats(p);
+      }
     }
   };
 
@@ -299,6 +466,13 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
       videoRef.current.currentTime = time;
       setProgress(val);
     }
+  };
+
+  const copyId = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
   };
 
   const handleShare = (e: React.MouseEvent) => {
@@ -321,7 +495,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
       <div className="relative flex items-center gap-6 h-full w-full max-w-screen-xl px-4 justify-center">
         
         {/* Video Container */}
-        <div className="relative h-[calc(100vh-100px)] aspect-[9/16] bg-black rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center group border border-white/10">
+        <div className="relative h-full max-h-[calc(100vh-140px)] sm:max-h-[calc(100vh-100px)] aspect-[9/16] bg-black rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center group border border-white/10">
           <video 
             ref={videoRef}
             src={short.url}
@@ -331,6 +505,13 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
             className="h-full w-full object-contain cursor-pointer bg-black"
             onClick={togglePlay}
           />
+
+          {/* Subtitles Overlay */}
+          {currentSubtitle && (
+            <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-40 px-4 py-2 bg-black/60 backdrop-blur-md rounded-xl text-white text-center text-sm font-medium max-w-[80%] animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {currentSubtitle}
+            </div>
+          )}
 
           {/* Play/Pause Overlay Icons */}
           {showPauseIcon && (
@@ -349,13 +530,19 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           )}
 
           {/* Top Controls (Overlay) - Simplified */}
-          <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-b from-black/60 to-transparent z-20">
+          <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 z-20">
             <div className="flex gap-3">
               <button 
                 onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-                className="p-2.5 bg-black/60 hover:bg-white hover:text-black text-white rounded-full backdrop-blur-md transition-all"
+                className="w-10 h-10 flex items-center justify-center bg-black/60 hover:bg-white hover:text-black text-white rounded-full backdrop-blur-md transition-all"
               >
                 {isPaused ? <Play size={20} fill="white" /> : <Pause size={20} fill="white" />}
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setShowSubtitles(!showSubtitles); }}
+                className={`w-10 h-10 flex items-center justify-center bg-black/60 hover:bg-white hover:text-black rounded-full backdrop-blur-md transition-all ${showSubtitles ? 'text-blue-400' : 'text-white'}`}
+              >
+                <Captions size={20} />
               </button>
               <div className="flex items-center bg-[#0f0f0f] hover:bg-black rounded-full px-3 py-2 transition-all group/volume backdrop-blur-md border border-white/5 shadow-2xl">
                 <button 
@@ -383,22 +570,46 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           </div>
 
           {/* Bottom Info (Overlay) */}
-          <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none z-20">
+          <div className="absolute bottom-0 left-0 right-0 p-6 bg-black/40 pointer-events-none z-20">
             <div className="flex flex-col gap-3 pointer-events-auto">
               <div className="flex items-center gap-3">
                 <img 
                   src={short.creator_avatar || DEFAULT_AVATAR} 
                   className="w-9 h-9 rounded-full border border-white/20"
                   alt=""
+                  referrerPolicy="no-referrer"
                 />
                 <div className="flex flex-col">
-                  <span className="text-sm font-black text-white tracking-tight">@{short.creator_name}</span>
-                  <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</span>
+                  <Username 
+                    username={short.creator_name || 'Utilisateur'} 
+                    displayName={short.creator_display_name}
+                    isVerified={short.creator_is_verified} 
+                    isAdmin={short.creator_role === 'admin'}
+                    email={short.creator_email}
+                    className="text-sm font-bold text-white tracking-tight" 
+                    badgeSize={14} 
+                  />
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[10px] font-bold text-white/60 font-mono">
+                      ID: {short.creator_display_id || 'N/A'}
+                    </span>
+                    {short.creator_display_id && (
+                      <button 
+                        onClick={(e) => copyId(e, short.creator_display_id)}
+                        className="p-0.5 hover:bg-white/10 rounded-md text-white/60 hover:text-white transition-all"
+                        title="Copier l'ID"
+                      >
+                        {copiedId ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
+                      </button>
+                    )}
+                    <span className="text-white/40 text-[8px]">•</span>
+                    <span className="text-[10px] font-bold text-white/60">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</span>
+                  </div>
                 </div>
-                {user && user.id !== short.creator_id && (
+                {user && user.uid !== short.creator_id && (
                   <button 
                     onClick={handleSubscribe}
-                    className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${isSubscribed ? 'bg-white/20 text-white' : 'bg-white text-black hover:bg-white/20 hover:text-white'}`}
+                    className={`px-4 py-1.5 rounded-2xl text-xs font-bold transition-all active:scale-95 ${isSubscribed ? 'bg-white/20 text-white' : 'bg-white text-black hover:bg-white/20 hover:text-white'}`}
                   >
                     {isSubscribed ? 'Abonné' : "S'abonner"}
                   </button>
@@ -406,14 +617,27 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
               </div>
               
               <p className="text-sm font-medium text-white line-clamp-2 leading-snug">
-                {short.title}
+                {renderTextWithEmojis(short.title)}
               </p>
+
+              {short.type && (
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-white/20 text-white text-[9px] font-bold rounded">
+                    {short.type}
+                  </span>
+                  {short.name_of_type && (
+                    <span className="text-[10px] font-bold text-white/60 truncate">
+                      {short.name_of_type}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center gap-2">
                 <Music size={14} className="text-white" />
                 <div className="overflow-hidden whitespace-nowrap w-full">
-                  <p className="text-[10px] font-black text-white leading-relaxed animate-marquee inline-block">
-                    Son original - {short.creator_name} • {short.title}
+                  <p className="text-xs font-bold text-white leading-relaxed animate-marquee inline-block">
+                    Son original - {short.creator_name} • {renderTextWithEmojis(short.title)}
                   </p>
                 </div>
               </div>
@@ -442,7 +666,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           <div className="flex flex-col items-center gap-2">
             <button 
               onClick={handleLike}
-              className={`w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20 shadow-sm border border-white/10'}`}
+              className={`w-14 h-14 rounded-2xl flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20 shadow-sm border border-white/10'}`}
             >
               <Heart size={28} fill={liked ? "currentColor" : "none"} />
             </button>
@@ -450,7 +674,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           </div>
 
           <div className="flex flex-col items-center gap-2">
-            <button className="w-14 h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all">
+            <button className="w-14 h-14 rounded-2xl flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all">
               <MessageSquare size={28} />
             </button>
             <span className="text-[13px] font-bold text-white">2,3k</span>
@@ -459,21 +683,24 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           <div className="flex flex-col items-center gap-2 relative">
             <button 
               onClick={handleShare}
-              className="w-14 h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
+              className="w-14 h-14 rounded-2xl flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
             >
               <Share2 size={28} />
             </button>
             <span className="text-[13px] font-bold text-white">Partager</span>
 
             {showSharePopup && (
-              <div className="absolute bottom-full mb-4 right-0 w-72 bg-[#1a1a1a] border border-white/10 rounded-xl p-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 z-50 pointer-events-auto">
+              <div 
+                ref={sharePopupRef}
+                className="absolute bottom-full mb-4 right-0 w-72 bg-[#1a1a1a] border border-white/10 rounded-2xl p-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 z-50 pointer-events-auto"
+              >
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="text-sm font-bold text-white">Partager</h4>
                   <button onClick={(e) => { e.stopPropagation(); setShowSharePopup(false); }} className="text-slate-400 hover:text-white">
                     <X size={20} />
                   </button>
                 </div>
-                <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg p-3">
+                <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl p-3">
                   <input 
                     type="text" 
                     readOnly 
@@ -482,7 +709,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
                   />
                   <button 
                     onClick={copyToClipboard}
-                    className="w-10 h-10 bg-white text-black rounded-lg hover:bg-slate-200 transition-all active:scale-95 flex items-center justify-center shadow-lg flex-shrink-0"
+                    className="w-10 h-10 bg-white text-black rounded-2xl hover:bg-slate-200 transition-all active:scale-95 flex items-center justify-center shadow-lg flex-shrink-0"
                     title={copied ? "Copié !" : "Copier le lien"}
                   >
                     {copied ? <Check size={18} className="text-emerald-600" /> : <Copy size={18} />}
@@ -493,7 +720,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           </div>
 
           <div className="mt-4">
-            <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-white/10 animate-spin-slow shadow-lg">
+            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/10 animate-spin-slow shadow-lg">
               <img 
                 src={short.thumbnail_url || `https://picsum.photos/seed/${short.id}/100/100`} 
                 className="w-full h-full object-cover" 
@@ -511,7 +738,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
             const container = document.querySelector('.shorts-container');
             if (container) container.scrollBy({ top: -container.clientHeight, behavior: 'smooth' });
           }}
-          className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-sm border border-white/10"
+          className="w-12 h-12 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-sm border border-white/10"
         >
           <ChevronUp size={24} />
         </button>
@@ -520,7 +747,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
             const container = document.querySelector('.shorts-container');
             if (container) container.scrollBy({ top: container.clientHeight, behavior: 'smooth' });
           }}
-          className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-sm border border-white/10"
+          className="w-12 h-12 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-sm border border-white/10"
         >
           <ChevronDown size={24} />
         </button>

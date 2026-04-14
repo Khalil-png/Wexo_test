@@ -1,0 +1,50 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper to check if user is owner of the path
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Avatars: Everyone can read, only owner can write
+    match /avatars/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId);
+    }
+
+    // Thumbnails: Everyone can read, only authenticated users can write
+    match /thumbnails/{fileName} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Videos: Everyone can read, only authenticated users can write
+    match /videos/{fileName} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Post Media: Everyone can read, only authenticated users can write
+    match /post-media/{fileName} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Message Attachments: Scoped by friendship ID
+    // For simplicity, we allow authenticated users to read/write if they are part of the app
+    // In a production app, you'd want to check if the user is part of the friendship
+    match /message-attachments/{friendshipId}/{fileName} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Default rule: Deny all
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

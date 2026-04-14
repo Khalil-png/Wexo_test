@@ -1,10 +1,73 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, Play, Heart, MessageCircle, Share2, Plus, ArrowLeft, Loader2, Sparkles, User as UserIcon, Info, AlertCircle, Upload, Trash2, Edit2, CheckCircle2, Zap } from 'lucide-react';
-import { supabase } from '../services/supabase';
+import { renderTextWithEmojis } from '../utils/emoji';
+import { Search, Play, Heart, MessageCircle, Share2, Plus, ArrowLeft, Loader2, Sparkles, User as UserIcon, Info, AlertCircle, Upload, Trash2, Edit2, CheckCircle2, Zap, Music, X, Copy } from 'lucide-react';
+import { auth, db, storage } from '../firebase';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  deleteDoc, 
+  updateDoc, 
+  increment,
+  getDocs,
+  limit,
+  serverTimestamp,
+  arrayUnion
+} from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Video } from '../types';
+import { analyzeVideo, analyzePost } from '../services/geminiService';
 import { DEFAULT_AVATAR } from '../constants';
 import { generateSnowflake } from '../utils/snowflake';
+
+/**
+ * Capture un frame d'une vidéo à un timestamp précis
+ */
+const captureFrame = (file: File, timestamp: number): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.src = URL.createObjectURL(file);
+    video.muted = true;
+    video.playsInline = true;
+    
+    video.onloadedmetadata = () => {
+      const seekTime = Math.min(timestamp, video.duration - 0.1);
+      video.currentTime = seekTime;
+    };
+
+    video.onseeked = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(video.src);
+        return reject(new Error("Impossible de créer le contexte canvas"));
+      }
+      
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Échec de la capture du frame"));
+        }
+        URL.revokeObjectURL(video.src);
+      }, 'image/jpeg', 0.8);
+    };
+
+    video.onerror = (e) => {
+      URL.revokeObjectURL(video.src);
+      reject(e);
+    };
+  });
+};
 
 interface MyChannelTabProps {
   user: any;
@@ -13,19 +76,54 @@ interface MyChannelTabProps {
 
 const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
   const [videos, setVideos] = useState<Video[]>([]);
+  const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingPosts, setLoadingPosts] = useState(true);
+  const [activeSubTab, setActiveSubTab] = useState<'videos' | 'shorts' | 'posts'>('videos');
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showPostModal, setShowPostModal] = useState(false);
+  const [showPublishMenu, setShowPublishMenu] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null);
+  const [uploadedPostMediaUrl, setUploadedPostMediaUrl] = useState<string | null>(null);
+  const [isPreUploading, setIsPreUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setVideoFile(file);
+      setUploadedVideoUrl(null);
+      setUploadError(null);
+    }
+  };
+
+  const handlePostFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPostFile(file);
+      setUploadedPostMediaUrl(null);
+      setUploadError(null);
+    }
+  };
+
+  const [showAnalysisOverlay, setShowAnalysisOverlay] = useState(false);
+  const [analysisStep, setAnalysisStep] = useState<string>('Initialisation...');
+  const [analysisProgress, setAnalysisProgress] = useState<number>(0);
+  const [analysisDone, setAnalysisDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
   
-  // Delete modal state
-  const [deleteModalStep, setDeleteModalStep] = useState<'confirm' | 'download' | null>(null);
+  const [deleteModalStep, setDeleteModalStep] = useState<'confirm' | 'download' | 'post' | null>(null);
   const [videoToDelete, setVideoToDelete] = useState<Video | null>(null);
+  const [postToDelete, setPostToDelete] = useState<any | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
 
-  // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [postContent, setPostContent] = useState('');
+  const [postFile, setPostFile] = useState<File | null>(null);
   const [isShort, setIsShort] = useState(false);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
@@ -34,30 +132,55 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
   const categories = ['Jeux vidéo', 'Récent', 'Nouveautés', 'Animation', 'Musique'];
 
   useEffect(() => {
-    if (user) {
+    if (user?.uid) {
       fetchMyVideos();
+      fetchMyPosts();
     }
-  }, [user]);
+  }, [user?.uid]);
 
-  const fetchMyVideos = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('videos')
-      .select('*')
-      .eq('creator_id', user.id)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching videos:', error);
-    } else {
-      setVideos(data || []);
+  const fetchMyPosts = async () => {
+    if (!user?.uid) return;
+    setLoadingPosts(true);
+    try {
+      const postsRef = collection(db, 'posts');
+      const q = query(
+        postsRef,
+        where('user_id', '==', user.uid),
+        orderBy('created_at', 'desc')
+      );
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPosts(data);
+    } catch (err) {
+      console.error('Error fetching posts:', err);
+    } finally {
+      setLoadingPosts(false);
     }
-    setLoading(false);
   };
 
-  const formatRelativeDate = (dateString: string) => {
+  const fetchMyVideos = async () => {
+    if (!user?.uid) return;
+    setLoading(true);
+    try {
+      const videosRef = collection(db, 'videos');
+      const q = query(
+        videosRef,
+        where('creator_id', '==', user.uid),
+        orderBy('created_at', 'desc')
+      );
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Video));
+      setVideos(data);
+    } catch (err) {
+      console.error('Error fetching videos:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatRelativeDate = (dateString: any) => {
     if (!dateString) return "il y a quelques instants";
-    const date = new Date(dateString);
+    const date = dateString.toDate ? dateString.toDate() : new Date(dateString);
     const now = new Date();
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     
@@ -74,102 +197,311 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
     return `il y a ${diffInYears} an${diffInYears > 1 ? 's' : ''}`;
   };
 
-  const uploadFile = async (file: File, bucket: string) => {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random().toString(36).substring(7)}.${fileExt}`;
-    const filePath = fileName;
+  const uploadFileToStorage = async (file: File | Blob, bucket: string) => {
+    const fileExt = file instanceof File ? file.name.split('.').pop() : 'jpg';
+    const fileName = `${generateSnowflake()}.${fileExt}`;
+    const storageRef = ref(storage, `${bucket}/${fileName}`);
+    
+    return new Promise<string>((resolve, reject) => {
+      const uploadTask = uploadBytesResumable(storageRef, file);
 
-    // Tentative d'upload
-    const { error: uploadError } = await supabase.storage
-      .from(bucket)
-      .upload(filePath, file);
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          if (bucket === 'videos' || bucket === 'shorts') {
+            setAnalysisProgress(Math.min(90, 20 + (progress * 0.5)));
+          }
+        }, 
+        (error) => {
+          console.error(`Échec de l'upload dans ${bucket}:`, error);
+          let errorMessage = error.message;
+          if (error.code === 'storage/retry-limit-exceeded') {
+            errorMessage = "Le délai d'attente a été dépassé. Cela arrive souvent si le service Firebase Storage n'est pas activé dans votre console Firebase ou si votre connexion est instable.";
+          } else if (error.code === 'storage/unauthorized') {
+            errorMessage = "Accès refusé. Vérifiez que les règles de sécurité de Firebase Storage autorisent l'upload.";
+          }
+          reject(new Error(errorMessage));
+        }, 
+        async () => {
+          try {
+            const publicUrl = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(publicUrl);
+          } catch (err: any) {
+            reject(err);
+          }
+        }
+      );
+    });
+  };
 
-    if (uploadError) {
-      console.error(`Erreur Storage dans le bucket ${bucket}:`, uploadError);
-      if (uploadError.message.includes('row-level security')) {
-        throw new Error(`Le dossier "${bucket}" est verrouillé. Allez dans Supabase -> Storage -> Policies et ajoutez une règle "Full Access" pour tout le monde.`);
+  // Pre-upload video
+  useEffect(() => {
+    const preUploadVideo = async () => {
+      if (!videoFile || uploadedVideoUrl || isPreUploading || uploadError) return;
+      
+      setIsPreUploading(true);
+      setUploadError(null);
+      try {
+        const url = await uploadFileToStorage(videoFile, isShort ? 'shorts' : 'videos');
+        setUploadedVideoUrl(url);
+      } catch (err: any) {
+        console.error("Erreur lors du pré-upload de la vidéo:", err);
+        setUploadError(err.message || "Erreur d'upload");
+      } finally {
+        setIsPreUploading(false);
       }
-      throw uploadError;
+    };
+
+    preUploadVideo();
+  }, [videoFile, isShort, uploadError]);
+
+  // Pre-upload post media
+  useEffect(() => {
+    const preUploadPostMedia = async () => {
+      if (!postFile || uploadedPostMediaUrl || isPreUploading || uploadError) return;
+      
+      setIsPreUploading(true);
+      setUploadError(null);
+      try {
+        const url = await uploadFileToStorage(postFile, 'post-media');
+        setUploadedPostMediaUrl(url);
+      } catch (err: any) {
+        console.error("Erreur lors du pré-upload du média du post:", err);
+        setUploadError(err.message || "Erreur d'upload");
+      } finally {
+        setIsPreUploading(false);
+      }
+    };
+
+    preUploadPostMedia();
+  }, [postFile, uploadError]);
+
+  const handlePostUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.uid) return;
+    if (!postContent.trim() && !postFile) {
+      setError("Le post doit contenir du texte ou un fichier.");
+      return;
     }
 
-    const { data: { publicUrl } } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(filePath);
+    setUploading(true);
+    setError(null);
 
-    return publicUrl;
+    try {
+      let analysis: any = { is_appropriate: true, type: 'post', language: 'fr' };
+      if (postFile && postFile.type.startsWith('video/')) {
+        setAnalyzing(true);
+        try {
+          analysis = await analyzeVideo(postFile);
+        } finally {
+          setAnalyzing(false);
+        }
+      } else if (postContent) {
+        setAnalyzing(true);
+        try {
+          analysis = await analyzePost(postContent);
+        } finally {
+          setAnalyzing(false);
+        }
+      }
+
+      if (!analysis.is_appropriate) {
+        throw new Error("Ce post ne respecte pas nos règles de communauté.");
+      }
+
+      let mediaUrl = uploadedPostMediaUrl;
+      let mediaType = null;
+
+      if (postFile && !mediaUrl) {
+        mediaUrl = await uploadFileToStorage(postFile, 'post-media');
+      }
+
+      if (postFile) {
+        if (postFile.type.startsWith('image/')) mediaType = 'image';
+        else if (postFile.type.startsWith('video/')) mediaType = 'video';
+        else if (postFile.type.startsWith('audio/')) mediaType = 'audio';
+      }
+
+      const postRef = doc(collection(db, 'posts'));
+      await setDoc(postRef, {
+        id: postRef.id,
+        user_id: user.uid,
+        user_email: user.email,
+        user_role: profile?.role || 'user',
+        content: postContent,
+        media_url: mediaUrl,
+        media_type: mediaType,
+        type: analysis.type,
+        name_of_type: analysis.name_of_type,
+        is_appropriate: analysis.is_appropriate,
+        language: analysis.language,
+        transcription: analysis.transcription || null,
+        created_at: serverTimestamp(),
+        likes: 0,
+        comments_count: 0
+      });
+
+      setShowPostModal(false);
+      setPostContent('');
+      setPostFile(null);
+      setUploadedPostMediaUrl(null);
+      fetchMyPosts();
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !videoFile) return;
+    if (!user?.uid || !videoFile) return;
 
     setUploading(true);
+    setShowAnalysisOverlay(true);
+    setAnalysisStep('Préparation de l\'envoi...');
+    setAnalysisProgress(10);
+    setAnalysisDone(false);
     setError(null);
     setSuccess(null);
     
-    console.log("Tentative de publication avec RPC bypass_publish_video...");
+    setShowUploadModal(false);
 
     try {
-      // 1. Upload Video
-      console.log("Étape 1: Upload du fichier vidéo...");
-      let videoUrl = '';
-      try {
-        videoUrl = await uploadFile(videoFile, isShort ? 'shorts' : 'videos');
-      } catch (err: any) {
-        console.error("ERREUR STORAGE VIDEO:", err);
-        throw new Error(`[ERREUR STORAGE VIDEO] ${err.message || err}`);
-      }
+      let videoUrl = uploadedVideoUrl;
       
-      // 2. Upload Thumbnail if exists
-      console.log("Étape 2: Upload de la miniature...");
-      let finalThumbnailUrl = `https://picsum.photos/seed/${Math.random()}/640/360`;
+      if (!videoUrl) {
+        setAnalysisStep('Envoi du fichier vidéo...');
+        setAnalysisProgress(20);
+        videoUrl = await uploadFileToStorage(videoFile, isShort ? 'shorts' : 'videos');
+      } else {
+        setAnalysisStep('Fichier déjà envoyé, finalisation...');
+        setAnalysisProgress(30);
+      }
+
+      const videoId = generateSnowflake();
+      setAnalysisStep('Création de l\'entrée BDD...');
+      setAnalysisProgress(40);
+      
+      const videoRef = doc(db, 'videos', videoId);
+      await setDoc(videoRef, {
+        id: videoId,
+        title: title || 'Sans titre',
+        description: description || '',
+        url: videoUrl,
+        thumbnail_url: `https://picsum.photos/seed/${Math.random()}/640/360`,
+        creator_id: user.uid,
+        creator_name: profile?.username || user.email?.split('@')[0] || 'Utilisateur',
+        creator_email: user.email,
+        creator_role: profile?.role || 'user',
+        creator_avatar: profile?.avatar_url || DEFAULT_AVATAR,
+        is_short: isShort,
+        views: 0,
+        likes: 0,
+        categories: selectedCategories,
+        is_appropriate: false,
+        created_at: serverTimestamp()
+      });
+
+      fetchMyVideos();
+
+      setAnalysisStep('Analyse par Gemini (IA)...');
+      setAnalysisProgress(60);
+      let analysis: any = null;
+      
+      try {
+        const analysisPromise = analyzeVideo(videoFile);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("TIMEOUT")), 5 * 60 * 1000)
+        );
+
+        analysis = await Promise.race([analysisPromise, timeoutPromise]);
+      } catch (err: any) {
+        console.error("ERREUR OU TIMEOUT ANALYSE GEMINI:", err);
+        analysis = {
+          type: 'Vidéo',
+          name_of_type: null,
+          is_appropriate: true,
+          language: 'Inconnu',
+          thumbnail_timestamp: 0,
+          transcription: []
+        };
+      }
+
+      if (!analysis.is_appropriate) {
+        await deleteDoc(videoRef);
+        throw new Error("Cette vidéo ne respecte pas nos règles de communauté et a été supprimée.");
+      }
+
+      setAnalysisStep('Génération de la miniature...');
+      setAnalysisProgress(80);
+      let finalThumbnailUrl = '';
       if (thumbnailFile) {
+        finalThumbnailUrl = await uploadFileToStorage(thumbnailFile, 'thumbnails');
+      } else {
+        let timestamp = analysis.thumbnail_timestamp;
         try {
-          finalThumbnailUrl = await uploadFile(thumbnailFile, 'thumbnails');
+          const videoElement = document.createElement('video');
+          videoElement.src = URL.createObjectURL(videoFile);
+          await new Promise((resolve) => {
+            videoElement.onloadedmetadata = () => resolve(true);
+          });
+          const duration = videoElement.duration;
+          URL.revokeObjectURL(videoElement.src);
+
+          if (!timestamp || timestamp <= 0) {
+            timestamp = duration / 2;
+          }
+
+          const thumbnailBlob = await captureFrame(videoFile, timestamp);
+          finalThumbnailUrl = await uploadFileToStorage(thumbnailBlob, 'thumbnails');
         } catch (err: any) {
-          console.error("ERREUR STORAGE THUMBNAIL:", err);
-          // On continue si c'est juste la miniature
+          console.error("ERREUR CAPTURE THUMBNAIL:", err);
+          finalThumbnailUrl = `https://picsum.photos/seed/${Math.random()}/640/360`;
         }
       }
 
-      // 3. Insert into Database
-      console.log("Étape 3: Insertion BDD...");
-      const { error: dbError } = await supabase
-        .from('videos')
-        .insert({
-          id: generateSnowflake(),
-          title: title || 'Sans titre',
-          description: description || '',
-          url: videoUrl,
-          thumbnail_url: finalThumbnailUrl,
-          creator_id: user.id,
-          creator_name: profile?.username || user.email?.split('@')[0] || 'Utilisateur',
-          creator_avatar: profile?.avatar_url || DEFAULT_AVATAR,
-          is_short: isShort,
-          views: 0,
-          likes: 0,
-          categories: selectedCategories
-        });
-
-      if (dbError) {
-        console.error("ERREUR BDD:", dbError);
-        const msg = dbError.message.includes('row-level security')
-          ? "ERREUR BDD : Le verrou RLS de la table 'videos' est encore actif. Exécutez le script SQL 'Terre Brûlée'."
-          : dbError.message;
-        throw new Error(`[ERREUR BDD] ${msg}`);
+      setAnalysisStep('Finalisation...');
+      setAnalysisProgress(90);
+      const profilesRef = collection(db, 'profiles');
+      const allUsersSnap = await getDocs(profilesRef);
+      let targetUserIds: string[] = [];
+      if (!allUsersSnap.empty) {
+        const allUsers = allUsersSnap.docs.map(d => d.id);
+        const count = Math.max(1, Math.floor(allUsers.length * 0.3));
+        targetUserIds = allUsers
+          .sort(() => 0.5 - Math.random())
+          .slice(0, count);
       }
 
+      await updateDoc(videoRef, {
+        thumbnail_url: finalThumbnailUrl,
+        type: analysis.type,
+        name_of_type: analysis.name_of_type,
+        language: analysis.language,
+        transcription: analysis.transcription,
+        is_appropriate: true,
+        is_promoted: false,
+        target_user_ids: targetUserIds
+      });
+
+      setAnalysisStep('Publication terminée !');
+      setAnalysisProgress(100);
+      setAnalysisDone(true);
       setSuccess('Vidéo publiée avec succès !');
       setTitle('');
       setDescription('');
       setVideoFile(null);
+      setUploadedVideoUrl(null);
       setThumbnailFile(null);
       setSelectedCategories([]);
-      setShowUploadModal(false);
+      setActiveSubTab(isShort ? 'shorts' : 'videos');
       fetchMyVideos();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       setError(err.message || "Une erreur est survenue lors de l'envoi.");
+      setAnalysisStep('Erreur lors de la publication');
     } finally {
       setUploading(false);
     }
@@ -182,20 +514,32 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
     setDeleteModalStep('confirm');
   };
 
+  const handleDeletePost = (post: any) => {
+    setPostToDelete(post);
+    setDeleteModalStep('post');
+  };
+
+  const confirmDeletePost = async () => {
+    if (!postToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'posts', postToDelete.id));
+      setPosts(posts.filter(p => p.id !== postToDelete.id));
+      setDeleteModalStep(null);
+      setPostToDelete(null);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!videoToDelete) return;
-
-    const { error } = await supabase
-      .from('videos')
-      .delete()
-      .eq('id', videoToDelete.id);
-
-    if (error) {
-      setError(error.message);
-    } else {
+    try {
+      await deleteDoc(doc(db, 'videos', videoToDelete.id));
       setVideos(videos.filter(v => v.id !== videoToDelete.id));
       setDeleteModalStep(null);
       setVideoToDelete(null);
+    } catch (err: any) {
+      setError(err.message);
     }
   };
 
@@ -217,13 +561,22 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
     }
   };
 
-  if (!user) {
+  const copyId = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (profile?.display_id) {
+      navigator.clipboard.writeText(profile.display_id);
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 2000);
+    }
+  };
+
+  if (!user?.uid) {
     return (
       <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in duration-700">
         <div className="text-slate-700 mb-8">
           <Info size={48} />
         </div>
-        <h2 className="text-3xl font-black text-white mb-4 tracking-tighter">Connexion requise</h2>
+        <h2 className="text-3xl font-bold text-white mb-4 tracking-tight">Connexion requise</h2>
         <p className="text-slate-400 text-sm max-w-sm font-medium leading-relaxed">
           Vous devez être connecté pour pouvoir accéder à votre chaîne et publier des vidéos.
         </p>
@@ -233,150 +586,424 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
 
   return (
     <div className="w-full space-y-10 animate-in fade-in duration-700">
-      <div className="relative group overflow-hidden bg-white/5 border-2 border-white/10 rounded-3xl p-8 sm:p-12 flex flex-col sm:flex-row items-center gap-8">
+      <div className="relative group bg-white/5 border-2 border-white/10 rounded-2xl p-8 sm:p-12 flex flex-col sm:flex-row items-center gap-8">
         <div className="relative">
-          <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden border-4 border-white/10 shadow-2xl">
+          <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden border-4 border-white/10 shadow-xl">
             <img 
               src={profile?.avatar_url || DEFAULT_AVATAR} 
-              alt="Avatar" 
+              alt="Profile" 
               className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
             />
           </div>
         </div>
 
         <div className="flex-1 text-center sm:text-left">
-          <h2 className="text-3xl sm:text-4xl font-black text-white mb-2 tracking-tighter">
-            {profile?.username || user.email?.split('@')[0]}
-          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-2">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+              {profile?.username || user.email?.split('@')[0]}
+            </h2>
+            <div className="flex items-center gap-2 bg-white/5 px-2 py-1 rounded-xl border border-white/5 w-fit mx-auto sm:mx-0">
+              <span className="text-[10px] font-bold text-slate-500 font-mono">
+                ID: {profile?.display_id || 'N/A'}
+              </span>
+              {profile?.display_id && (
+                <button 
+                  onClick={copyId}
+                  className="p-1 hover:bg-white/10 rounded-md text-slate-500 hover:text-white transition-all"
+                  title="Copier l'ID"
+                >
+                  {copiedId ? <CheckCircle2 size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                </button>
+              )}
+            </div>
+          </div>
           <p className="text-slate-400 text-sm font-medium mb-6">
             {videos.length} vidéo{videos.length > 1 ? 's' : ''} • Créateur Wexo
           </p>
           
-          <button 
-            onClick={() => setShowUploadModal(true)}
-            className="bg-white text-black hover:bg-slate-200 font-black text-[10px] uppercase tracking-[0.2em] px-8 py-4 rounded-2xl shadow-xl shadow-white/5 transition-all active:scale-95 flex items-center gap-3 mx-auto sm:mx-0"
-          >
-            <Plus size={16} /> Publier une vidéo
-          </button>
+          <div className="relative">
+            <button 
+              onClick={() => setShowPublishMenu(!showPublishMenu)}
+              className="bg-white text-black hover:bg-slate-200 font-bold text-sm px-6 py-3 rounded-2xl shadow-xl shadow-white/5 transition-all active:scale-95 flex items-center gap-3 mx-auto sm:mx-0"
+            >
+              <Plus size={18} className={showPublishMenu ? "rotate-45 transition-transform" : "transition-transform"} /> Publier
+            </button>
+
+            {showPublishMenu && (
+              <div className="absolute top-full left-1/2 sm:left-0 -translate-x-1/2 sm:translate-x-0 mt-4 w-48 bg-[#1a1a1a] border border-white/10 rounded-2xl p-2 shadow-2xl z-[150] animate-in fade-in slide-in-from-top-2">
+                <button 
+                  onClick={() => {
+                    setIsShort(true);
+                    setShowUploadModal(true);
+                    setShowPublishMenu(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 text-white rounded-2xl transition-colors text-left"
+                >
+                  <Zap size={18} className="text-amber-500" />
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold">Shorts</span>
+                    <span className="text-[9px] text-slate-500">Format vertical</span>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => {
+                    setIsShort(false);
+                    setShowUploadModal(true);
+                    setShowPublishMenu(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 text-white rounded-2xl transition-colors text-left"
+                >
+                  <Play size={18} className="text-sky-500" />
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold">Vidéos</span>
+                    <span className="text-[9px] text-slate-500">Format long</span>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowPostModal(true);
+                    setShowPublishMenu(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 text-white rounded-2xl transition-colors text-left"
+                >
+                  <Edit2 size={18} className="text-emerald-500" />
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold">Posts</span>
+                    <span className="text-[9px] text-slate-500">Texte & Images</span>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Liste des vidéos */}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between px-2">
-          <h3 className="text-xl font-black text-white tracking-tight">Mes Vidéos</h3>
-          <div className="h-px flex-1 bg-white/10 mx-6 hidden sm:block"></div>
-        </div>
+      {/* Sous-onglets */}
+      <div className="flex items-center gap-12 border-b border-white/5 px-6 mb-10">
+        {[
+          { id: 'videos', label: 'Vidéos' },
+          { id: 'shorts', label: 'Shorts' },
+          { id: 'posts', label: 'Posts' }
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveSubTab(tab.id as any)}
+            className={`pb-5 text-lg font-bold transition-all relative ${
+              activeSubTab === tab.id ? 'text-white' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            {tab.label}
+            {activeSubTab === tab.id && (
+              <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-white rounded-2xl" />
+            )}
+          </button>
+        ))}
+      </div>
 
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <Loader2 className="text-white animate-spin" size={40} />
-          </div>
-        ) : videos.length === 0 ? (
-          <div className="py-20 flex flex-col items-center justify-center text-center bg-white/5 rounded-[3rem] border-2 border-white/10 border-dashed">
-            <Play size={48} className="text-slate-700 mb-4" />
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Aucune vidéo publiée</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {videos.map((video) => (
-              <div key={video.id} className="group bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/10 hover:border-white/30 transition-all duration-300 shadow-sm p-1">
-                <div className="relative aspect-video overflow-hidden rounded-xl">
-                  <img src={video.thumbnail_url || undefined} alt={video.title} className="w-full h-full object-cover transition-transform duration-700" />
-                  
-                  {video.is_short && (
-                    <div className="absolute top-3 left-3 px-2 py-1 bg-white text-black text-[8px] font-black uppercase tracking-widest rounded-md flex items-center gap-1 shadow-lg z-20">
-                      <Zap size={10} fill="currentColor" /> Short
+      {/* Contenu des onglets */}
+      <div className="space-y-6">
+        {activeSubTab === 'videos' && (
+          loading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="text-white animate-spin" size={32} />
+            </div>
+          ) : videos.filter(v => !v.is_short).length === 0 ? (
+            <div className="py-12 flex flex-col items-center justify-center text-center bg-white/5 rounded-2xl border border-white/10 border-dashed">
+              <Play size={40} className="text-slate-700 mb-3" />
+              <p className="text-slate-400 font-bold text-xs">Aucune vidéo publiée</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {videos.filter(v => !v.is_short).map((video) => (
+                <div key={video.id} className="bg-[#111] border border-white/5 rounded-2xl p-4 flex items-center gap-8 hover:bg-white/[0.02] transition-all group h-32 relative overflow-hidden">
+                  {/* Overlay de chargement style image utilisateur */}
+                  {!video.is_appropriate && (
+                    <div className="absolute inset-0 z-10 bg-black/80 backdrop-blur-sm flex items-center justify-center gap-4">
+                      <div className="w-12 h-12 border-[5px] border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-2xl font-bold text-white tracking-tight">Publication...</span>
                     </div>
                   )}
-                </div>
-                <div className="p-3">
-                  <div className="flex gap-3">
-                    <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 border border-white/10">
-                      <img src={profile?.avatar_url || DEFAULT_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
+
+                  <div className="h-full aspect-video rounded-2xl overflow-hidden flex-shrink-0 bg-black/40 relative">
+                    <img 
+                      src={video.thumbnail_url || undefined} 
+                      alt={video.title} 
+                      className={`w-full h-full object-cover transition-opacity duration-500 ${!video.is_appropriate ? 'opacity-30 grayscale' : 'opacity-100'}`} 
+                    />
+                  </div>
+                  
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2">
+                      <h4 className="text-white font-bold text-lg truncate">{renderTextWithEmojis(video.title)}</h4>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-white font-bold text-sm mb-1 line-clamp-2 leading-tight">{video.title}</h4>
-                      <div className="flex items-center gap-2 flex-wrap mb-3">
-                        <p className="text-slate-400 text-[10px] font-black">{profile?.username || user.email?.split('@')[0]}</p>
-                        <span className="text-slate-700 text-[9px]">•</span>
-                        <span className="text-[9px] font-bold text-slate-500">{video.views} vues</span>
-                        <span className="text-slate-700 text-[9px]">•</span>
-                        <span className="text-[9px] font-bold text-slate-500">{formatRelativeDate(video.created_at)}</span>
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <button className="flex-1 flex items-center justify-center gap-2 py-2 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5">
-                          <Edit2 size={14} /> Modifier
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(video.id)}
-                          className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-500/5 hover:bg-red-500/10 text-slate-400 hover:text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-red-500/5"
-                        >
-                          <Trash2 size={14} /> Supprimer
-                        </button>
-                      </div>
+                    <p className="text-slate-500 text-sm truncate max-w-md">{video.description || 'Aucune description'}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button className="w-10 h-10 bg-white/5 hover:bg-white/10 text-slate-500 hover:text-white rounded-2xl flex items-center justify-center transition-all">
+                      <Edit2 size={16} />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(video.id)}
+                      className="w-10 h-10 bg-white/5 hover:bg-red-500/10 text-slate-500 hover:text-red-400 rounded-2xl flex items-center justify-center transition-all"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-8 px-6 border-l border-white/5 h-10">
+                    <div className="text-center">
+                      <p className="text-slate-500 text-[8px] font-bold uppercase tracking-widest">vues</p>
+                      <p className="text-white font-black text-base leading-none">{video.views}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-slate-500 text-[8px] font-bold uppercase tracking-widest">j'aime</p>
+                      <p className="text-white font-black text-base leading-none">{video.likes}</p>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {activeSubTab === 'shorts' && (
+          loading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="text-white animate-spin" size={32} />
+            </div>
+          ) : videos.filter(v => v.is_short).length === 0 ? (
+            <div className="py-12 flex flex-col items-center justify-center text-center bg-white/5 rounded-2xl border border-white/10 border-dashed">
+              <Zap size={40} className="text-slate-700 mb-3" />
+              <p className="text-slate-400 font-bold text-xs">Aucun short publié</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {videos.filter(v => v.is_short).map((video) => (
+                <div key={video.id} className="bg-[#111] border border-white/5 rounded-2xl p-4 flex items-center gap-8 hover:bg-white/[0.02] transition-all group h-32 relative overflow-hidden">
+                  {/* Overlay de chargement style image utilisateur */}
+                  {!video.is_appropriate && (
+                    <div className="absolute inset-0 z-10 bg-black/80 backdrop-blur-sm flex items-center justify-center gap-4">
+                      <div className="w-12 h-12 border-[5px] border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-2xl font-bold text-white tracking-tight">Publication...</span>
+                    </div>
+                  )}
+
+                  <div className="h-full aspect-[9/16] rounded-2xl overflow-hidden flex-shrink-0 bg-black/40 relative">
+                    <img 
+                      src={video.thumbnail_url || undefined} 
+                      alt={video.title} 
+                      className={`w-full h-full object-cover transition-opacity duration-500 ${!video.is_appropriate ? 'opacity-30 grayscale' : 'opacity-100'}`} 
+                    />
+                  </div>
+                  
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-white font-bold text-lg truncate mb-1">{renderTextWithEmojis(video.title)}</h4>
+                    <p className="text-slate-500 text-sm truncate max-w-md">{video.description || 'Aucune description'}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button className="w-10 h-10 bg-white/5 hover:bg-white/10 text-slate-500 hover:text-white rounded-2xl flex items-center justify-center transition-all">
+                      <Edit2 size={16} />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(video.id)}
+                      className="w-10 h-10 bg-white/5 hover:bg-red-500/10 text-slate-500 hover:text-red-400 rounded-2xl flex items-center justify-center transition-all"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-8 px-6 border-l border-white/5 h-10">
+                    <div className="text-center">
+                      <p className="text-slate-500 text-[8px] font-bold uppercase tracking-widest">vues</p>
+                      <p className="text-white font-black text-base leading-none">{video.views}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-slate-500 text-[8px] font-bold uppercase tracking-widest">j'aime</p>
+                      <p className="text-white font-black text-base leading-none">{video.likes}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {activeSubTab === 'posts' && (
+          loadingPosts ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="text-white animate-spin" size={32} />
+            </div>
+          ) : posts.length === 0 ? (
+            <div className="py-12 flex flex-col items-center justify-center text-center bg-white/5 rounded-2xl border border-white/10 border-dashed">
+              <Edit2 size={40} className="text-slate-700 mb-3" />
+              <p className="text-slate-400 font-bold text-xs">Aucun post publié</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {posts.map((post) => (
+                <div key={post.id} className="bg-[#111] border border-white/5 rounded-2xl p-4 flex items-center gap-8 hover:bg-white/[0.02] transition-all group h-32">
+                  <div className="h-full aspect-video rounded-2xl overflow-hidden flex-shrink-0 bg-black/40 flex items-center justify-center">
+                    {post.media_url ? (
+                      post.media_type === 'image' ? (
+                        <img src={post.media_url} alt="Post" className="w-full h-full object-cover" />
+                      ) : post.media_type === 'video' ? (
+                        <video src={post.media_url} className="w-full h-full object-cover" />
+                      ) : (
+                        <Music size={24} className="text-slate-500" />
+                      )
+                    ) : (
+                      <Edit2 size={24} className="text-slate-500" />
+                    )}
+                  </div>
+                  
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-bold text-lg line-clamp-1 leading-tight">{renderTextWithEmojis(post.content || 'Aucune description')}</p>
+                    <p className="text-slate-500 text-[10px] font-bold mt-2">{formatRelativeDate(post.created_at)}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button className="w-10 h-10 bg-white/5 hover:bg-white/10 text-slate-500 hover:text-white rounded-2xl flex items-center justify-center transition-all">
+                      <Edit2 size={16} />
+                    </button>
+                    <button 
+                      onClick={() => handleDeletePost(post)}
+                      className="w-10 h-10 bg-white/5 hover:bg-red-500/10 text-slate-500 hover:text-red-400 rounded-2xl flex items-center justify-center transition-all"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-8 px-6 border-l border-white/5 h-10">
+                    <div className="text-center">
+                      <p className="text-slate-500 text-[8px] font-bold">likes</p>
+                      <p className="text-white font-black text-base leading-none">0</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
+
+      {showAnalysisOverlay && (
+        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/90 backdrop-blur-2xl animate-in fade-in duration-500">
+          <div className="max-w-md w-full flex flex-col items-center text-center">
+            {!uploading && (
+              <button 
+                onClick={() => setShowAnalysisOverlay(false)}
+                className="absolute top-8 right-8 p-2 text-slate-400 hover:text-white bg-white/10 rounded-2xl transition-all hover:rotate-90"
+              >
+                <X size={24} />
+              </button>
+            )}
+
+            <div className="relative w-24 h-24 mb-8">
+              <div className="absolute inset-0 border-4 border-white/10 rounded-full"></div>
+              <div className={`absolute inset-0 border-4 ${analysisDone ? 'border-emerald-500' : error ? 'border-red-500' : 'border-white border-t-transparent animate-spin'} rounded-full`}></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                {analysisDone ? (
+                  <CheckCircle2 size={40} className="text-emerald-500 animate-in zoom-in duration-500" />
+                ) : error ? (
+                  <AlertCircle size={40} className="text-red-500 animate-in zoom-in duration-500" />
+                ) : (
+                  <div className="w-12 h-12 bg-white/10 rounded-full animate-pulse"></div>
+                )}
+              </div>
+            </div>
+
+            <h2 className="text-3xl font-black text-white mb-4 tracking-tighter">
+              {analysisDone ? 'Terminé !' : error ? 'Échec' : 'Analyse...'}
+            </h2>
+            <p className="text-slate-400 font-medium leading-relaxed mb-4">
+              {error ? error : analysisDone ? 'Votre vidéo est maintenant en ligne et prête à être visionnée.' : analysisStep}
+            </p>
+            
+            {uploading && (
+              <p className="text-amber-500 text-sm font-bold animate-pulse mb-8">
+                ⚠️ Ne fermez pas cette fenêtre pendant l'envoi
+              </p>
+            )}
+            
+            <div className="w-full bg-white/5 rounded-full h-1.5 mb-8 overflow-hidden">
+              <div 
+                className={`h-full transition-all duration-500 ${analysisDone ? 'bg-emerald-500' : error ? 'bg-red-500' : 'bg-white animate-pulse'}`} 
+                style={{ width: `${analysisProgress}%` }}
+              ></div>
+            </div>
+
+            <button 
+              disabled={uploading}
+              onClick={() => setShowAnalysisOverlay(false)}
+              className={`px-8 py-3 ${analysisDone ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-white/10 hover:bg-white/20'} text-white font-bold rounded-2xl transition-all active:scale-95 disabled:opacity-50`}
+            >
+              {analysisDone ? 'Voir ma chaîne' : 'Fermer'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal d'upload */}
       {showUploadModal && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 sm:p-6">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-xl" onClick={() => !uploading && setShowUploadModal(false)}></div>
           
-          <div className="relative w-full max-w-xl bg-[#1a1a1a] border border-white/10 rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+          <div className="relative w-full max-w-xl bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="p-8 sm:p-10">
               <div className="flex items-center justify-between mb-8">
                 <div>
-                  <h2 className="text-2xl font-black text-white tracking-tighter">Publier une vidéo</h2>
-                  <p className="text-slate-400 text-xs font-medium uppercase tracking-widest mt-1">Partagez votre contenu</p>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">
+                    {isShort ? 'Publier un Short' : 'Publier une Vidéo'}
+                  </h2>
+                  <p className="text-slate-400 text-xs font-medium mt-1">
+                    {isShort ? 'Format vertical (9:16)' : 'Format paysage (16:9)'}
+                  </p>
                 </div>
-                <button 
-                  onClick={() => setShowUploadModal(false)}
-                  className="p-2 text-slate-400 hover:text-white bg-white/10 rounded-xl transition-colors"
-                >
-                  <Plus size={20} className="rotate-45" />
-                </button>
+                {!uploading && (
+                  <button 
+                    onClick={() => setShowUploadModal(false)}
+                    className="p-2 text-slate-400 hover:text-white bg-white/10 rounded-2xl transition-colors"
+                  >
+                    <Plus size={20} className="rotate-45" />
+                  </button>
+                )}
               </div>
 
               <form onSubmit={handleUpload} className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Titre de la vidéo</label>
+                  <label className="text-xs font-bold text-slate-500 ml-1">Titre {isShort ? 'du Short' : 'de la vidéo'}</label>
                   <input 
                     required
                     type="text" 
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Ex: Mon premier vlog"
+                    placeholder={isShort ? "Ex: Mon défi incroyable !" : "Ex: Mon premier vlog"}
                     className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-sm focus:outline-none focus:ring-2 focus:ring-white/20 text-white transition-all"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Description</label>
+                  <label className="text-xs font-bold text-slate-500 ml-1">Description</label>
                   <textarea 
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Dites-en plus sur votre vidéo..."
+                    placeholder={isShort ? "Ajoutez des hashtags..." : "Dites-en plus sur votre vidéo..."}
                     className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-sm focus:outline-none focus:ring-2 focus:ring-white/20 text-white transition-all min-h-[100px] resize-none"
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Fichier Vidéo</label>
+                    <label className="text-xs font-bold text-slate-500 ml-1">Fichier {isShort ? 'Short' : 'Vidéo'}</label>
                     <div className="relative">
                       <input 
                         required
                         type="file" 
                         accept="video/*"
-                        onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
+                        onChange={handleVideoSelect}
                         className="hidden"
                         id="video-upload"
                       />
@@ -384,13 +1011,15 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                         htmlFor="video-upload"
                         className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-xs text-slate-500 cursor-pointer hover:border-white/50 transition-all flex items-center gap-2 overflow-hidden"
                       >
-                        <Play size={14} className="flex-shrink-0" />
-                        <span className="truncate">{videoFile ? videoFile.name : "Choisir une vidéo"}</span>
+                        {isShort ? <Zap size={14} className="flex-shrink-0 text-amber-500" /> : <Play size={14} className="flex-shrink-0 text-sky-500" />}
+                        <span className="truncate">{videoFile ? videoFile.name : `Choisir ${isShort ? 'un short' : 'une vidéo'}`}</span>
+                        {isPreUploading && videoFile && !uploadedVideoUrl && <Loader2 size={12} className="animate-spin ml-auto" />}
+                        {uploadedVideoUrl && <CheckCircle2 size={12} className="text-emerald-500 ml-auto" />}
                       </label>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Miniature (Optionnel)</label>
+                    <label className="text-xs font-bold text-slate-500 ml-1">Miniature (Optionnel)</label>
                     <div className="relative">
                       <input 
                         type="file" 
@@ -410,22 +1039,8 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-2xl">
-                  <input 
-                    type="checkbox" 
-                    id="isShort"
-                    checked={isShort}
-                    onChange={(e) => setIsShort(e.target.checked)}
-                    className="w-5 h-5 rounded-lg bg-[#0f0f0f] border-white/10 text-white focus:ring-white/20"
-                  />
-                  <label htmlFor="isShort" className="flex items-center gap-2 cursor-pointer">
-                    <Zap size={16} className={isShort ? "text-white" : "text-slate-500"} />
-                    <span className="text-xs font-black uppercase tracking-widest text-white">Marquer comme Short (Format Vertical)</span>
-                  </label>
-                </div>
-
                 <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Catégories (Plusieurs choix possibles)</label>
+                  <label className="text-xs font-bold text-slate-500 ml-1">Catégories (Plusieurs choix possibles)</label>
                   <div className="flex flex-wrap gap-2">
                     {categories.map(cat => (
                       <button
@@ -438,7 +1053,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                             setSelectedCategories(prev => [...prev, cat]);
                           }
                         }}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                        className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all border ${
                           selectedCategories.includes(cat) 
                             ? 'bg-white text-black border-white' 
                             : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'
@@ -460,11 +1075,12 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                 <button 
                   type="submit"
                   disabled={uploading}
-                  className="w-full bg-white text-black hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed font-black text-[10px] uppercase tracking-[0.2em] py-5 rounded-2xl shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3"
+                  className="w-full bg-white text-black hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-sm py-5 rounded-2xl shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3"
                 >
                   {uploading ? (
                     <>
-                      <Loader2 size={18} className="animate-spin" /> Publication...
+                      <Loader2 size={18} className="animate-spin" /> 
+                      {analyzing ? "Analyse par Gemini..." : "Publication..."}
                     </>
                   ) : (
                     <>
@@ -482,32 +1098,143 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       {success && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[400] bg-emerald-500 text-white px-8 py-4 rounded-2xl shadow-2xl shadow-emerald-500/20 flex items-center gap-3 animate-in slide-in-from-bottom-10 duration-500">
           <CheckCircle2 size={20} />
-          <span className="text-xs font-black uppercase tracking-widest">{success}</span>
+          <span className="text-sm font-bold">{success}</span>
         </div>
       )}
 
-      {/* Modal de suppression multi-étapes */}
+      {/* Modal de publication de Post */}
+      {showPostModal && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !uploading && setShowPostModal(false)}></div>
+          <div className="relative w-full max-w-lg bg-[#0f0f0f] border border-white/10 rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-8 sm:p-10">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">Créer un Post</h2>
+                  <p className="text-slate-400 text-xs font-medium mt-1">Exprimez-vous</p>
+                </div>
+                {!uploading && (
+                  <button 
+                    onClick={() => setShowPostModal(false)}
+                    className="p-2 text-slate-400 hover:text-white bg-white/10 rounded-2xl transition-colors"
+                  >
+                    <Plus size={20} className="rotate-45" />
+                  </button>
+                )}
+              </div>
+
+              <form onSubmit={handlePostUpload} className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 ml-1">Contenu du post</label>
+                  <textarea 
+                    required
+                    value={postContent}
+                    onChange={(e) => setPostContent(e.target.value)}
+                    placeholder="Quoi de neuf ?"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-sm focus:outline-none focus:ring-2 focus:ring-white/20 text-white transition-all min-h-[150px] resize-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 ml-1">Fichier (Image, Vidéo ou Audio)</label>
+                  <div className="relative">
+                    <input 
+                      type="file" 
+                      accept="image/*,video/*,audio/*"
+                      onChange={handlePostFileSelect}
+                      className="hidden"
+                      id="post-file-upload"
+                    />
+                    <label 
+                      htmlFor="post-file-upload"
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-xs text-slate-500 cursor-pointer hover:border-white/50 transition-all flex items-center gap-2 overflow-hidden"
+                    >
+                      <Upload size={14} className="flex-shrink-0" />
+                      <span className="truncate">{postFile ? postFile.name : "Choisir un fichier"}</span>
+                      {isPreUploading && postFile && !uploadedPostMediaUrl && <Loader2 size={12} className="animate-spin ml-auto" />}
+                      {uploadedPostMediaUrl && <CheckCircle2 size={12} className="text-emerald-500 ml-auto" />}
+                    </label>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-500 text-xs font-bold animate-in fade-in slide-in-from-top-2">
+                    <AlertCircle size={16} />
+                    {error}
+                  </div>
+                )}
+
+                {uploading && (
+                  <p className="text-amber-500 text-[10px] font-bold animate-pulse text-center">
+                    ⚠️ Ne fermez pas cette fenêtre pendant l'envoi
+                  </p>
+                )}
+
+                <button 
+                  disabled={uploading}
+                  type="submit"
+                  className="w-full bg-white text-black font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploading ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      Publication...
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={18} />
+                      Publier le Post
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
       {deleteModalStep && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteModalStep(null)}></div>
-          <div className="relative w-full max-w-md bg-[#1a1a1a] border border-white/10 rounded-[2rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
-            {deleteModalStep === 'confirm' ? (
+          <div className="relative w-full max-w-md bg-[#1a1a1a] border border-white/10 rounded-2xl p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+            {deleteModalStep === 'post' ? (
               <div className="text-center">
                 <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center text-red-400 mx-auto mb-6">
                   <Trash2 size={32} />
                 </div>
-                <h3 className="text-xl font-black text-white mb-2">Supprimer la vidéo ?</h3>
+                <h3 className="text-xl font-bold text-white mb-2">Supprimer ce post ?</h3>
+                <p className="text-slate-500 text-sm mb-8">Cette action est irréversible. Êtes-vous sûr de vouloir continuer ?</p>
+                <div className="flex flex-col gap-3">
+                  <button 
+                    onClick={confirmDeletePost}
+                    className="w-full py-4 bg-red-500 text-white font-bold text-xs rounded-2xl hover:bg-red-600 transition-all"
+                  >
+                    Oui, supprimer
+                  </button>
+                  <button 
+                    onClick={() => setDeleteModalStep(null)}
+                    className="w-full py-4 bg-white/10 text-white font-bold text-xs rounded-2xl hover:bg-white/20 transition-all"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            ) : deleteModalStep === 'confirm' ? (
+              <div className="text-center">
+                <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center text-red-400 mx-auto mb-6">
+                  <Trash2 size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Supprimer la vidéo ?</h3>
                 <p className="text-slate-500 text-sm mb-8">Cette action est irréversible. Êtes-vous sûr de vouloir continuer ?</p>
                 <div className="flex flex-col gap-3">
                   <button 
                     onClick={() => setDeleteModalStep('download')}
-                    className="w-full py-4 bg-white text-black font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-slate-200 transition-all"
+                    className="w-full py-4 bg-white text-black font-bold text-xs rounded-2xl hover:bg-slate-200 transition-all"
                   >
                     Oui, continuer
                   </button>
                   <button 
                     onClick={() => setDeleteModalStep(null)}
-                    className="w-full py-4 bg-white/10 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-white/20 transition-all"
+                    className="w-full py-4 bg-white/10 text-white font-bold text-xs rounded-2xl hover:bg-white/20 transition-all"
                   >
                     Annuler
                   </button>
@@ -518,7 +1245,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                 <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-white mx-auto mb-6">
                   <Upload size={32} className="rotate-180" />
                 </div>
-                <h3 className="text-xl font-black text-white mb-2">Sauvegarder avant ?</h3>
+                <h3 className="text-xl font-bold text-white mb-2">Sauvegarder avant ?</h3>
                 <p className="text-slate-500 text-sm mb-8">Voulez-vous télécharger la vidéo sur votre appareil avant sa suppression définitive ?</p>
                 <div className="flex flex-col gap-3">
                   <button 
@@ -526,20 +1253,20 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                       await downloadVideo();
                       confirmDelete();
                     }}
-                    className="w-full py-4 bg-white text-black font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                    className="w-full py-4 bg-white text-black font-bold text-xs rounded-2xl hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
                   >
                     <Upload size={14} className="rotate-180" /> Télécharger et supprimer
                   </button>
                   <div className="grid grid-cols-2 gap-3">
                     <button 
                       onClick={() => setDeleteModalStep(null)}
-                      className="py-4 bg-white/10 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-white/20 transition-all"
+                      className="py-4 bg-white/10 text-white font-bold text-xs rounded-2xl hover:bg-white/20 transition-all"
                     >
                       Annuler
                     </button>
                     <button 
                       onClick={confirmDelete}
-                      className="py-4 bg-red-500/10 text-red-400 border border-red-500/20 font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-red-500/20 transition-all"
+                      className="py-4 bg-red-500/10 text-red-400 border border-red-500/20 font-bold text-xs rounded-2xl hover:bg-red-500/20 transition-all"
                     >
                       Non, supprimer
                     </button>

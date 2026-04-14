@@ -1,17 +1,40 @@
 
-import React, { useState, useEffect } from 'react';
-import { Search, Zap, TrendingUp, Tv, PlayCircle, Video as VideoIcon, Loader2, Play, Heart, MessageCircle, Send, X, Plus, Volume2, VolumeX, Copy, Check, ThumbsUp, ThumbsDown, Share2, ArrowLeft, Sparkles } from 'lucide-react';
-import { supabase } from '../services/supabase';
+import React, { useState, useEffect, useRef } from 'react';
+import { renderTextWithEmojis } from '../utils/emoji';
+import VideoPlayer from './VideoPlayer';
+import { useClickOutside } from '../utils/hooks';
+import { Search, Zap, TrendingUp, Tv, PlayCircle, Video as VideoIcon, Loader2, Play, Heart, MessageCircle, Send, X, Plus, Volume2, VolumeX, Copy, Check, ThumbsUp, ThumbsDown, Share2, ArrowLeft, Sparkles, User } from 'lucide-react';
+import { auth, db } from '../firebase';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  deleteDoc, 
+  updateDoc, 
+  increment,
+  getDocs,
+  limit,
+  serverTimestamp
+} from 'firebase/firestore';
 import { generateSnowflake } from '../utils/snowflake';
 import { Video } from '../types';
 import { DEFAULT_AVATAR } from '../constants';
+import Username from './Username';
 
 interface Comment {
   id: string;
+  user_id: string;
   username: string;
+  display_name?: string;
   avatar_url: string;
+  user_is_verified?: boolean;
   content: string;
-  created_at: string;
+  created_at: any;
   likes?: number;
   hasLiked?: boolean;
 }
@@ -59,7 +82,10 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [subscriberCount, setSubscriberCount] = useState(0);
   const [showSharePopup, setShowSharePopup] = useState(false);
+  const sharePopupRef = useRef<HTMLDivElement>(null);
+  useClickOutside(sharePopupRef, () => setShowSharePopup(false));
   const [copied, setCopied] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
   const [loadingComments, setLoadingComments] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [showDateTooltip, setShowDateTooltip] = useState(false);
@@ -79,14 +105,23 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
   }, []);
 
   const fetchVideoById = async (id: string) => {
-    const { data, error } = await supabase
-      .from('videos')
-      .select('*')
-      .eq('id', id)
-      .single();
-    
-    if (!error && data) {
-      setSelectedVideo(data);
+    try {
+      const videoRef = doc(db, 'videos', id);
+      const videoSnap = await getDoc(videoRef);
+      if (videoSnap.exists()) {
+        const data = videoSnap.data();
+        const profileRef = doc(db, 'profiles', data.creator_id);
+        const profileSnap = await getDoc(profileRef);
+        const profileData = profileSnap.exists() ? profileSnap.data() : null;
+
+        setSelectedVideo({ 
+          id: videoSnap.id, 
+          ...data,
+          creator_display_name: profileData?.display_name || profileData?.username || data.creator_name
+        } as Video);
+      }
+    } catch (err) {
+      console.error("Error fetching video by id:", err);
     }
   };
 
@@ -106,9 +141,9 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
     }
   }, [selectedVideo]);
 
-  const formatRelativeDate = (dateString: string) => {
+  const formatRelativeDate = (dateString: any) => {
     if (!dateString) return "il y a quelques instants";
-    const date = new Date(dateString);
+    const date = dateString.toDate ? dateString.toDate() : new Date(dateString);
     const now = new Date();
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     
@@ -125,9 +160,9 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
     return `il y a ${diffInYears} an${diffInYears > 1 ? 's' : ''}`;
   };
 
-  const formatAbsoluteDate = (dateString: string) => {
+  const formatAbsoluteDate = (dateString: any) => {
     if (!dateString) return "";
-    const date = new Date(dateString);
+    const date = dateString.toDate ? dateString.toDate() : new Date(dateString);
     return date.toLocaleDateString('fr-FR', {
       day: 'numeric',
       month: 'long',
@@ -135,117 +170,156 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
     });
   };
 
+  const copyId = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
+
   const fetchVideos = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('videos')
-      .select('*')
-      .eq('is_short', false)
-      .order('created_at', { ascending: false });
+    
+    try {
+      const videosRef = collection(db, 'videos');
+      const q = query(
+        videosRef,
+        where('is_short', '==', false),
+        where('is_appropriate', '==', true)
+      );
 
-    if (error) {
-      console.error('Error fetching videos:', error);
-    } else {
-      setVideos(data || []);
+      const snapshot = await getDocs(q);
+      const allVideos = await Promise.all(snapshot.docs.map(async (d) => {
+        const data = d.data();
+        const profileRef = doc(db, 'profiles', data.creator_id);
+        const profileSnap = await getDoc(profileRef);
+        const profileData = profileSnap.exists() ? profileSnap.data() : null;
+        
+        return { 
+          id: d.id, 
+          ...data,
+          creator_display_name: profileData?.display_name || profileData?.username || data.creator_name
+        } as Video;
+      }));
+
+      // Filter based on phased publication
+      let filteredVideos = allVideos.filter(video => {
+        if (video.is_promoted) return true;
+        if (user?.uid && video.target_user_ids?.includes(user.uid)) return true;
+        if (user?.uid && video.creator_id === user.uid) return true; // Always show own videos
+        return false;
+      });
+
+      // Sort based on recommendation system and popularity
+      const userPrefs = profile?.preferences || {};
+      
+      filteredVideos.sort((a, b) => {
+        const scoreA = a.type ? (userPrefs[a.type] || 0) : 0;
+        const scoreB = b.type ? (userPrefs[b.type] || 0) : 0;
+        
+        if (scoreA !== scoreB) return scoreB - scoreA;
+        
+        const popA = (a.likes || 0) + (a.views || 0);
+        const popB = (b.likes || 0) + (b.views || 0);
+        
+        return popB - popA;
+      });
+
+      setVideos(filteredVideos);
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching videos:', err);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const fetchVideoData = async () => {
-    if (!selectedVideo) return;
+    if (!selectedVideo || !user?.uid) return;
     setLoadingComments(true);
 
-    // Fetch Comments
-    const { data: commentsData } = await supabase
-      .from('video_comments')
-      .select('*')
-      .eq('video_id', selectedVideo.id)
-      .order('created_at', { ascending: false });
-    
-    let processedComments = (commentsData || []) as Comment[];
-
-    // Fetch comment likes counts and user likes
-    if (processedComments.length > 0) {
-      const commentIds = processedComments.map(c => c.id);
+    try {
+      // Fetch Comments
+      const commentsRef = collection(db, 'video_comments');
+      const cq = query(
+        commentsRef,
+        where('video_id', '==', selectedVideo.id),
+        orderBy('created_at', 'desc')
+      );
       
-      // Get counts
-      const { data: likesCounts } = await supabase
-        .from('comment_likes')
-        .select('comment_id')
-        .in('comment_id', commentIds);
-      
-      // Get user likes
-      let userLikedIds: string[] = [];
-      if (user) {
-        const { data: userLikes } = await supabase
-          .from('comment_likes')
-          .select('comment_id')
-          .eq('user_id', user.id)
-          .in('comment_id', commentIds);
-        userLikedIds = userLikes?.map(l => l.comment_id) || [];
-      }
+      const cSnap = await getDocs(cq);
+      let processedComments = await Promise.all(cSnap.docs.map(async (docSnapshot) => {
+        const c = docSnapshot.data() as Comment;
+        
+        // Fetch profile for display_name
+        const profileRef = doc(db, 'profiles', c.user_id);
+        const profileSnap = await getDoc(profileRef);
+        const profileData = profileSnap.exists() ? profileSnap.data() : null;
 
-      processedComments = processedComments.map(comment => ({
-        ...comment,
-        likes: likesCounts?.filter(l => l.comment_id === comment.id).length || 0,
-        hasLiked: userLikedIds.includes(comment.id)
+        // Fetch comment likes count
+        const likesRef = collection(db, 'comment_likes');
+        const lq = query(likesRef, where('comment_id', '==', docSnapshot.id));
+        const lSnap = await getDocs(lq);
+        
+        // Check if user liked
+        const userLikeRef = doc(db, 'comment_likes', `${user.uid}_${docSnapshot.id}`);
+        const userLikeSnap = await getDoc(userLikeRef);
+
+        return {
+          ...c,
+          id: docSnapshot.id,
+          display_name: profileData?.display_name || profileData?.username || c.username,
+          likes: lSnap.size,
+          hasLiked: userLikeSnap.exists()
+        };
       }));
-    }
-    
-    setComments(processedComments);
-
-    // Fetch Likes
-    const { count } = await supabase
-      .from('video_likes')
-      .select('*', { count: 'exact', head: true })
-      .eq('video_id', selectedVideo.id);
-    
-    setLikeCount(count || 0);
-
-    // Fetch Subscriber Count
-    const { count: subCount } = await supabase
-      .from('subscriptions')
-      .select('*', { count: 'exact', head: true })
-      .eq('creator_id', selectedVideo.creator_id);
-    
-    setSubscriberCount(subCount || 0);
-
-    // Check if user liked & subscribed
-    if (user) {
-      const { data: userLike } = await supabase
-        .from('video_likes')
-        .select('*')
-        .eq('video_id', selectedVideo.id)
-        .eq('user_id', user.id)
-        .single();
       
-      setHasLiked(!!userLike);
+      setComments(processedComments);
 
-      const { data: userSub } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('follower_id', user.id)
-        .eq('creator_id', selectedVideo.creator_id)
-        .single();
-      
-      setIsSubscribed(!!userSub);
+      // Fetch Likes
+      const videoRef = doc(db, 'videos', selectedVideo.id);
+      const videoSnap = await getDoc(videoRef);
+      setLikeCount(videoSnap.data()?.likes || 0);
+
+      // Check if user liked
+      const userLikeRef = doc(db, 'video_likes', `${user.uid}_${selectedVideo.id}`);
+      const userLikeSnap = await getDoc(userLikeRef);
+      setHasLiked(userLikeSnap.exists());
+
+      // Fetch Subscriber Count
+      const subsRef = collection(db, 'subscriptions');
+      const sq = query(subsRef, where('creator_id', '==', selectedVideo.creator_id));
+      const sSnap = await getDocs(sq);
+      setSubscriberCount(sSnap.size);
+
+      // Check if user subscribed
+      const userSubRef = doc(db, 'subscriptions', `${user.uid}_${selectedVideo.creator_id}`);
+      const userSubSnap = await getDoc(userSubRef);
+      setIsSubscribed(userSubSnap.exists());
+
+    } catch (err) {
+      console.error('Error fetching video data:', err);
+    } finally {
+      setLoadingComments(false);
     }
-    setLoadingComments(false);
   };
 
   const handleSubscribe = async () => {
-    if (!user || !selectedVideo || user.id === selectedVideo.creator_id) return;
+    if (!user?.uid || !selectedVideo || user.uid === selectedVideo.creator_id) return;
+
+    const subId = `${user.uid}_${selectedVideo.creator_id}`;
+    const subRef = doc(db, 'subscriptions', subId);
 
     if (isSubscribed) {
-      await supabase.from('subscriptions').delete().match({ follower_id: user.id, creator_id: selectedVideo.creator_id });
+      await deleteDoc(subRef);
       setIsSubscribed(false);
       setSubscriberCount(prev => prev - 1);
     } else {
-      await supabase.from('subscriptions').insert([{ 
+      await setDoc(subRef, {
         id: generateSnowflake(),
-        follower_id: user.id, 
-        creator_id: selectedVideo.creator_id 
-      }]);
+        follower_id: user.uid, 
+        creator_id: selectedVideo.creator_id,
+        created_at: serverTimestamp()
+      });
       setIsSubscribed(true);
       setSubscriberCount(prev => prev + 1);
     }
@@ -264,44 +338,58 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
   };
 
   const incrementViews = async (videoId: string) => {
-    await supabase.rpc('increment_video_views', { video_id: videoId });
+    const videoRef = doc(db, 'videos', videoId);
+    await updateDoc(videoRef, {
+      views: increment(1)
+    });
   };
 
   const handleLike = async () => {
-    if (!user || !selectedVideo) return;
+    if (!user?.uid || !selectedVideo) return;
+
+    const likeId = `${user.uid}_${selectedVideo.id}`;
+    const likeRef = doc(db, 'video_likes', likeId);
+    const videoRef = doc(db, 'videos', selectedVideo.id);
 
     if (hasLiked) {
-      await supabase.from('video_likes').delete().match({ video_id: selectedVideo.id, user_id: user.id });
+      await deleteDoc(likeRef);
+      await updateDoc(videoRef, { likes: increment(-1) });
       setLikeCount(prev => prev - 1);
       setHasLiked(false);
     } else {
-      await supabase.from('video_likes').insert([{ 
+      await setDoc(likeRef, {
         id: generateSnowflake(),
         video_id: selectedVideo.id, 
-        user_id: user.id 
-      }]);
+        user_id: user.uid,
+        created_at: serverTimestamp()
+      });
+      await updateDoc(videoRef, { likes: increment(1) });
       setLikeCount(prev => prev + 1);
       setHasLiked(true);
     }
   };
 
   const handleCommentLike = async (commentId: string) => {
-    if (!user) return;
+    if (!user?.uid) return;
 
     const comment = comments.find(c => c.id === commentId);
     if (!comment) return;
 
+    const likeId = `${user.uid}_${commentId}`;
+    const likeRef = doc(db, 'comment_likes', likeId);
+
     if (comment.hasLiked) {
-      await supabase.from('comment_likes').delete().match({ comment_id: commentId, user_id: user.id });
+      await deleteDoc(likeRef);
       setComments(prev => prev.map(c => 
         c.id === commentId ? { ...c, hasLiked: false, likes: (c.likes || 1) - 1 } : c
       ));
     } else {
-      await supabase.from('comment_likes').insert([{ 
+      await setDoc(likeRef, {
         id: generateSnowflake(),
         comment_id: commentId, 
-        user_id: user.id 
-      }]);
+        user_id: user.uid,
+        created_at: serverTimestamp()
+      });
       setComments(prev => prev.map(c => 
         c.id === commentId ? { ...c, hasLiked: true, likes: (c.likes || 0) + 1 } : c
       ));
@@ -310,31 +398,26 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
 
   const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newComment.trim() || !selectedVideo) return;
+    if (!user?.uid || !newComment.trim() || !selectedVideo) return;
 
-    const comment = {
-      id: generateSnowflake(),
+    const commentId = generateSnowflake();
+    const commentData = {
+      id: commentId,
       video_id: selectedVideo.id,
-      user_id: user.id,
+      user_id: user.uid,
       username: profile?.username || user.email?.split('@')[0],
+      display_name: profile?.display_name || profile?.username || user.email?.split('@')[0],
       avatar_url: profile?.avatar_url || DEFAULT_AVATAR,
       content: newComment,
-      likes: 0,
-      hasLiked: false
+      created_at: serverTimestamp()
     };
 
-    const { data, error } = await supabase.from('video_comments').insert([{
-      id: comment.id,
-      video_id: comment.video_id,
-      user_id: comment.user_id,
-      username: comment.username,
-      avatar_url: comment.avatar_url,
-      content: comment.content
-    }]).select().single();
-
-    if (!error && data) {
-      setComments(prev => [{ ...data, likes: 0, hasLiked: false }, ...prev]);
+    try {
+      await setDoc(doc(db, 'video_comments', commentId), commentData);
+      setComments(prev => [{ ...commentData, created_at: new Date(), likes: 0, hasLiked: false }, ...prev]);
       setNewComment('');
+    } catch (err) {
+      console.error('Error posting comment:', err);
     }
   };
 
@@ -344,8 +427,6 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
     
     if (selectedTag === 'Tout') return matchesSearch;
     
-    // Check if video has the selected category
-    // We handle both array and string (if it was stored as string before)
     const videoCategories = v.categories || [];
     return matchesSearch && videoCategories.includes(selectedTag);
   });
@@ -360,55 +441,87 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
             {/* Bouton Retour déplacé en dehors du rectangle */}
             <button 
               onClick={() => setSelectedVideo(null)}
-              className="mb-6 flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-xl transition-all border border-white/10 group active:scale-95"
+              className="mb-6 flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-2xl transition-all border border-white/10 group active:scale-95"
             >
               <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
-              <span className="text-[10px] font-black uppercase tracking-widest">Retour</span>
+              <span className="text-xs font-bold">Retour</span>
             </button>
 
             {/* Lecteur Vidéo - Format Rectangle (16:9) */}
-            <div className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-2xl group mb-6 border border-white/10">
-              <video 
+            <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl group mb-6 border border-white/10">
+              <VideoPlayer 
                 src={selectedVideo.url} 
-                controls 
-                autoPlay
-                className="w-full h-full object-contain"
+                videoId={selectedVideo.id}
+                transcription={selectedVideo.transcription}
+                className="w-full h-full"
               />
             </div>
 
             {/* Titre et Infos */}
             <div className="space-y-4">
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-tight">
-                {selectedVideo.title}
+                {renderTextWithEmojis(selectedVideo.title)}
               </h1>
+
+              {selectedVideo.type && (
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-1 bg-white/10 text-white text-[10px] font-bold rounded-md">
+                    {selectedVideo.type}
+                  </span>
+                  {selectedVideo.name_of_type && (
+                    <span className="text-xs font-bold text-slate-400">
+                      • {selectedVideo.name_of_type}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <img 
-                      src={selectedVideo.creator_avatar || DEFAULT_AVATAR} 
-                      className="w-10 h-10 rounded-full border border-white/10" 
-                      alt="" 
-                    />
+                  <div className="w-10 h-10 rounded-full border border-white/10 overflow-hidden">
+                    <img src={selectedVideo.creator_avatar || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                   </div>
                   <div className="mr-4">
-                    <p className="text-sm font-black text-white flex items-center gap-1">
-                      {selectedVideo.creator_name}
-                    </p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</p>
+                    <div className="flex flex-col">
+                      <Username 
+                        username={selectedVideo.creator_name || 'Utilisateur'} 
+                        displayName={selectedVideo.creator_display_name}
+                        isVerified={selectedVideo.creator_is_verified} 
+                        isAdmin={selectedVideo.creator_role === 'admin'}
+                        email={selectedVideo.creator_email}
+                        className="text-sm font-bold text-white" 
+                        badgeSize={14} 
+                      />
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[10px] font-bold text-slate-500 font-mono">
+                          ID: {selectedVideo.creator_display_id || 'N/A'}
+                        </span>
+                        {selectedVideo.creator_display_id && (
+                          <button 
+                            onClick={(e) => copyId(e, selectedVideo.creator_display_id)}
+                            className="p-0.5 hover:bg-white/10 rounded-md text-slate-500 hover:text-white transition-all"
+                            title="Copier l'ID"
+                          >
+                            {copiedId ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
+                          </button>
+                        )}
+                        <span className="text-slate-700 text-[8px]">•</span>
+                        <p className="text-[10px] font-bold text-slate-500">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</p>
+                      </div>
+                    </div>
                   </div>
                   
                   <div className="flex items-center gap-2">
-                    {user && user.id === selectedVideo.creator_id ? (
+                    {user && user.uid === selectedVideo.creator_id ? (
                       <button 
-                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-[12px] font-bold rounded-full transition-all"
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-[12px] font-bold rounded-2xl transition-all"
                       >
                         Gérer les vidéos
                       </button>
                     ) : (
                     <button 
                       onClick={handleSubscribe}
-                      className={`px-4 py-2 rounded-full text-[14px] font-bold transition-all active:scale-95 ${isSubscribed ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-white text-black hover:bg-slate-200'}`}
+                      className={`px-4 py-2 rounded-2xl text-[14px] font-bold transition-all active:scale-95 ${isSubscribed ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-white text-black hover:bg-slate-200'}`}
                     >
                       {isSubscribed ? 'Abonné' : "S'abonner"}
                     </button>
@@ -419,7 +532,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                 <div className="flex items-center gap-2 pb-2 md:pb-0">
                   <button 
                     onClick={handleLike}
-                    className={`flex items-center gap-2 px-6 py-2 rounded-full transition-all text-[14px] font-bold active:scale-90 ${hasLiked ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                    className={`flex items-center gap-2 px-6 py-2 rounded-2xl transition-all text-[14px] font-bold active:scale-90 ${hasLiked ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
                   >
                     <Heart size={20} fill={hasLiked ? "currentColor" : "none"} className={hasLiked ? "text-red-500" : "text-slate-400"} /> 
                     {likeCount}
@@ -428,21 +541,21 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                   <div className="relative">
                     <button 
                       onClick={handleShare}
-                      className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-[12px] font-bold rounded-full transition-all whitespace-nowrap"
+                      className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-[12px] font-bold rounded-2xl transition-all whitespace-nowrap"
                     >
                       <Share2 size={18} /> Partager
                     </button>
                     
                     {showSharePopup && (
-                      <div className="absolute bottom-full mb-4 right-0 md:right-auto md:left-1/2 md:-translate-x-1/2 w-72 sm:w-80 bg-[#1a1a1a] border border-white/10 rounded-2xl p-5 shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-in fade-in slide-in-from-bottom-4 duration-300 z-50">
+                      <div ref={sharePopupRef} className="absolute bottom-full mb-4 right-0 md:right-auto md:left-1/2 md:-translate-x-1/2 w-72 sm:w-80 bg-[#1a1a1a] border border-white/10 rounded-2xl p-5 shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-in fade-in slide-in-from-bottom-4 duration-300 z-50">
                         <div className="flex items-center justify-between mb-4">
-                          <h4 className="text-sm font-black text-white uppercase tracking-tight">Partager la vidéo</h4>
+                          <h4 className="text-sm font-bold text-white tracking-tight">Partager la vidéo</h4>
                           <button onClick={() => setShowSharePopup(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
                             <X size={18} />
                           </button>
                         </div>
                         <div className="space-y-4">
-                          <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-3 group hover:border-white/20 transition-all">
+                          <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl p-3 group hover:border-white/20 transition-all">
                             <input 
                               type="text" 
                               readOnly 
@@ -451,30 +564,26 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                             />
                             <button 
                               onClick={copyToClipboard}
-                              className="w-10 h-10 bg-white text-black rounded-xl hover:bg-slate-200 transition-all active:scale-95 flex items-center justify-center shadow-lg flex-shrink-0"
+                              className="w-10 h-10 bg-white text-black rounded-2xl hover:bg-slate-200 transition-all active:scale-95 flex items-center justify-center shadow-lg flex-shrink-0"
                               title={copied ? "Copié !" : "Copier le lien"}
                             >
                               {copied ? <Check size={18} className="text-emerald-600" /> : <Copy size={18} />}
                             </button>
                           </div>
-                          <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest text-center">Lien direct vers wexo.netlify.app</p>
+                          <p className="text-[10px] text-slate-500 font-bold text-center">Lien direct vers wexo.netlify.app</p>
                         </div>
                         {/* Arrow */}
                         <div className="absolute top-full right-6 md:right-auto md:left-1/2 md:-translate-x-1/2 border-8 border-transparent border-t-[#1a1a1a]"></div>
                       </div>
                     )}
                   </div>
-                  
-                  <button className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-[12px] font-bold rounded-full transition-all whitespace-nowrap">
-                    <Plus size={18} /> Enregistrer
-                  </button>
                 </div>
               </div>
 
               {/* Description Box */}
               <div 
                 onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-                className="bg-white/5 hover:bg-white/10 transition-colors rounded-xl p-3 mt-4 cursor-pointer"
+                className="bg-white/5 hover:bg-white/10 transition-colors rounded-2xl p-3 mt-4 cursor-pointer"
               >
                 <div className="flex items-center gap-2 text-sm font-bold text-white mb-1">
                   <span>{selectedVideo.views.toLocaleString()} vues</span>
@@ -488,7 +597,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                     </span>
                     
                     {showDateTooltip && (
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#616161] text-white text-[12px] rounded-md whitespace-nowrap z-50 shadow-xl">
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#616161] text-white text-[12px] rounded-2xl whitespace-nowrap z-50 shadow-xl">
                         {formatAbsoluteDate(selectedVideo.created_at)}
                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-[#616161]"></div>
                       </div>
@@ -496,7 +605,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                   </div>
                 </div>
                 <p className={`text-sm text-slate-300 leading-relaxed whitespace-pre-wrap ${!isDescriptionExpanded ? 'line-clamp-[7]' : ''}`}>
-                  {selectedVideo.description || "Aucune description fournie."}
+                  {renderTextWithEmojis(selectedVideo.description || "Aucune description fournie.")}
                 </p>
                 {selectedVideo.description && selectedVideo.description.length > 0 && (
                   <button className="mt-2 text-sm font-bold text-white hover:text-slate-400 transition-colors">
@@ -508,8 +617,8 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
               {/* Commentaires */}
               <div className="mt-8 space-y-6">
                 <div className="flex items-center gap-4 mb-8">
-                  <h3 className="text-lg font-black text-white tracking-tight">{comments.length} commentaires</h3>
-                  <button className="flex items-center gap-2 text-[10px] font-black text-white uppercase tracking-widest">
+                  <h3 className="text-lg font-bold text-white tracking-tight">{comments.length} commentaires</h3>
+                  <button className="flex items-center gap-2 text-xs font-bold text-white">
                     <TrendingUp size={14} /> Trier par
                   </button>
                 </div>
@@ -519,7 +628,8 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                   <img 
                     src={profile?.avatar_url || DEFAULT_AVATAR} 
                     className="w-10 h-10 rounded-full border border-white/10 flex-shrink-0" 
-                    alt="" 
+                    alt=""
+                    referrerPolicy="no-referrer"
                   />
                   <div className="flex-1">
                     {user ? (
@@ -535,14 +645,14 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                           <button 
                             type="button" 
                             onClick={() => setNewComment('')}
-                            className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-white/5 rounded-full"
+                            className="px-4 py-2 text-xs font-bold text-slate-400 hover:bg-white/5 rounded-2xl"
                           >
                             Annuler
                           </button>
                           <button 
                             type="submit"
                             disabled={!newComment.trim()}
-                            className="px-4 py-2 bg-white disabled:bg-white/20 text-black text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg"
+                            className="px-4 py-2 bg-white disabled:bg-white/20 text-black text-xs font-bold rounded-2xl shadow-lg"
                           >
                             Commenter
                           </button>
@@ -561,15 +671,21 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                   ) : comments.length > 0 ? (
                     comments.map(comment => (
                       <div key={comment.id} className="flex gap-4 group">
-                        <img src={comment.avatar_url || undefined} className="w-10 h-10 rounded-full flex-shrink-0 border border-white/10" alt="" />
+                        <div className="w-10 h-10 rounded-full flex-shrink-0 border border-white/10 overflow-hidden">
+                          <img src={comment.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className={`text-[11px] font-black ${comment.user_id === selectedVideo.creator_id ? 'bg-white text-black px-2 py-0.5 rounded' : 'text-white'}`}>
-                              @{comment.username}
-                            </span>
+                            <Username 
+                              username={comment.username} 
+                              displayName={comment.display_name}
+                              isVerified={comment.user_is_verified} 
+                              className={`text-xs font-bold ${comment.user_id === selectedVideo.creator_id ? 'bg-white text-black px-2 py-0.5 rounded-md' : 'text-white'}`}
+                              badgeSize={10}
+                            />
                             <span className="text-[10px] font-medium text-slate-500">{formatRelativeDate(comment.created_at)}</span>
                           </div>
-                          <p className="text-sm text-slate-300 leading-relaxed mb-3">{comment.content}</p>
+                          <p className="text-sm text-slate-300 leading-relaxed mb-3">{renderTextWithEmojis(comment.content)}</p>
                           <div className="flex items-center gap-4">
                             <div className="flex items-center gap-1">
                               <button 
@@ -582,7 +698,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                                 {comment.likes || 0}
                               </span>
                             </div>
-                            <button className="text-[10px] font-black text-white hover:bg-white/5 px-3 py-1.5 rounded-full transition-all">
+                            <button className="text-[10px] font-bold text-white hover:bg-white/5 px-3 py-1.5 rounded-2xl transition-all">
                               Répondre
                             </button>
                           </div>
@@ -592,7 +708,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                   ) : (
                     <div className="text-center py-10 opacity-30">
                       <MessageCircle size={40} className="mx-auto mb-4 text-white" />
-                      <p className="text-[10px] font-black uppercase tracking-widest text-white">Aucun commentaire pour le moment</p>
+                      <p className="text-xs font-bold text-white">Aucun commentaire pour le moment</p>
                     </div>
                   )}
                 </div>
@@ -603,12 +719,12 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
           {/* Colonne Latérale (Droite) - Vidéos Recommandées */}
           <div className="w-full lg:w-[400px] space-y-6">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em]">Vidéos suggérées</h3>
+              <h3 className="text-xs font-bold text-slate-500">Vidéos suggérées</h3>
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
                 {['Tout', 'De la série', 'Similaires'].map((tag, i) => (
                   <button 
                     key={tag} 
-                    className={`flex-shrink-0 px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${i === 0 ? 'bg-[#272727] text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
+                    className={`flex-shrink-0 px-3 py-1 rounded-2xl text-[10px] font-bold transition-all ${i === 0 ? 'bg-[#272727] text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
                   >
                     {tag}
                   </button>
@@ -624,17 +740,17 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                     setSelectedVideo(video);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className="flex gap-3 group cursor-pointer p-2 -m-2 rounded-xl hover:bg-white/5 transition-all duration-300"
+                  className="flex gap-3 group cursor-pointer p-2 -m-2 rounded-2xl hover:bg-white/5 transition-all duration-300"
                 >
-                  <div className="relative w-40 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-white/5 border border-white/10">
+                  <div className="relative w-40 h-24 flex-shrink-0 rounded-2xl overflow-hidden bg-white/5 border border-white/10">
                     <img src={video.thumbnail_url || undefined} className="w-full h-full object-cover transition-transform duration-500" alt="" />
-                    <div className="absolute bottom-1 right-1 bg-black/80 px-1 py-0.5 rounded text-[9px] font-bold text-white z-20">
+                    <div className="absolute bottom-1 right-1 bg-black/80 px-1 py-0.5 rounded-2xl text-[9px] font-bold text-white z-20">
                       12:34
                     </div>
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="text-xs font-bold text-white line-clamp-2 leading-snug mb-1 group-hover:text-white transition-colors">
-                      {video.title}
+                      {renderTextWithEmojis(video.title)}
                     </h4>
                     <p className="text-[10px] font-medium text-slate-500 mb-0.5 flex items-center gap-1">
                       {video.creator_name}
@@ -682,7 +798,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                 <button 
                   key={tag} 
                   onClick={() => setSelectedTag(tag)}
-                  className={`flex-shrink-0 px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 ${selectedTag === tag ? 'bg-white text-black' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
+                  className={`flex-shrink-0 px-5 py-2 rounded-2xl text-xs font-bold transition-all active:scale-95 ${selectedTag === tag ? 'bg-white text-black' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
                 >
                   {tag}
                 </button>
@@ -708,16 +824,22 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                   <div className="p-3">
                     <div className="flex gap-3">
                       <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 border border-white/10">
-                        <img src={video.creator_avatar || DEFAULT_AVATAR} alt="Avatar" className="w-full h-full object-cover" />
+                        <img src={video.creator_avatar || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-white font-bold text-sm mb-1 line-clamp-2 leading-tight">{video.title}</h4>
+                      <div className="flex-1 min-0">
+                        <h4 className="text-white font-bold text-sm mb-1 line-clamp-2 leading-tight">{renderTextWithEmojis(video.title)}</h4>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-slate-400 text-[10px] font-black">{video.creator_name}</p>
+                          <Username 
+                            username={video.creator_name || 'Utilisateur'} 
+                            displayName={video.creator_display_name}
+                            isVerified={video.creator_is_verified} 
+                            className="text-slate-400 text-xs font-bold" 
+                            badgeSize={10} 
+                          />
                           <span className="text-slate-700 text-[9px]">•</span>
-                          <span className="text-[9px] font-bold text-slate-500">{video.views} vues</span>
+                          <span className="text-xs font-bold text-slate-500">{video.views} vues</span>
                           <span className="text-slate-700 text-[9px]">•</span>
-                          <span className="text-[9px] font-bold text-slate-500">{formatRelativeDate(video.created_at)}</span>
+                          <span className="text-xs font-bold text-slate-500">{formatRelativeDate(video.created_at)}</span>
                         </div>
                       </div>
                     </div>
@@ -727,26 +849,26 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
             </div>
           ) : (
             /* État vide optimisé */
-            <div className="relative group overflow-hidden bg-white/5 border-2 border-white/10 rounded-3xl py-16 flex flex-col items-center justify-center text-center px-6 shadow-inner">
+            <div className="relative group overflow-hidden bg-white/5 border-2 border-white/10 rounded-2xl py-16 flex flex-col items-center justify-center text-center px-6 shadow-inner">
               
               <div className="relative z-10 mb-8">
                   <div className="w-20 h-20 bg-white/5 rounded-2xl flex items-center justify-center text-slate-700 shadow-2xl border border-white/10 group-hover:border-white/30 transition-colors">
                       <PlayCircle size={44} className="text-slate-600 group-hover:text-white transition-colors" />
                   </div>
-                  <div className="absolute -top-1 -right-1 w-9 h-9 bg-white rounded-xl flex items-center justify-center text-black shadow-lg">
+                  <div className="absolute -top-1 -right-1 w-9 h-9 bg-white rounded-2xl flex items-center justify-center text-black shadow-lg">
                       <Zap size={16} fill="black" />
                   </div>
               </div>
               
               <div className="relative z-10 max-w-lg">
-                  <h3 className="text-3xl font-black text-white mb-3 tracking-tighter leading-none">Wexo Vidéo</h3>
+                  <h3 className="text-3xl font-bold text-white mb-3 tracking-tighter leading-none">Wexo Vidéo</h3>
                   <p className="text-slate-400 text-sm leading-relaxed font-medium mb-10 max-w-xs mx-auto">
                       Il n'y a aucune vidéo pour le moment, cliquer si dessous pour poster votre propre vidéo
                   </p>
                   
                   <button 
                     onClick={onBecomeCreator}
-                    className="bg-white text-black hover:bg-slate-200 font-black text-[10px] uppercase tracking-[0.2em] px-10 py-5 rounded-2xl shadow-2xl transition-all active:scale-95 flex items-center gap-3 mx-auto"
+                    className="bg-white text-black hover:bg-slate-200 font-bold text-xs px-10 py-5 rounded-2xl shadow-2xl transition-all active:scale-95 flex items-center gap-3 mx-auto"
                   >
                       <MovieCameraIcon size={18} /> Devenir Créateur
                   </button>

@@ -1,0 +1,5 @@
+/* index.css */
+/* Minimal styles to avoid 404 */
+body {
+    -webkit-tap-highlight-color: transparent;
+}

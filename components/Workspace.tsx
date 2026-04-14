@@ -5,10 +5,23 @@ import {
   FileText, X, Sparkles, Loader2, ArrowLeft,
   Settings, LayoutGrid, Layers, Zap, Clock, ChevronRight,
   ShieldAlert, MoreVertical, Trash2, Edit3, AlertTriangle,
-  CheckCircle2, Lock
+  CheckCircle2, Lock, Info
 } from 'lucide-react';
 import { Workspace, WorkspaceProject } from '../types';
-import { supabase } from '../services/supabase';
+import { db } from '../firebase';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  addDoc, 
+  setDoc, 
+  doc, 
+  deleteDoc, 
+  updateDoc, 
+  orderBy,
+  serverTimestamp
+} from 'firebase/firestore';
 import { generateSnowflake } from '../utils/snowflake';
 
 interface WorkspaceProps {
@@ -61,30 +74,39 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
     setLoading(true);
     try {
       // Récupération via la table des membres pour inclure ceux partagés
-      const { data: memberData, error: memberError } = await supabase
-        .from('workspace_members')
-        .select('workspace_id')
-        .eq('user_id', user.id);
+      const membersRef = collection(db, 'workspace_members');
+      const qMembers = query(membersRef, where('user_id', '==', user.uid));
+      const memberSnapshot = await getDocs(qMembers);
+      const wsIds = memberSnapshot.docs.map(m => m.data().workspace_id);
 
-      if (memberError) throw memberError;
-
-      const wsIds = memberData?.map(m => m.workspace_id) || [];
+      // Récupération des workspaces dont l'utilisateur est proprio ou membre
+      const workspacesRef = collection(db, 'workspaces');
+      const wsList: any[] = [];
       
-      const { data: wsList, error: wsError } = await supabase
-        .from('workspaces')
-        .select('*')
-        .or(`owner_id.eq.${user.id},id.in.(${wsIds.length ? wsIds.join(',') : '00000000-0000-0000-0000-000000000000'})`);
+      // On récupère ceux dont il est proprio
+      const qOwner = query(workspacesRef, where('owner_id', '==', user.uid));
+      const ownerSnapshot = await getDocs(qOwner);
+      ownerSnapshot.forEach(doc => wsList.push({ id: doc.id, ...doc.data() }));
 
-      if (wsError) throw wsError;
+      // On récupère ceux dont il est membre (si pas déjà proprio)
+      for (const wsId of wsIds) {
+        if (!wsList.find(w => w.id === wsId)) {
+          const wsSnap = await getDocs(query(workspacesRef, where('id', '==', wsId)));
+          wsSnap.forEach(doc => wsList.push({ id: doc.id, ...doc.data() }));
+        }
+      }
       
-      const fullWorkspaces = await Promise.all((wsList || []).map(async (ws: any) => {
-        const { data: projects } = await supabase
-          .from('workspace_projects')
-          .select('*')
-          .eq('workspace_id', ws.id)
-          .order('updated_at', { ascending: false });
+      const fullWorkspaces = await Promise.all(wsList.map(async (ws: any) => {
+        const projectsRef = collection(db, 'workspace_projects');
+        const qProjects = query(
+          projectsRef, 
+          where('workspace_id', '==', ws.id),
+          orderBy('updated_at', 'desc')
+        );
+        const projectsSnapshot = await getDocs(qProjects);
+        const projects = projectsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         
-        return { ...ws, projects: projects || [] };
+        return { ...ws, projects };
       }));
 
       setWorkspaces(fullWorkspaces);
@@ -95,7 +117,6 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
         if (updated) {
           onEnterWorkspace(updated);
         } else {
-          // Si plus trouvé (supprimé), on sort
           onEnterWorkspace(null);
         }
       }
@@ -112,18 +133,25 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
 
     setActionLoading(true);
     try {
-      const { data: ws, error: wsError } = await supabase
-        .from('workspaces')
-        .insert([{ id: generateSnowflake(), name: wsName, owner_id: user.id }])
-        .select()
-        .single();
-
-      if (wsError) throw wsError;
+      const wsId = generateSnowflake();
+      const wsData = {
+        id: wsId,
+        name: wsName,
+        owner_id: user.uid,
+        created_at: serverTimestamp()
+      };
+      
+      await setDoc(doc(db, 'workspaces', wsId), wsData);
 
       // S'ajouter comme owner dans les membres
-      await supabase.from('workspace_members').insert([
-        { id: generateSnowflake(), workspace_id: ws.id, user_id: user.id, role: 'owner' }
-      ]);
+      const memberId = generateSnowflake();
+      await setDoc(doc(db, 'workspace_members', memberId), {
+        id: memberId,
+        workspace_id: wsId,
+        user_id: user.uid,
+        role: 'owner',
+        created_at: serverTimestamp()
+      });
 
       setIsCreatingWorkspace(false);
       setWsName('');
@@ -140,15 +168,11 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
     if (!workspaceToDelete || actionLoading) return;
     setActionLoading(true);
     try {
-      // Suppression du workspace (les projets et membres devraient être delete en cascade si configuré en SQL)
-      const { error } = await supabase
-        .from('workspaces')
-        .delete()
-        .eq('id', workspaceToDelete.id);
-
-      if (error) throw error;
+      await deleteDoc(doc(db, 'workspaces', workspaceToDelete.id));
       
-      // Si on était dans ce workspace, on revient à l'accueil
+      // Note: In Firestore, we should also delete members and projects manually 
+      // or use a Cloud Function for cascade delete. For now, we just delete the workspace.
+      
       if (activeWorkspace?.id === workspaceToDelete.id) {
         onEnterWorkspace(null);
       }
@@ -157,7 +181,7 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
       await fetchWorkspaces();
     } catch (err) {
       console.error("Erreur suppression:", err);
-      alert("Erreur SQL: Vérifie que tu as bien ajouté la règle DELETE dans Supabase.");
+      alert("Erreur de suppression.");
     } finally {
       setActionLoading(false);
     }
@@ -168,19 +192,16 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
     if (!editingWorkspace || !newName.trim() || actionLoading) return;
     setActionLoading(true);
     try {
-      const { error } = await supabase
-        .from('workspaces')
-        .update({ name: newName })
-        .eq('id', editingWorkspace.id);
-
-      if (error) throw error;
+      await updateDoc(doc(db, 'workspaces', editingWorkspace.id), {
+        name: newName
+      });
       
       setEditingWorkspace(null);
       setNewName('');
       await fetchWorkspaces();
     } catch (err) {
       console.error("Erreur renommage:", err);
-      alert("Erreur SQL: Vérifie que tu as bien ajouté la règle UPDATE dans Supabase.");
+      alert("Erreur de renommage.");
     } finally {
       setActionLoading(false);
     }
@@ -192,17 +213,16 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
 
     setActionLoading(true);
     try {
-      const { error } = await supabase
-        .from('workspace_projects')
-        .insert([{
-          id: generateSnowflake(),
-          workspace_id: activeWorkspace.id,
-          name: newProjectName,
-          type: newProjectType,
-          thumbnail_url: `https://picsum.photos/seed/${Date.now()}/600/400`
-        }]);
-
-      if (error) throw error;
+      const projectId = generateSnowflake();
+      await setDoc(doc(db, 'workspace_projects', projectId), {
+        id: projectId,
+        workspace_id: activeWorkspace.id,
+        name: newProjectName,
+        type: newProjectType,
+        thumbnail_url: `https://picsum.photos/seed/${Date.now()}/600/400`,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      });
       
       await fetchWorkspaces();
       setIsProjectModalOpen(false);
@@ -217,8 +237,8 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
   if (!user) {
     return (
       <div className="flex flex-col items-center justify-center py-56 animate-in fade-in duration-1000">
-        <div className="w-24 h-24 bg-white/5 rounded-[2.5rem] flex items-center justify-center text-slate-700 border border-white/10 mb-8 shadow-inner animate-pulse">
-          <Lock size={48} />
+        <div className="w-24 h-24 bg-white/5 rounded-2xl flex items-center justify-center text-slate-700 border border-white/10 mb-8 shadow-inner animate-pulse">
+          <Info size={48} />
         </div>
         <p className="text-slate-500 text-xs font-medium leading-relaxed">
           Connectez vous pour pouvoir accéder à vos Workspace.
@@ -231,44 +251,43 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
   return (
     <div className="relative animate-in fade-in duration-700 pb-20 overflow-hidden">
       {/* Overlay "En développement" */}
-      <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center bg-slate-950/20 backdrop-blur-[2px]">
-        <div className="bg-slate-900/90 border border-slate-800 p-10 rounded-3xl shadow-2xl max-w-md animate-in zoom-in duration-500">
-          <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center text-white mx-auto mb-8 border border-white/20">
-            <Lock size={40} />
+      <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center bg-black/40 backdrop-blur-[2px]">
+        <div className="bg-[#0f0f0f]/95 border border-white/10 p-10 rounded-2xl shadow-2xl max-w-md animate-in zoom-in duration-500">
+          <div className="w-20 h-20 bg-white/5 rounded-2xl flex items-center justify-center text-white mx-auto mb-8 border border-white/10">
+            <Info size={40} />
           </div>
-          <h2 className="text-3xl font-black text-white mb-3 tracking-tight">Hub Workspace</h2>
-          <p className="text-slate-400 text-sm font-medium leading-relaxed mb-8 uppercase tracking-widest opacity-60">
+          <h2 className="text-3xl font-bold text-white mb-3 tracking-tight">Hub Workspace</h2>
+          <p className="text-slate-400 text-sm font-medium leading-relaxed mb-4 opacity-60">
             Cette section est actuellement en cours de développement.
           </p>
-          <div className="h-1 w-20 bg-white mx-auto rounded-full shadow-[0_0_15px_rgba(255,255,255,0.5)]"></div>
         </div>
       </div>
 
       {/* Contenu flou et désactivé */}
       <div className="opacity-20 pointer-events-none select-none grayscale-[0.5]">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 bg-slate-900/40 p-10 rounded-3xl border border-slate-800 relative overflow-hidden shadow-2xl">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 bg-white/5 p-10 rounded-2xl border border-white/10 relative overflow-hidden shadow-2xl">
           <div className="relative z-10">
-            <h2 className="text-5xl font-black text-white tracking-tighter leading-none mb-5">Mes Hubs Wexo</h2>
+            <h2 className="text-5xl font-bold text-white tracking-tight leading-none mb-5">Mes Hubs Wexo</h2>
             <div className="flex flex-wrap gap-4">
-              <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-2xl border border-slate-700">
+              <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/5">
                 <Layers size={16} className="text-white" />
                 <span className="text-xs font-bold text-slate-300">8 Espaces</span>
               </div>
             </div>
           </div>
-          <button className="relative z-10 bg-white text-black font-black text-[13px] uppercase tracking-[0.2em] px-10 py-5 rounded-[2.5rem]">
+          <button className="relative z-10 bg-white text-black font-bold text-sm px-8 py-4 rounded-2xl">
             Créer un Workspace
           </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 mt-12">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="bg-slate-900/50 border border-slate-800 rounded-3xl p-8 relative overflow-hidden shadow-xl">
-               <div className="w-14 h-14 bg-slate-800 rounded-xl flex items-center justify-center text-white mb-8">
+            <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-8 relative overflow-hidden shadow-xl">
+               <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center text-white mb-8">
                   <Briefcase size={26} />
                 </div>
-                <h3 className="text-2xl font-black text-white mb-2 tracking-tight">Espace de Projet {i}</h3>
-                <div className="mt-10 pt-6 border-t border-slate-800/50 flex items-center justify-between text-white font-black text-[11px] uppercase tracking-[0.2em]">
+                <h3 className="text-2xl font-bold text-white mb-2 tracking-tight">Espace de Projet {i}</h3>
+                <div className="mt-10 pt-6 border-t border-white/5 flex items-center justify-between text-white font-bold text-xs">
                   <span>Ouvrir l'Espace</span>
                   <ChevronRight size={18} />
                 </div>

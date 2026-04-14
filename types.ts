@@ -5,8 +5,8 @@ export type TabId =
   | 'shorts'
   | 'workspace' 
   | 'message' 
+  | 'appel'
   | 'ma-chaine' 
-  | 'jeux' 
   | 'posts' 
   | 'historique' 
   | 'playlists' 
@@ -15,7 +15,21 @@ export type TabId =
   | 'parametres'
   | 'aide'
   | 'commentaire'
-  | 'admin-panel';
+  | 'admin-panel'
+  | 'telecharger';
+
+export interface UserProfile {
+  id: string;
+  display_id?: string;
+  username: string;
+  display_name?: string;
+  avatar_url?: string;
+  email?: string;
+  created_at?: any;
+  is_verified?: boolean;
+  role?: 'admin' | 'user';
+  auth_method?: 'google' | 'password' | 'anonymous';
+}
 
 export interface NavItem {
   id: TabId;
@@ -27,6 +41,12 @@ export interface NavItem {
 export interface Post {
   id: string;
   author: string;
+  author_id?: string;
+  author_email?: string;
+  author_display_id?: string;
+  author_display_name?: string;
+  author_is_verified?: boolean;
+  author_role?: 'admin' | 'user';
   avatar: string;
   content: string;
   created_at?: string;
@@ -34,14 +54,29 @@ export interface Post {
   likes: number;
   comments: number;
   image?: string;
+  video?: string;
+  type?: string;
+  is_appropriate?: boolean;
+  language?: string;
+  transcription?: { start: number, end: number, text: string }[] | null;
 }
 
 export interface Message {
   id: string;
   sender_id: string;
+  receiver_id: string;
   text: string;
-  timestamp: string;
-  is_own: boolean;
+  created_at: string;
+  timestamp?: string;
+  is_own?: boolean;
+  file_url?: string;
+  file_name?: string;
+  file_type?: string;
+  file_size?: number;
+  transcription?: { start: number, end: number, text: string }[] | null;
+  is_edited?: boolean;
+  is_deleted_for_everyone?: boolean;
+  deleted_for_me_by?: string[];
 }
 
 export interface Discussion {
@@ -89,11 +124,25 @@ export interface Video {
   url: string;
   thumbnail_url: string;
   creator_id: string;
+  creator_name?: string;
+  creator_email?: string;
+  creator_avatar?: string;
+  creator_display_id?: string;
+  creator_display_name?: string;
+  creator_is_verified?: boolean;
+  creator_role?: 'admin' | 'user';
   created_at: string;
   views: number;
   likes: number;
   is_short?: boolean;
-  creator_name?: string;
-  creator_avatar?: string;
   categories?: string[];
+  type?: string;
+  name_of_type?: string | null;
+  language?: string;
+  transcription?: { start: number, end: number, text: string }[] | null;
+  is_appropriate?: boolean;
+  is_promoted?: boolean;
+  target_user_ids?: string[];
+  watch_stats?: any[];
+  status?: 'analyzing' | 'publishing' | 'ready' | 'error';
 }
