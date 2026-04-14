@@ -16,7 +16,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install Dependencies
@@ -34,12 +34,12 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Capacitor CLI
-        run: npm install @capacitor/cli @capacitor/core @capacitor/android
-
       - name: Initialize Capacitor
         run: |
-          npx cap init Wexo com.wexo.app --web-dir dist
+          # Create capacitor.config.json if it doesn't exist
+          if [ ! -f capacitor.config.json ]; then
+            echo '{"appId": "com.wexo.app", "appName": "Wexo", "webDir": "dist", "bundledWebRuntime": false}' > capacitor.config.json
+          fi
           npx cap add android
 
       - name: Sync Capacitor
