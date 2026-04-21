@@ -129,7 +129,7 @@ const DownloadTab: React.FC<ExtraProps> = ({ user, profile }) => {
       <div className="mt-12 bg-[#1a1a1a] border border-white/5 rounded-2xl p-10 text-center">
         <h4 className="text-xl font-black text-white mb-4 tracking-tight">Mises à jour intelligentes</h4>
         <p className="text-slate-500 text-sm font-medium mb-8 max-w-xl mx-auto">
-          Pas besoin de retélécharger l'installateur à chaque fois. Quand une mise à jour est disponible, l'application se synchronise automatiquement avec <span className="text-white">wexo.netlify.app</span> pour vous offrir les dernières nouveautés instantanément.
+          Pas besoin de retélécharger l'installateur à chaque fois. Quand une mise à jour est disponible, l'application se synchronise automatiquement avec <span className="text-white">wexo-test.vercel.app</span> pour vous offrir les dernières nouveautés instantanément.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-left">
           <div>
