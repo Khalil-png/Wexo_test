@@ -443,8 +443,8 @@ const AppContent: React.FC = () => {
             (activeTab === 'message' || activeTab === 'shorts' || activeTab === 'appel')
               ? 'w-full h-full' 
               : activeTab === 'video'
-                ? 'max-w-[1600px] mx-auto w-full'
-                : 'max-w-7xl mx-auto w-full'
+                ? 'max-w-[1800px] mx-auto w-full'
+                : 'max-w-[1400px] mx-auto w-full'
           }`}>
             {(!activeWorkspace && activeTab !== 'message' && activeTab !== 'video' && activeTab !== 'shorts' && activeTab !== 'appel') && (
               <div className="mb-4 sm:mb-5 animate-in slide-in-from-left duration-700">
