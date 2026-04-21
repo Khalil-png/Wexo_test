@@ -67,7 +67,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
         {/* Logo Section - mb-8 pour laisser respirer le premier bouton Accueil */}
         <div className="flex items-center gap-4 px-8 mb-8">
           <img 
-            src="https://files.catbox.moe/wkn44b.png" 
+            src="https://carnote.synology.me:9443/api/files/pbc_2708086759/ckb6419uqwto8h0/w_1_removebg_preview_1_vbjej008kd.png?token=" 
             alt="Wexo Logo" 
             className="w-12 h-12 object-contain"
             referrerPolicy="no-referrer"

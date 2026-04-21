@@ -1,6 +1,6 @@
 {
-  "name": "Wexo - Réseau Social",
-  "description": "Une plateforme sociale tout-en-un avec espace de travail intelligent, vidéos, jeux et messagerie intégrée.",
+  "name": "Wexo",
+  "description": "Une plateforme sociale tout-en-un avec espace de travail intelligent, vidéos, jeux et messagerie intégrée, propulsée par votre propre serveur NAS.",
   "requestFramePermissions": [
     "camera",
     "microphone"

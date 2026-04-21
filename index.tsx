@@ -1,24 +1,21 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import './index.css';
+
+console.log('[Wexo] Mounting React App...');
 
 const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
-}
-
-const root = ReactDOM.createRoot(rootElement);
-
-// Global error handling for network issues
-window.addEventListener('unhandledrejection', (event) => {
-  if (event.reason && (event.reason.message === 'Failed to fetch' || event.reason.name === 'TypeError')) {
-    console.warn('Network request failed. This is likely due to a blocked connection or a paused Supabase project.', event.reason);
+if (rootElement) {
+  try {
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(<App />);
+    (window as any).__APP_MOUNTED__ = true;
+    console.log('[Wexo] Render successful');
+  } catch (err) {
+    console.error('[Wexo] Render error:', err);
+    rootElement.innerHTML = `<div style="color:red;padding:20px;">REACT_RENDER_ERROR: ${err instanceof Error ? err.message : String(err)}</div>`;
   }
-});
-
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+} else {
+  console.error('[Wexo] Root element not found');
+}

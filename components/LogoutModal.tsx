@@ -1,8 +1,8 @@
 
 import React from 'react';
 import { LogOut, X, AlertCircle } from 'lucide-react';
-import { auth } from '../firebase';
-import { signOut } from 'firebase/auth';
+import { pb } from '../services/pocketbaseService';
+// Firebase désactivé
 
 interface LogoutModalProps {
   onClose: () => void;
@@ -11,7 +11,7 @@ interface LogoutModalProps {
 const LogoutModal: React.FC<LogoutModalProps> = ({ onClose }) => {
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      pb.authStore.clear();
       onClose();
     } catch (error) {
       console.error("Erreur lors de la déconnexion:", error);

@@ -1,21 +1,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { renderTextWithEmojis } from '../utils/emoji';
-import { Play, Bell, Info, Zap, TrendingUp, Sparkles, Flame, Globe, User as UserIcon, AlertTriangle, AlignLeft, Heart, Eye } from 'lucide-react';
+import { Play, Bell, Info, Zap, TrendingUp, Sparkles, Flame, Globe, User as UserIcon, TriangleAlert, AlignLeft, Heart, Eye } from 'lucide-react';
 import { TabId, Video } from '../types';
-import { db } from '../firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  orderBy, 
-  limit, 
-  getDocs,
-  doc,
-  getDoc
-} from 'firebase/firestore';
 import { DEFAULT_AVATAR } from '../constants';
 import Username from './Username';
+import { pb } from '../services/pocketbaseService';
+// Firebase désactivé
 
 interface HomeTabProps {
   user: any;
@@ -29,29 +20,132 @@ const HomeTab: React.FC<HomeTabProps> = ({ user, profile, onTabChange }) => {
   const [fetchError, setFetchError] = useState(false);
   const [featuredVideo, setFeaturedVideo] = useState<Video | null>(null);
   const [loadingVideo, setLoadingVideo] = useState(true);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
 
   useEffect(() => {
     fetchFeaturedVideo();
     fetchMembers();
+    fetchPosts();
   }, []);
+
+  const fetchPosts = async () => {
+    setLoadingPosts(true);
+    try {
+      // Pour l'accueil, on cherche spécifiquement dans une collection 'announcements'
+      // Si elle n'existe pas encore, on ne montre rien (conformément à la demande)
+      let data: any[] = [];
+      try {
+        const resultList = await pb.collection('announcements').getList(1, 10, {
+          sort: '-created',
+          expand: 'user_id,creator_id'
+        });
+        
+        data = resultList.items.map(p => {
+          const author = p.expand?.user_id || p.expand?.creator_id;
+          return {
+            id: p.id,
+            content: p.content || '',
+            media_url: p.media_url || '',
+            media_type: p.media_type || '',
+            created_at: p.created,
+            author: author || { username: 'Utilisateur', name: 'Membre Wexo', avatar_url: DEFAULT_AVATAR }
+          };
+        });
+      } catch (e) {
+        // Fallback sur les posts classiques, mais on filtre localement pour les admins
+        try {
+          const resultList = await pb.collection('posts').getList(1, 15, {
+            sort: '-created',
+            expand: 'user_id,creator_id'
+          });
+          
+          data = resultList.items
+            .filter(p => {
+              const creator = p.expand?.user_id || p.expand?.creator_id;
+              return creator?.role === 'admin' || creator?.email === 'ky.chaine@gmail.com';
+            })
+            .map(p => {
+              const author = p.expand?.user_id || p.expand?.creator_id;
+              return {
+                id: p.id,
+                content: p.content || '',
+                media_url: p.media_url || '',
+                media_type: p.media_type || '',
+                created_at: p.created,
+                author: author || { username: 'Admin', name: 'Wexo Official', avatar_url: DEFAULT_AVATAR }
+              };
+            });
+        } catch (innerErr) {
+          console.warn("Échec du fallback annonces accueil:", innerErr);
+        }
+      }
+      setPosts(data);
+    } catch (err) {
+      console.error("Erreur annonces accueil:", err);
+      setPosts([]);
+    } finally {
+      setLoadingPosts(false);
+    }
+  };
 
   const fetchFeaturedVideo = async () => {
     setLoadingVideo(true);
     try {
-      const videosRef = collection(db, 'videos');
-      const q = query(
-        videosRef,
-        where('is_short', '==', false),
-        orderBy('views', 'desc'),
-        limit(1)
-      );
+      // On cherche une vidéo non-short à la une (toujours dans 'videos')
+      const resultList = await pb.collection('videos').getList(1, 1, {
+        sort: '-created',
+        expand: 'author,user_id,creator_id',
+        filter: 'is_short = false'
+      });
 
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        setFeaturedVideo({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Video);
+      if (resultList.items.length > 0) {
+        const v = resultList.items[0];
+        // Résilience pour l'expansion du créateur
+        const author = v.expand?.author || v.expand?.user_id || v.expand?.creator_id;
+        setFeaturedVideo({
+          id: v.id,
+          title: v.title,
+          description: v.description || '',
+          url: v.video_url || v.url,
+          thumbnail_url: v.thumbnail_url,
+          views: Number(v.views) || 0,
+          likes: Number(v.likes) || 0,
+          creator_id: v.author || v.user_id || v.creator_id || '',
+          creator_name: author?.username || 'Utilisateur',
+          creator_display_name: author?.name || author?.username || 'Utilisateur',
+          creator_avatar: author?.avatar_url || DEFAULT_AVATAR,
+          creator_is_verified: author?.is_verified || false,
+          created_at: v.created
+        });
       }
     } catch (err) {
-      console.error("Erreur vidéo à la une:", err);
+      console.warn("Erreur vidéo accueil, fallback sur liste complète:", err);
+      try {
+        const fallbackList = await pb.collection('videos').getList(1, 1, {
+          sort: '-created',
+          expand: 'author,user_id,creator_id'
+        });
+        if (fallbackList.items.length > 0) {
+           const v = fallbackList.items[0];
+           const author = v.expand?.author || v.expand?.user_id || v.expand?.creator_id;
+           setFeaturedVideo({
+             id: v.id,
+             title: v.title,
+             description: v.description || '',
+             url: v.video_url || v.url,
+             thumbnail_url: v.thumbnail_url,
+             views: Number(v.views) || 0,
+             likes: Number(v.likes) || 0,
+             creator_id: v.author || v.user_id || v.creator_id || '',
+             creator_name: author?.username || 'Utilisateur',
+             creator_display_name: author?.name || author?.username || 'Utilisateur',
+             creator_avatar: author?.avatar_url || DEFAULT_AVATAR,
+             creator_is_verified: author?.is_verified || false,
+             created_at: v.created
+           });
+        }
+      } catch(e) {}
     } finally {
       setLoadingVideo(false);
     }
@@ -62,20 +156,32 @@ const HomeTab: React.FC<HomeTabProps> = ({ user, profile, onTabChange }) => {
     setFetchError(false);
     
     try {
-      const profilesRef = collection(db, 'profiles');
-      const q = query(
-        profilesRef,
-        orderBy('created_at', 'desc'),
-        limit(10)
-      );
-
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs
-        .map(d => ({ id: d.id, ...d.data() }))
+      // Récupération des membres depuis le NAS (PocketBase)
+      const resultList = await pb.collection('users').getList(1, 15, {
+        sort: '-created',
+      });
+      
+      const data = resultList.items
+        .map(model => ({
+          id: model.id,
+          username: model.username,
+          display_name: model.name || model.username,
+          avatar_url: model.avatar_url,
+          is_verified: model.is_verified || false,
+          role: model.role || 'user',
+          email: model.email
+        }))
         .filter((m: any) => m.id !== 'gemini');
+        
       setMembers(data);
     } catch (err: any) {
-      console.error("Erreur de récupération:", err);
+      console.error("Erreur de récupération NAS:", {
+        message: err.message,
+        details: err.response,
+        error: err
+      });
+      // Fallback vide si erreur
+      setMembers([]);
       setFetchError(true);
     } finally {
       setLoadingMembers(false);
@@ -155,10 +261,10 @@ const HomeTab: React.FC<HomeTabProps> = ({ user, profile, onTabChange }) => {
                   isVerified={member.is_verified} 
                   isAdmin={member.role === 'admin'}
                   email={member.email}
-                  className="text-xs font-bold text-white truncate w-full justify-center" 
-                  badgeSize={10} 
+                  className="text-base font-bold text-white truncate w-full justify-center cursor-text select-text" 
+                  badgeSize={12} 
                 />
-                <span className="text-[10px] font-medium text-slate-500 mt-1">Membre</span>
+                <span className="text-sm font-medium text-slate-500 mt-1 cursor-text select-text">@{member.username}</span>
               </div>
             ))
           ) : (
@@ -264,11 +370,61 @@ const HomeTab: React.FC<HomeTabProps> = ({ user, profile, onTabChange }) => {
           </div>
 
           <div className="bg-white/5 border border-white/10 rounded-2xl p-8 flex flex-col items-center justify-center text-center min-h-[300px]">
-            <AlignLeft size={20} className="text-slate-700 mb-4" />
-            <h4 className="text-white font-bold text-sm mb-1 tracking-tight">Annonces Wexo</h4>
-            <p className="text-[10px] text-slate-500 font-bold leading-relaxed">
-              Aucunes annonces Wexo pour le moment.
-            </p>
+            {loadingPosts ? (
+              <div className="animate-spin text-white">
+                <Sparkles size={24} />
+              </div>
+            ) : posts.length > 0 ? (
+              <div className="w-full space-y-4 text-left">
+                {posts.map((post) => (
+                  <div key={post.id} className="bg-white/5 border border-white/5 rounded-xl p-4 hover:bg-white/[0.08] transition-all cursor-pointer group" onClick={() => onTabChange('posts')}>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-8 h-8 rounded-full overflow-hidden border border-white/10">
+                        <img src={post.author?.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                      </div>
+                      <div className="flex flex-col">
+                        <Username 
+                          username={post.author?.username || 'Utilisateur'} 
+                          displayName={post.author?.name || post.author?.username}
+                          isVerified={post.author?.is_verified} 
+                          className="text-xs font-bold text-white tracking-tight" 
+                          badgeSize={10} 
+                        />
+                        <span className="text-[10px] font-bold text-slate-500">@{post.author?.username || 'utilisateur'}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed font-medium">
+                      {renderTextWithEmojis(post.content)}
+                    </p>
+                    {post.media_url && (
+                      <div className="mt-3 aspect-video rounded-lg overflow-hidden border border-white/5 bg-black/20">
+                        {post.media_type === 'video' ? (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Play size={16} className="text-white/40" />
+                          </div>
+                        ) : (
+                          <img src={post.media_url} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="" referrerPolicy="no-referrer" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <button 
+                  onClick={() => onTabChange('posts')}
+                  className="w-full py-3 text-[10px] font-black text-slate-500 hover:text-white transition-colors border-t border-white/5 mt-2"
+                >
+                  VOIR LE FLUX COMPLET
+                </button>
+              </div>
+            ) : (
+              <>
+                <AlignLeft size={20} className="text-slate-700 mb-4" />
+                <h4 className="text-white font-bold text-sm mb-1 tracking-tight">Annonces Wexo</h4>
+                <p className="text-[10px] text-slate-500 font-bold leading-relaxed">
+                  Aucunes annonces Wexo pour le moment.
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>

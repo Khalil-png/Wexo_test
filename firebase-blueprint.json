@@ -88,7 +88,9 @@
         "file_type": { "type": "string" },
         "file_size": { "type": "integer" },
         "is_deleted_for_everyone": { "type": "boolean" },
-        "deleted_for_me_by": { "type": "array", "items": { "type": "string" } }
+        "deleted_for_me_by": { "type": "array", "items": { "type": "string" } },
+        "is_screenshot_alert": { "type": "boolean", "description": "Whether this message is a screenshot notification" },
+        "sender_name": { "type": "string", "description": "The display name of the user who took the screenshot" }
       },
       "required": ["id", "sender_id", "receiver_id"]
     },

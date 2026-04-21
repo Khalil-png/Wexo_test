@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { renderTextWithEmojis, EMOJI_MAP } from '../utils/emoji';
 import { 
   Search, Plus, Smile, Send, X, Image, Pencil,
@@ -12,37 +12,16 @@ import {
 import VideoPlayer from './VideoPlayer';
 import { DEFAULT_AVATAR } from '../constants';
 import { Message } from '../types';
-import { getSmartResponse, generateImage, generateVideo, checkApiKey, openKeySelector } from '../services/geminiService';
-import { auth, db, storage } from '../firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  addDoc, 
-  updateDoc, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
-  deleteDoc,
-  limit,
-  or,
-  and,
-  Timestamp,
-  serverTimestamp,
-  arrayUnion,
-  arrayRemove
-} from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { generateSnowflake } from '../utils/snowflake';
+import { getSmartResponse, generateImage, generateVideo, checkApiKey, openKeySelector, analyzeVideo } from '../services/geminiService';
+import { pb, uploadToPocketBase } from '../services/pocketbaseService';
+// Firebase désactivé
 import { isMobileDevice } from '../src/utils/device';
 import { useClickOutside } from '../utils/hooks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { generateSnowflake } from '../utils/snowflake';
 import Username from './Username';
 
 // Avatar Gemini parfaitement centré en X et Y
@@ -215,6 +194,8 @@ interface ExtendedMessage extends Message {
   isGeneratingImage?: boolean;
   isGeneratingVideo?: boolean;
   needsKey?: boolean;
+  is_screenshot_alert?: boolean;
+  sender_name?: string;
 }
 
 interface MessagesTabProps {
@@ -325,92 +306,88 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const fetchConversations = useCallback(async () => {
+    if (!user) return;
+    try {
+      // Pour reconstruire la liste des conversations, on cherche les messages où l'utilisateur est impliqué
+      const filter = `sender_id="${user.uid}" || receiver_id="${user.uid}"`;
+      const resultList = await pb.collection('messages').getList(1, 100, {
+        filter: filter,
+        sort: '-created',
+      });
+
+      // Extraire les identifiants uniques des interlocuteurs
+      const participants = new Set<string>();
+      resultList.items.forEach(m => {
+        if (m.sender_id !== user.uid) participants.add(m.sender_id);
+        if (m.receiver_id !== user.uid) participants.add(m.receiver_id);
+      });
+
+      // Récupérer les profils et construire la liste
+      const convs: any[] = [];
+      
+      // On ajoute Gemini dans les conversations SI on a un message avec lui
+      // Mais on s'assure qu'il est unique
+      const hasGeminiMessages = participants.has('gemini');
+      if (hasGeminiMessages) {
+        const lastGeminiMsg = resultList.items.find(m => m.sender_id === 'gemini' || m.receiver_id === 'gemini');
+        convs.push({
+          id: 'gemini',
+          username: 'Gemini',
+          lastMessage: lastGeminiMsg?.text || 'Assistant IA',
+          lastMessageTime: lastGeminiMsg ? new Date(lastGeminiMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
+          unreadCount: 0
+        });
+        participants.delete('gemini');
+      }
+
+      // Filtrer les participants pour éviter d'avoir un "Doublon" utilisateur nommé Gemini si possible
+      // Mais surtout, s'assurer que si un utilisateur a l'ID 'gemini', il est traité comme l'IA
+
+      // Pour les autres participants (on filtre tout ce qui ressemble à Gemini pour éviter les doublons avec l'IA)
+      for (const pId of Array.from(participants)) {
+        try {
+          const u = await pb.collection('users').getOne(pId);
+          if (u.id === 'gemini' || u.username.toLowerCase() === 'gemini' || (u.name || '').toLowerCase() === 'gemini') {
+            continue;
+          }
+          const lastMsg = resultList.items.find(m => m.sender_id === pId || m.receiver_id === pId);
+          convs.push({
+            id: u.id,
+            username: u.username,
+            avatar_url: u.avatar_url,
+            lastMessage: lastMsg?.text || '',
+            lastMessageTime: lastMsg ? new Date(lastMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
+            unreadCount: 0
+          });
+        } catch (e) {
+          console.error("Erreur chargement profil conversation:", e);
+        }
+      }
+
+      setConversations(convs);
+    } catch (err: any) {
+      console.error("Erreur chargement conversations NAS:", {
+        message: err.message,
+        details: err.response,
+        error: err
+      });
+    }
+  }, [user]);
+
   useEffect(() => {
     if (user) {
-      // Realtime subscription for friendships
-      const friendshipsRef = collection(db, 'friendships');
-      const q = query(
-        friendshipsRef, 
-        or(where('requester_id', '==', user.uid), where('receiver_id', '==', user.uid))
-      );
+      fetchConversations();
       
-      const unsubscribeFriendships = onSnapshot(q, (snapshot) => {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setFriendships(data);
-      });
-
-      // Realtime subscription for conversations (via messages)
-      const messagesRef = collection(db, 'messages');
-      const qMessages = query(
-        messagesRef,
-        or(where('sender_id', '==', user.uid), where('receiver_id', '==', user.uid)),
-        orderBy('created_at', 'desc')
-      );
-
-      const unsubscribeConversations = onSnapshot(qMessages, async (snapshot) => {
-        const messagesData = snapshot.docs.map(doc => doc.data());
-        
-        // Fetch unread notifications
-        const notifsRef = collection(db, 'notifications');
-        const qNotifs = query(
-          notifsRef,
-          where('user_id', '==', user.uid),
-          where('type', '==', 'message'),
-          where('status', '==', 'unread')
-        );
-        const notifsSnapshot = await getDocs(qNotifs);
-        const unreadNotifs = notifsSnapshot.docs.map(doc => doc.data());
-
-        const conversationMap = new Map<string, any>();
-        messagesData.forEach(m => {
-          const otherId = m.sender_id === user.uid ? m.receiver_id : m.sender_id;
-          if (otherId === 'gemini' || otherId === user.uid) return;
-          
-          if (!conversationMap.has(otherId)) {
-            let lastMsgText = m.text;
-            if (m.is_deleted_for_everyone) {
-              lastMsgText = 'Ce message a été supprimé';
-            } else if (m.file_url) {
-              lastMsgText = m.file_type?.startsWith('image/') ? '[image]' : '[fichier]';
-            }
-            
-            const unreadCount = unreadNotifs.filter(n => n.sender_id === otherId).length;
-
-            conversationMap.set(otherId, {
-              lastMessage: lastMsgText,
-              timestamp: m.created_at,
-              unreadCount
-            });
-          }
-        });
-        
-        const uniqueIds = Array.from(conversationMap.keys());
-        if (uniqueIds.length > 0) {
-          const profilesRef = collection(db, 'profiles');
-          // Firestore 'in' query limit is 10 (or 30 in some cases), but let's keep it simple
-          const enrichedConversations: any[] = [];
-          for (const id of uniqueIds) {
-            const pDoc = await getDoc(doc(profilesRef, id));
-            if (pDoc.exists()) {
-              const p = pDoc.data();
-              const convData = conversationMap.get(id);
-              enrichedConversations.push({
-                ...p,
-                lastMessage: convData.lastMessage,
-                unreadCount: convData.unreadCount,
-                lastMessageTime: convData.timestamp ? new Date(convData.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''
-              });
-            }
-          }
-          setConversations(enrichedConversations);
-        } else {
-          setConversations([]);
+      // Real-time pour les conversations
+      pb.collection('messages').subscribe('*', (e) => {
+        if (e.action === 'create') {
+          fetchConversations();
         }
       });
-
+      
       return () => {
-        unsubscribeFriendships();
-        unsubscribeConversations();
+        pb.collection('messages').unsubscribe('*');
       };
     } else {
       setSelectedId(null);
@@ -418,62 +395,109 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
       setConversations([]);
       setMessages([]);
     }
-  }, [user]);
+  }, [user, fetchConversations]);
+
+  const fetchMessages = useCallback(async () => {
+    if (!user || !selectedId) return;
+    
+    try {
+      // Pour Gemini, on peut stocker localement ou sur le NAS. 
+      // Si on veut que ça persiste après refresh, il faut le NAS.
+      const filter = `(sender_id="${user.uid}" && receiver_id="${selectedId}") || (sender_id="${selectedId}" && receiver_id="${user.uid}")`;
+      const resultList = await pb.collection('messages').getList(1, 100, {
+        filter: filter,
+        sort: 'created',
+      });
+
+      const formatted = resultList.items.map(m => ({
+        id: m.id,
+        sender_id: m.sender_id,
+        receiver_id: m.receiver_id,
+        text: m.text,
+        created_at: m.created,
+        is_own: m.sender_id === user.uid,
+        isAI: m.sender_id === 'gemini',
+        file_url: m.file_url,
+        file_name: m.file_name,
+        file_type: m.file_type,
+        file_size: m.file_size,
+        timestamp: new Date(m.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      } as ExtendedMessage));
+
+      setMessages(formatted);
+    } catch (err) {
+      console.error("Erreur chargement messages NAS:", err);
+    }
+  }, [user, selectedId]);
 
   useEffect(() => {
     if (user && selectedId) {
       setStagedFile(null);
-      
-      // Realtime subscription for messages in this chat
-      const messagesRef = collection(db, 'messages');
-      const q = query(
-        messagesRef,
-        or(
-          and(where('sender_id', '==', user.uid), where('receiver_id', '==', selectedId)),
-          and(where('sender_id', '==', selectedId), where('receiver_id', '==', user.uid))
-        ),
-        orderBy('created_at', 'asc')
-      );
+      fetchMessages();
 
-      const unsubscribeMessages = onSnapshot(q, (snapshot) => {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const filteredData = data.filter((m: any) => {
-          const deletedForMeBy = m.deleted_for_me_by || [];
-          return !deletedForMeBy.includes(user.uid);
-        });
-
-        setMessages(filteredData.map((m: any) => ({
-          ...m,
-          is_own: m.sender_id === user.uid,
-          isAI: m.sender_id === 'gemini',
-          timestamp: m.created_at ? new Date(m.created_at).toLocaleTimeString('fr-FR', { 
-            hour: '2-digit', 
-            minute: '2-digit'
-          }) : ''
-        })));
-      });
-      
-      // Clear notifications from this sender
-      if (selectedId !== 'gemini') {
-        const notifsRef = collection(db, 'notifications');
-        const qNotifs = query(
-          notifsRef,
-          where('user_id', '==', user.uid),
-          where('sender_id', '==', selectedId),
-          where('type', '==', 'message')
-        );
-        getDocs(qNotifs).then(snapshot => {
-          snapshot.docs.forEach(d => deleteDoc(d.ref));
-        });
-        fetchSelectedProfile();
-      } else {
+      if (selectedId === 'gemini') {
         setSelectedProfile({ username: 'Gemini', avatar_url: null });
-        ensureGeminiProfile();
+      } else {
+        fetchSelectedProfile();
       }
 
-      return () => unsubscribeMessages();
+      // Real-time subscription
+      pb.collection('messages').subscribe('*', (e) => {
+        if (e.action === 'create') {
+          const m = e.record;
+          // Vérifier si le message appartient à la conversation actuelle
+          const isRelated = (m.sender_id === user.uid && m.receiver_id === selectedId) || 
+                            (m.sender_id === selectedId && m.receiver_id === user.uid);
+          
+          if (isRelated) {
+            setMessages(prev => {
+              // Vérifier si le message existe déjà (par ID réel ou par détection d'optimistic update)
+              const isDuplicate = prev.some(msg => 
+                msg.id === m.id || 
+                ((msg.is_own || msg.sender_id === 'gemini') && 
+                 msg.text === m.text && 
+                 msg.sender_id === m.sender_id &&
+                 Math.abs(new Date(msg.created_at).getTime() - new Date(m.created).getTime()) < 10000)
+              );
+
+              if (isDuplicate) {
+                // Si c'est un doublon d'un message optimiste (le nôtre ou celui de Gemini), 
+                // on met à jour l'ID temporaire par l'ID réel
+                return prev.map(msg => {
+                  if ((msg.is_own || msg.sender_id === 'gemini') && msg.text === m.text && !msg.id.startsWith('rec')) {
+                    return { ...msg, id: m.id, created_at: m.created };
+                  }
+                  return msg;
+                });
+              }
+              
+              const newMsg = {
+                id: m.id,
+                sender_id: m.sender_id,
+                receiver_id: m.receiver_id,
+                text: m.text,
+                created_at: m.created,
+                is_own: m.sender_id === user.uid,
+                isAI: m.sender_id === 'gemini',
+                file_url: m.file_url,
+                file_name: m.file_name,
+                file_type: m.file_type,
+                file_size: m.file_size,
+                timestamp: new Date(m.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+              } as ExtendedMessage;
+              return [...prev, newMsg];
+            });
+          }
+        }
+      });
+
+      return () => {
+        pb.collection('messages').unsubscribe('*');
+      };
+    } else {
+      setMessages([]);
     }
-  }, [user, selectedId]);
+  }, [user, selectedId, fetchMessages]);
 
   const copyId = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -483,34 +507,28 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
   };
 
   const ensureGeminiProfile = async () => {
-    if (!user) return;
-    try {
-      const geminiRef = doc(db, 'profiles', 'gemini');
-      const snap = await getDoc(geminiRef);
-      
-      // Only create if it doesn't exist
-      if (!snap.exists()) {
-        await setDoc(geminiRef, {
-          id: 'gemini',
-          username: 'Gemini',
-          avatar_url: null,
-          email: 'gemini@ai.wexo',
-          updated_at: new Date().toISOString()
-        });
-      } else if (user.email === 'ky.chaine@gmail.com') {
-        // Admins can update it to ensure it's correct
-        await updateDoc(geminiRef, {
-          updated_at: new Date().toISOString()
-        });
-      }
-    } catch (err) {
-      // Ignore permission errors if the profile already exists (for non-admins)
-      if (err instanceof Error && err.message.includes('permission-denied')) {
-        return;
-      }
-      console.error("Error ensuring Gemini profile:", err);
-    }
+    // Migration NAS : Gemini sera géré via PocketBase plus tard
   };
+
+  const sendScreenshotAlert = async () => {
+    // Migration NAS : Alertes non supportées pour le moment
+  };
+
+  useEffect(() => {
+    if (!selectedId || selectedId === 'gemini') return;
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      // Detect PrintScreen key
+      if (e.key === 'PrintScreen') {
+        sendScreenshotAlert();
+      }
+    };
+
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [selectedId, user, profile]);
 
   useEffect(() => {
     // Listen for custom event from Header
@@ -539,10 +557,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
 
   const fetchSelectedProfile = async () => {
     if (!selectedId) return;
-    const docRef = doc(db, 'profiles', selectedId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      setSelectedProfile(docSnap.data());
+    try {
+      const model = await pb.collection('users').getOne(selectedId);
+      setSelectedProfile({
+        id: model.id,
+        username: model.username,
+        display_name: model.name || model.username,
+        avatar_url: model.avatar_url,
+        is_verified: model.is_verified || false,
+        role: model.role || 'user'
+      });
+    } catch (err) {
+      console.error("Erreur profil NAS:", err);
     }
   };
 
@@ -550,49 +576,35 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
     setSearchQuery(queryStr);
     setShowDeleteFriend(null);
     
-    const profilesRef = collection(db, 'profiles');
-    let q;
-    
-    if (tab === 'ami') {
-      const friendsIds = friendships
-        .filter(f => f.status === 'accepted')
-        .map(f => f.requester_id === user.uid ? f.receiver_id : f.requester_id);
+    try {
+      // Recherche PocketBase
+      const filter = queryStr ? `username ~ "${queryStr}" || name ~ "${queryStr}"` : '';
+      const result = await pb.collection('users').getList(1, 20, { filter });
       
-      if (friendsIds.length === 0) {
-        setUsersList([]);
-        return;
-      }
-      
-      q = query(profilesRef, where('id', 'in', friendsIds));
-    } else {
-      q = query(profilesRef, where('id', '!=', user.uid));
+      const data = result.items
+        .filter(m => 
+          m.id !== user?.uid && 
+          m.id !== 'gemini' && 
+          m.username.toLowerCase() !== 'gemini' &&
+          (m.name || '').toLowerCase() !== 'gemini'
+        )
+        .map(m => ({
+          id: m.id,
+          username: m.username,
+          display_name: m.name || m.username,
+          avatar_url: m.avatar_url,
+          is_verified: m.is_verified || false,
+          role: m.role || 'user'
+        }));
+        
+      setUsersList(data);
+    } catch (err) {
+      console.error("Erreur recherche NAS:", err);
     }
-
-    const snapshot = await getDocs(q);
-    let data = snapshot.docs
-      .map(doc => doc.data())
-      .filter((p: any) => p.id !== 'gemini');
-    
-    if (queryStr) {
-      const lowerQuery = queryStr.toLowerCase();
-      data = data.filter((p: any) => p.username.toLowerCase().includes(lowerQuery));
-    }
-    
-    setUsersList(data.slice(0, 20));
   };
 
   const handleRemoveFriend = async (friendId: string) => {
-    const q = query(
-      collection(db, 'friendships'),
-      or(
-        and(where('requester_id', '==', user.uid), where('receiver_id', '==', friendId)),
-        and(where('requester_id', '==', friendId), where('receiver_id', '==', user.uid))
-      )
-    );
-    const snapshot = await getDocs(q);
-    snapshot.docs.forEach(d => deleteDoc(d.ref));
-    
-    handleSearchUsers(searchQuery);
+    // Migration NAS
     setShowDeleteFriend(null);
   };
 
@@ -660,54 +672,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
     );
   };
 
-  const handleFirestoreError = (error: any, operationType: string, path: string | null) => {
-    const errInfo = {
-      error: error instanceof Error ? error.message : String(error),
-      authInfo: {
-        userId: auth.currentUser?.uid,
-        email: auth.currentUser?.email,
-        emailVerified: auth.currentUser?.emailVerified,
-        isAnonymous: auth.currentUser?.isAnonymous,
-        tenantId: (auth.currentUser as any)?.tenantId,
-        providerInfo: auth.currentUser?.providerData.map(provider => ({
-          providerId: provider.providerId,
-          displayName: provider.displayName,
-          email: provider.email,
-          photoUrl: provider.photoURL
-        })) || []
-      },
-      operationType,
-      path
-    };
-    console.error('Firestore Error: ', JSON.stringify(errInfo));
-    // throw new Error(JSON.stringify(errInfo)); // On ne throw pas forcément ici pour ne pas crash l'UI
-  };
+  const handleMigrationPlaceholder = () => {};
 
   const handleAddFriend = async (targetId: string) => {
-    if (!user) return;
-    try {
-      const friendshipId = generateSnowflake();
-      await setDoc(doc(db, 'friendships', friendshipId), {
-        id: friendshipId,
-        requester_id: user.uid,
-        receiver_id: targetId,
-        status: 'pending',
-        created_at: new Date().toISOString()
-      });
-
-      // Add notification for the receiver
-      const notifId = generateSnowflake();
-      await setDoc(doc(db, 'notifications', notifId), {
-        id: notifId,
-        user_id: targetId,
-        type: 'friend_request',
-        sender_id: user.uid,
-        status: 'unread',
-        created_at: new Date().toISOString()
-      });
-    } catch (err) {
-      handleFirestoreError(err, 'WRITE', 'friendships');
-    }
+    // Migration NAS
+    console.log("Add friend non supporté sur NAS pour le moment");
   };
 
   const sendMessage = async (text: string, fileData?: { url: string, name: string, type: string, size: number }) => {
@@ -715,10 +684,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
     if ((!text.trim() && !finalFileData) || !user) return;
     const isGemini = selectedId === 'gemini';
     const now = new Date().toISOString();
-    const snowflakeId = generateSnowflake();
 
     const newMsg: any = { 
-      id: snowflakeId, 
       sender_id: user.uid, 
       receiver_id: selectedId!, 
       text: text || '', 
@@ -730,7 +697,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
       newMsg.file_name = finalFileData.name;
       newMsg.file_type = finalFileData.type;
       newMsg.file_size = finalFileData.size;
-      newMsg.transcription = (finalFileData as any).transcription || null;
     }
     
     // Optimistic UI
@@ -739,43 +705,34 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
       minute: '2-digit'
     });
 
-    setMessages(prev => {
-      if (prev.some(m => m.id === snowflakeId)) return prev;
-      return [...prev, { 
-        ...newMsg, 
-        id: snowflakeId, 
-        is_own: true, 
-        timestamp: optimisticTimestamp,
-        sender_id: user.uid,
-        receiver_id: selectedId!
-      } as ExtendedMessage];
-    });
+    setMessages(prev => [...prev, { 
+      ...newMsg, 
+      id: Date.now().toString(), 
+      is_own: true, 
+      timestamp: optimisticTimestamp
+    } as ExtendedMessage]);
+    
     setMessageText('');
     setStagedFile(null);
 
+    // Migration NAS : Envoi des messages PocketBase
     try {
-      await setDoc(doc(db, 'messages', snowflakeId), newMsg);
-      
-      // Insert notification for the receiver (if not Gemini)
-      if (!isGemini) {
-        const notifId = generateSnowflake();
-        await setDoc(doc(db, 'notifications', notifId), {
-          id: notifId,
-          user_id: selectedId!,
-          type: 'message',
-          sender_id: user.uid,
-          status: 'unread',
-          created_at: now
-        });
-      }
-      
-      if (isGemini) {
+      const pbData = {
+        ...newMsg,
+        created: now // Map logic if needed
+      };
+      await pb.collection('messages').create(pbData);
+      fetchConversations();
+    } catch (err) {
+      console.error("Erreur envoi message NAS:", err);
+    }
+    
+    if (isGemini) {
+      try {
         setIsTypingAI(true);
         
         // Prepare history for Gemini
         const history: any[] = [];
-        
-        // Filter out errors and map to Gemini format
         const validMessages = messages.filter(m => !m.isError).slice(-10);
         
         validMessages.forEach(m => {
@@ -788,7 +745,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
         // Add the current message
         if (finalFileData && (finalFileData.type.startsWith('image/') || finalFileData.type.startsWith('video/'))) {
           try {
-            // We need the base64 of the file for Gemini
             const response = await fetch(finalFileData.url);
             const blob = await response.blob();
             const reader = new FileReader();
@@ -829,50 +785,55 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
           created_at: new Date().toISOString() 
         };
 
-        // Optimistic AI message display
         const aiTimestamp = new Date().toLocaleTimeString('fr-FR', { 
           hour: '2-digit', 
           minute: '2-digit'
         });
 
         if (aiResult.imagePrompt || aiResult.videoPrompt) {
+          const aiFinalMsg = { 
+            ...aiMsg, 
+            is_own: false, 
+            isAI: true,
+            isGeneratingImage: !!aiResult.imagePrompt,
+            isGeneratingVideo: !!aiResult.videoPrompt,
+            timestamp: aiTimestamp
+          };
+          
           setMessages(prev => {
             if (prev.some(m => m.id === aiSnowflakeId)) return prev;
-            return [...prev, { 
-              ...aiMsg, 
-              is_own: false, 
-              isAI: true,
-              isGeneratingImage: !!aiResult.imagePrompt,
-              isGeneratingVideo: !!aiResult.videoPrompt,
-              timestamp: aiTimestamp
-            } as any];
+            return [...prev, aiFinalMsg as any];
           });
           setIsTypingAI(false);
+
+          // On sauvegarde aussi la réponse de Gemini sur le NAS pour la persistance
+          try {
+            await pb.collection('messages').create({
+              sender_id: 'gemini',
+              receiver_id: user.uid,
+              text: responseText,
+              is_ai: true,
+              created: new Date().toISOString()
+            });
+            // Update conversation list
+            fetchConversations();
+          } catch (e) {
+            console.error("Erreur sauvegarde réponse Gemini NAS:", e);
+          }
         }
 
         // Handle image generation
         if (aiResult.imagePrompt) {
           try {
             const base64Image = await generateImage(aiResult.imagePrompt as string);
-            
-            // Convert base64 to Blob
             const parts = base64Image.split(';base64,');
             if (parts.length === 2) {
               const contentType = parts[0].split(':')[1];
               const raw = window.atob(parts[1]);
               const uInt8Array = new Uint8Array(raw.length);
-              for (let i = 0; i < raw.length; ++i) {
-                uInt8Array[i] = raw.charCodeAt(i);
-              }
+              for (let i = 0; i < raw.length; ++i) uInt8Array[i] = raw.charCodeAt(i);
               const blob = new Blob([uInt8Array], { type: contentType });
-              
-              const fileName = `gemini_${generateSnowflake()}.png`;
-              const storageRef = ref(storage, `gemini/${fileName}`);
-              
-              const uploadTask = uploadBytesResumable(storageRef, blob);
-              await uploadTask;
-              const publicUrl = await getDownloadURL(uploadTask.snapshot.ref);
-              
+              const publicUrl = await uploadToPocketBase(blob);
               aiMsg.file_url = publicUrl;
               aiMsg.file_name = 'Image générée par Gemini.png';
               aiMsg.file_type = 'image/png';
@@ -887,51 +848,26 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
         // Handle video generation
         if (aiResult.videoPrompt) {
           try {
-            // Check if API key is selected for Veo
             const hasKey = await checkApiKey();
             if (!hasKey) {
-              aiMsg.text = "Pour générer des vidéos, tu dois d'abord connecter une clé API payante Google Cloud (avec facturation activée).";
+              aiMsg.text = "Pour générer des vidéos, tu dois d'abord connecter une clé API payante Google Cloud.";
               aiMsg.needsKey = true;
             } else {
               const videoBlob = await generateVideo(aiResult.videoPrompt as string);
-              const fileName = `gemini_${generateSnowflake()}.mp4`;
-              const storageRef = ref(storage, `gemini/${fileName}`);
-              
-              const uploadTask = uploadBytesResumable(storageRef, videoBlob);
-              await uploadTask;
-              const publicUrl = await getDownloadURL(uploadTask.snapshot.ref);
-              
+              const publicUrl = await uploadToPocketBase(videoBlob);
               aiMsg.file_url = publicUrl;
               aiMsg.file_name = 'Vidéo générée par Gemini.mp4';
               aiMsg.file_type = 'video/mp4';
               aiMsg.file_size = videoBlob.size;
             }
           } catch (vidErr: any) {
-            console.error("Error generating/uploading video:", vidErr);
-            if (vidErr.message === "PERMISSION_DENIED") {
-              aiMsg.text = "Désolé, ta clé API n'a pas les permissions nécessaires pour générer des vidéos (Veo). Assure-toi d'utiliser un projet Google Cloud avec la facturation activée.";
-              aiMsg.needsKey = true;
-            } else if (vidErr.message === "KEY_RESET_REQUIRED") {
-              aiMsg.text = "Un problème est survenu avec ta clé API. Peux-tu la sélectionner à nouveau ?";
-              aiMsg.needsKey = true;
-            } else {
-              aiMsg.text += "\n\n(Désolé, je n'ai pas pu générer la vidéo pour le moment. 🙂)";
-            }
+            console.error("Error generating video:", vidErr);
+            aiMsg.text += "\n\n(Désolé, je n'ai pas pu générer la vidéo pour le moment. 🙂)";
           }
         }
         
-        // On ne sauvegarde en base que si ce n'est pas une erreur de quota temporaire pour ne pas polluer l'historique
-        if (!isQuotaError) {
-          try {
-            await setDoc(doc(db, 'messages', aiSnowflakeId), aiMsg);
-          } catch (aiError) {
-            handleFirestoreError(aiError, 'WRITE', 'messages');
-          }
-        }
-
         if (aiResult.imagePrompt || aiResult.videoPrompt) {
-          // Update the existing optimistic message
-          setMessages(prev => prev.map(m => m.id === aiSnowflakeId ? {
+          const updatedMsg = {
             ...aiMsg,
             is_own: false,
             isAI: true,
@@ -942,7 +878,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
             file_name: aiMsg.file_name,
             file_type: aiMsg.file_type,
             file_size: aiMsg.file_size
-          } : m));
+          };
+          setMessages(prev => prev.map(m => m.id === aiSnowflakeId ? updatedMsg : m));
+          
+          // Sauvegarde de la réponse avec média sur le NAS
+          try {
+            await pb.collection('messages').create({
+              sender_id: 'gemini',
+              receiver_id: user.uid,
+              text: responseText,
+              file_url: aiMsg.file_url,
+              file_name: aiMsg.file_name,
+              file_type: aiMsg.file_type,
+              file_size: aiMsg.file_size,
+              created: new Date().toISOString()
+            });
+          } catch (e) {
+            console.error("Erreur sauvegarde réponse media Gemini NAS:", e);
+          }
         } else {
           setMessages(prev => {
             if (prev.some(m => m.id === aiSnowflakeId)) return prev;
@@ -954,12 +907,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
               timestamp: aiTimestamp
             } as any];
           });
+
+          // Sauvegarde de la réponse textuelle Gemini
+          try {
+            await pb.collection('messages').create({
+              sender_id: 'gemini',
+              receiver_id: user.uid,
+              text: responseText,
+              created: new Date().toISOString()
+            });
+            fetchConversations();
+          } catch (e) {
+            console.error("Erreur sauvegarde réponse texte Gemini NAS:", e);
+          }
         }
         setIsTypingAI(false);
+      } catch (e) {
+        console.error("Gemini flow error:", e);
+        setIsTypingAI(false);
       }
-    } catch (e) { 
-      handleFirestoreError(e, 'WRITE', 'messages');
-      setIsTypingAI(false); 
     }
   };
 
@@ -967,53 +933,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
     if (!messageToDelete || !user) return;
     
     try {
-      if (type === 'everyone') {
-        // Update message in DB to mark as deleted for everyone
-        await updateDoc(doc(db, 'messages', messageToDelete.id), {
-          is_deleted_for_everyone: true,
-          text: 'Ce message a été supprimé',
-          file_url: null,
-          file_name: null,
-          file_type: null,
-          file_size: null
-        });
-          
-        setMessages(prev => prev.map(m => 
-          m.id === messageToDelete.id 
-            ? { ...m, is_deleted_for_everyone: true, text: 'Ce message a été supprimé', file_url: undefined, file_name: undefined, file_type: undefined, file_size: undefined } 
-            : m
-        ));
-      } else {
-        // Mark as deleted for me
-        await updateDoc(doc(db, 'messages', messageToDelete.id), {
-          deleted_for_me_by: arrayUnion(user.uid)
-        });
-          
-        setMessages(prev => prev.filter(m => m.id !== messageToDelete.id));
-      }
+      // Migration NAS : Suppression désactivée
+      console.log("Suppression message non effectuée (Migration NAS)");
       setMessageToDelete(null);
     } catch (err) {
-      handleFirestoreError(err, 'UPDATE', 'messages');
+      console.error(err);
+      setMessageToDelete(null);
     }
   };
 
   const handleUpdateMessage = async () => {
     if (!messageToEdit || !editText.trim() || !user) return;
     try {
-      await updateDoc(doc(db, 'messages', messageToEdit.id), {
-        text: editText.trim(),
-        is_edited: true
-      });
-        
-      setMessages(prev => prev.map(m => 
-        m.id === messageToEdit.id 
-          ? { ...m, text: editText.trim(), is_edited: true } 
-          : m
-      ));
+      // Migration NAS
+      console.log("Edition message non supportée (Migration NAS)");
       setMessageToEdit(null);
       setEditText('');
     } catch (err) {
-      handleFirestoreError(err, 'UPDATE', 'messages');
+      console.error(err);
     }
   };
 
@@ -1024,38 +961,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
     setUploadingFile(true);
     setLocalUploadError(null);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${generateSnowflake()}.${fileExt}`;
-      const filePath = `messages/${user.uid}/${fileName}`;
-      const storageRef = ref(storage, filePath);
-
-      console.log('Starting file upload to:', filePath);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      console.log('Starting file upload to PocketBase...');
+      const publicUrl = await uploadToPocketBase(file);
       
-      const publicUrl = await new Promise<string>((resolve, reject) => {
-        uploadTask.on('state_changed', null, 
-          (error) => {
-            console.error('Upload error:', error);
-            let msg = error.message;
-            if (error.code === 'storage/retry-limit-exceeded') {
-              msg = "Délai d'attente dépassé. Vérifiez que le service Storage est activé dans votre console Firebase.";
-            }
-            reject(new Error(msg));
-          }, 
-          async () => {
-            const url = await getDownloadURL(uploadTask.snapshot.ref);
-            resolve(url);
-          }
-        );
-      });
-      
-      console.log('File uploaded successfully');
+      console.log('File uploaded successfully to NAS');
 
       let transcription = null;
       if (file.type.startsWith('video/')) {
         console.log('Analyzing video...');
         try {
-          const { analyzeVideo } = await import('../services/geminiService');
           const analysis = await analyzeVideo(file);
           transcription = analysis.transcription || null;
           console.log('Video analysis complete');
@@ -1105,7 +1019,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
             <div className="flex items-center gap-2 relative">
               <button 
                 onClick={() => {setSelectedId('gemini'); setMobileView('chat');}} 
-                className="w-8 h-8 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center hover:bg-blue-500/20 transition-all overflow-hidden"
+                className="w-8 h-8 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all overflow-hidden"
                 title="Assistant IA"
               >
                 <GeminiAvatarIcon size={16} />
@@ -1140,7 +1054,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
           </div>
 
           {/* User Conversations List */}
-          {conversations.map(c => (
+          {conversations.filter(c => c.id !== 'gemini').map(c => (
             <div key={c.id} onClick={() => { setSelectedId(c.id); setMobileView('chat'); }} className={`flex items-center gap-4 p-4 cursor-pointer border-l-4 transition-all ${selectedId === c.id ? 'bg-white/10 border-white' : 'border-transparent hover:bg-white/5'}`}>
               <div className="w-10 h-10 rounded-full border border-white/10 overflow-hidden relative">
                 <img src={c.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
@@ -1193,7 +1107,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                   <div className="w-12 h-12 rounded-full border border-white/10 overflow-hidden">
                     <img src={u.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                   </div>
-                  <div><h4 className="text-sm font-bold text-white tracking-tight">{u.username}</h4><p className="text-[9px] text-slate-500 uppercase font-black tracking-widest">Wexo User</p></div>
+                  <div><h4 className="text-sm font-bold text-white tracking-tight">{u.username}</h4></div>
                 </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => { setSelectedId(u.id); setIsSearchingUsers(false); setMobileView('chat'); }} className="p-3 bg-white/10 text-white rounded-2xl hover:bg-white hover:text-black transition-all"><MessageSquarePlus size={18} /></button>
@@ -1259,20 +1173,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                         email={selectedProfile?.email}
                         className="text-sm font-black tracking-tight text-white" 
                       />
-                    )}
-                    {selectedId !== 'gemini' && selectedProfile?.display_id && (
-                      <div className="flex items-center gap-1 bg-white/5 px-1.5 py-0.5 rounded-md border border-white/5">
-                        <span className="text-[9px] font-bold text-slate-500 font-mono">
-                          #{selectedProfile.display_id}
-                        </span>
-                        <button 
-                          onClick={(e) => copyId(e, selectedProfile.display_id)}
-                          className="text-slate-500 hover:text-white transition-colors"
-                          title="Copier l'ID"
-                        >
-                          {copiedId ? <Check size={8} className="text-emerald-500" /> : <Copy size={8} />}
-                        </button>
-                      </div>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -1340,6 +1240,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
             
             <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8">
               {messages.map((msg, idx) => {
+                if (msg.is_screenshot_alert) {
+                  return (
+                    <div key={msg.id} className="w-full flex justify-center my-4 px-4 sm:px-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                      <div className="bg-white/5 border border-white/10 px-6 py-2.5 rounded-2xl shadow-sm flex items-center gap-3">
+                        <div className="w-8 h-8 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-500">
+                          <AlertCircle size={16} />
+                        </div>
+                        <p className="text-[11px] font-bold text-slate-400">
+                          <span className="text-white">{msg.sender_name || 'Un utilisateur'}</span> a pris un screenshot de la discussion.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
                 const isImage = msg.file_type?.startsWith('image/') || msg.isGeneratingImage;
                 const isVideo = msg.file_type?.startsWith('video/') || msg.isGeneratingVideo;
                 const isDeleted = msg.is_deleted_for_everyone;

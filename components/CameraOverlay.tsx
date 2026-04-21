@@ -1,37 +1,51 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Camera, Share2, MessageSquare, Flame, Play, Layout, Loader2 } from 'lucide-react';
+import { X, Camera, Share2, MessageSquare, Flame, Play, Layout, Loader2, RefreshCw, Video, StopCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface CameraOverlayProps {
   onClose: () => void;
-  onShare: (image: string, destination: 'story' | 'message' | 'short' | 'video') => void;
+  onShare: (media: string, destination: 'story' | 'message' | 'short' | 'video', type: 'image' | 'video') => void;
 }
 
 const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare }) => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedVideo, setCapturedVideo] = useState<string | null>(null);
+  const [mode, setMode] = useState<'photo' | 'video'>('photo');
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [isRecording, setIsRecording] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     startCamera();
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
+      stopStream();
     };
-  }, []);
+  }, [facingMode]);
+
+  const stopStream = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+  };
 
   const startCamera = async () => {
     try {
       setLoading(true);
+      stopStream();
+      
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: false
+        video: { facingMode: facingMode },
+        audio: mode === 'video'
       });
+      
       setStream(mediaStream);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
@@ -44,6 +58,10 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare }) => {
     }
   };
 
+  const switchCamera = () => {
+    setFacingMode(prev => prev === 'user' ? 'environment' : 'user');
+  };
+
   const capturePhoto = () => {
     if (videoRef.current) {
       const canvas = document.createElement('canvas');
@@ -51,9 +69,10 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare }) => {
       canvas.height = videoRef.current.videoHeight;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Mirror the image if using front camera
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
+        if (facingMode === 'user') {
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+        }
         ctx.drawImage(videoRef.current, 0, 0);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         setCapturedImage(dataUrl);
@@ -61,10 +80,48 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare }) => {
     }
   };
 
+  const startRecording = () => {
+    if (stream) {
+      recordedChunksRef.current = [];
+      const mediaRecorder = new MediaRecorder(stream);
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/mp4' });
+        const url = URL.createObjectURL(blob);
+        setCapturedVideo(url);
+      };
+
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
   const handleShare = (destination: 'story' | 'message' | 'short' | 'video') => {
     if (capturedImage) {
-      onShare(capturedImage, destination);
+      onShare(capturedImage, destination, 'image');
+    } else if (capturedVideo) {
+      onShare(capturedVideo, destination, 'video');
     }
+  };
+
+  const resetCapture = () => {
+    setCapturedImage(null);
+    setCapturedVideo(null);
+    setShowShareMenu(false);
   };
 
   return (
@@ -82,6 +139,15 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare }) => {
         >
           <X size={24} />
         </button>
+
+        {!capturedImage && !capturedVideo && !loading && (
+          <button 
+            onClick={switchCamera}
+            className="p-3 bg-black/20 backdrop-blur-md rounded-full text-white hover:bg-black/40 transition-all"
+          >
+            <RefreshCw size={24} className={loading ? 'animate-spin' : ''} />
+          </button>
+        )}
       </div>
 
       {/* Camera View */}
@@ -105,33 +171,86 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare }) => {
           </div>
         )}
 
-        {!capturedImage ? (
+        {!capturedImage && !capturedVideo ? (
           <video 
             ref={videoRef}
             autoPlay
             playsInline
             muted
             className="w-full h-full object-cover"
-            style={{ transform: 'scaleX(-1)' }}
+            style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
           />
         ) : (
-          <img 
-            src={capturedImage} 
-            className="w-full h-full object-cover"
-            alt="Captured"
-          />
+          capturedImage ? (
+            <img 
+              src={capturedImage} 
+              className="w-full h-full object-cover"
+              alt="Captured"
+            />
+          ) : (
+            <video 
+              src={capturedVideo!} 
+              autoPlay 
+              loop 
+              playsInline 
+              className="w-full h-full object-cover"
+            />
+          )
+        )}
+
+        {isRecording && (
+          <div className="absolute top-24 left-1/2 -translate-x-1/2 px-4 py-2 bg-red-500 text-white rounded-full flex items-center gap-2 animate-pulse">
+            <div className="w-2 h-2 bg-white rounded-full" />
+            <span className="text-[10px] font-bold uppercase tracking-widest">Enregistrement</span>
+          </div>
         )}
       </div>
 
       {/* Controls */}
       <div className="p-10 bg-gradient-to-t from-black/80 to-transparent flex flex-col items-center gap-8">
-        {!capturedImage ? (
-          <button 
-            onClick={capturePhoto}
-            className="w-20 h-20 bg-white rounded-full flex items-center justify-center border-4 border-white/30 active:scale-90 transition-all"
-          >
-            <div className="w-16 h-16 border-2 border-black rounded-full" />
-          </button>
+        {!capturedImage && !capturedVideo ? (
+          <div className="flex flex-col items-center gap-8 w-full">
+            {/* Mode Selector */}
+            <div className="flex items-center gap-4 bg-black/40 backdrop-blur-md p-1 rounded-full border border-white/10">
+              <button 
+                onClick={() => setMode('photo')}
+                className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${mode === 'photo' ? 'bg-white text-black' : 'text-white/60'}`}
+              >
+                Photo
+              </button>
+              <button 
+                onClick={() => setMode('video')}
+                className={`px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${mode === 'video' ? 'bg-white text-black' : 'text-white/60'}`}
+              >
+                Vidéo
+              </button>
+            </div>
+
+            {/* Capture Button */}
+            <div className="relative flex items-center justify-center">
+              {mode === 'photo' ? (
+                <button 
+                  onClick={capturePhoto}
+                  className="w-20 h-20 bg-white rounded-full flex items-center justify-center border-4 border-white/30 active:scale-90 transition-all"
+                >
+                  <div className="w-16 h-16 border-2 border-black rounded-full" />
+                </button>
+              ) : (
+                <button 
+                  onClick={isRecording ? stopRecording : startRecording}
+                  className={`w-20 h-20 rounded-full flex items-center justify-center border-4 border-white/30 active:scale-90 transition-all ${isRecording ? 'bg-red-500' : 'bg-white'}`}
+                >
+                  {isRecording ? (
+                    <StopCircle size={32} className="text-white" />
+                  ) : (
+                    <div className="w-16 h-16 border-2 border-black rounded-full flex items-center justify-center">
+                      <Video size={24} className="text-black" />
+                    </div>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="w-full flex justify-between items-center max-w-sm">
             <button 
@@ -142,7 +261,7 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare }) => {
             </button>
 
             <button 
-              onClick={() => setCapturedImage(null)}
+              onClick={resetCapture}
               className="px-8 py-4 bg-white/10 backdrop-blur-md text-white rounded-2xl font-bold text-xs border border-white/10 active:scale-95 transition-all"
             >
               Reprendre

@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https',
-    url: 'https://wexo.netlify.app',
+    url: 'https://wexo-test.vercel.app',
     cleartext: true
   }
 };

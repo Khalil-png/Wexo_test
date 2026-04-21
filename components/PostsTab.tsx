@@ -1,25 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useClickOutside } from '../utils/hooks';
-import { Heart, MessageCircle, Share2, Loader2, User as UserIcon, Play, Music, Image as ImageIcon, X, ArrowLeft, Send, ThumbsUp, ThumbsDown, Copy, Check, CheckCircle2, Sparkles } from 'lucide-react';
-import { auth, db } from '../firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { 
-  collection, 
-  query, 
-  orderBy, 
-  onSnapshot, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  deleteDoc, 
-  updateDoc, 
-  increment,
-  where,
-  getDocs
-} from 'firebase/firestore';
+import { Heart, MessageCircle, Share2, Loader2, User as UserIcon, Play, Music, Image as ImageIcon, X, ArrowLeft, Send, ThumbsUp, ThumbsDown, Copy, Check, CheckCircle, Sparkles } from 'lucide-react';
 import { DEFAULT_AVATAR } from '../constants';
 import { renderTextWithEmojis } from '../utils/emoji';
+import { pb } from '../services/pocketbaseService';
+// Firebase désactivé
 
 interface Post {
   id: string;
@@ -36,6 +22,7 @@ interface Post {
   profiles: {
     username: string;
     avatar_url: string | null;
+    display_name?: string;
   };
   likes_count: number;
   user_has_liked: boolean;
@@ -48,10 +35,14 @@ interface Post {
   avatar?: string;
 }
 
-const PostsTab: React.FC = () => {
+interface PostsTabProps {
+  user: any;
+  profile: any;
+}
+
+const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showSharePopup, setShowSharePopup] = useState(false);
   const sharePopupRef = useRef<HTMLDivElement>(null);
@@ -59,86 +50,55 @@ const PostsTab: React.FC = () => {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
-    return () => unsubscribe();
+    fetchPosts();
   }, []);
 
-  useEffect(() => {
-    const postsRef = collection(db, 'posts');
-    const q = query(postsRef, orderBy('created_at', 'desc'));
+  const fetchPosts = async () => {
+    setLoading(true);
+    try {
+      const resultList = await pb.collection('posts').getList(1, 50, {
+        sort: '-created',
+        expand: 'user_id'
+      });
 
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const postsData = await Promise.all(snapshot.docs.map(async (docSnapshot) => {
-        const data = docSnapshot.data();
-        
-        // Fetch profile
-        const profileRef = doc(db, 'profiles', data.user_id);
-        const profileSnap = await getDoc(profileRef);
-        const profileData = profileSnap.exists() ? profileSnap.data() : null;
-
-        // Check if user has liked
-        let userHasLiked = false;
-        if (user?.uid) {
-          const likeRef = doc(db, 'post_likes', `${user.uid}_${docSnapshot.id}`);
-          const likeSnap = await getDoc(likeRef);
-          userHasLiked = likeSnap.exists();
-        }
+      const formattedPosts = resultList.items.map(p => {
+        const author = p.expand?.user_id;
+        const fallbackName = p.user_id || 'Utilisateur';
 
         return {
-          id: docSnapshot.id,
-          ...data,
-          author: profileData?.username || 'Utilisateur',
-          author_display_name: profileData?.display_name,
-          author_id: data.user_id,
-          author_email: data.user_email || profileData?.email,
-          author_is_verified: profileData?.is_verified,
-          author_role: data.user_role || profileData?.role,
-          avatar: profileData?.avatar_url || DEFAULT_AVATAR,
+          id: p.id,
+          user_id: p.user_id,
+          content: p.content,
+          media_url: p.media_url,
+          media_type: p.media_type || (p.media_url ? 'image' : null),
+          created_at: p.created,
+          likes_count: p.likes_count || 0,
+          user_has_liked: false,
           profiles: {
-            username: profileData?.username || 'Utilisateur',
-            avatar_url: profileData?.avatar_url || DEFAULT_AVATAR
+            username: author?.username || fallbackName,
+            avatar_url: author?.avatar_url || DEFAULT_AVATAR,
+            display_name: author?.name || author?.username || fallbackName
           },
-          likes_count: data.likes || 0,
-          user_has_liked: userHasLiked
-        } as Post;
-      }));
+          author_display_name: author?.name || author?.username || fallbackName,
+          author_role: author?.role || 'user',
+          author_is_verified: author?.is_verified || false
+        };
+      });
 
-      setPosts(postsData);
+      setPosts(formattedPosts as any);
+    } catch (err) {
+      console.error('Error fetching posts:', err);
+    } finally {
       setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [user?.uid]);
+    }
+  };
 
   const handleLike = async (postId: string, hasLiked: boolean, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!user?.uid) return;
-
-    const likeId = `${user.uid}_${postId}`;
-    const likeRef = doc(db, 'post_likes', likeId);
-    const postRef = doc(db, 'posts', postId);
-
-    try {
-      if (hasLiked) {
-        await deleteDoc(likeRef);
-        await updateDoc(postRef, {
-          likes: increment(-1)
-        });
-      } else {
-        await setDoc(likeRef, {
-          user_id: user.uid,
-          post_id: postId,
-          created_at: new Date().toISOString()
-        });
-        await updateDoc(postRef, {
-          likes: increment(1)
-        });
-      }
-    } catch (err) {
-      console.error('Error toggling like:', err);
-    }
+    
+    // Migration NAS : Les likes seront implémentés sur PocketBase
+    console.log("Like non supporté sans Firebase pour le moment");
   };
 
   const formatRelativeDate = (dateString: any) => {
@@ -202,7 +162,7 @@ const PostsTab: React.FC = () => {
               onClick={copyToClipboard}
               className={`w-12 h-10 flex items-center justify-center rounded-lg transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'}`}
             >
-              {copied ? <CheckCircle2 size={20} /> : <Share2 size={20} />}
+              {copied ? <CheckCircle size={20} /> : <Share2 size={20} />}
             </button>
           </div>
 
@@ -223,8 +183,12 @@ const PostsTab: React.FC = () => {
               )}
             </div>
             <div className="flex flex-col">
-              <span className="text-xl font-bold text-white tracking-tight">{selectedPost.profiles?.username || 'Utilisateur'}</span>
-              <span className="text-xs font-bold text-slate-500">{formatRelativeDate(selectedPost.created_at)}</span>
+              <span className="text-xl font-bold text-white tracking-tight">{selectedPost.profiles?.display_name || selectedPost.profiles?.username || 'Utilisateur'}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400">@{selectedPost.profiles?.username}</span>
+                <span className="text-slate-700">•</span>
+                <span className="text-xs font-bold text-slate-500">{formatRelativeDate(selectedPost.created_at)}</span>
+              </div>
             </div>
           </div>
 
@@ -329,12 +293,12 @@ const PostsTab: React.FC = () => {
                   </div>
                 ) : (
                   <img src={post.profiles?.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
-                )}
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-white font-bold text-xs truncate">{post.profiles?.username || 'Utilisateur'}</h3>
-                <p className="text-slate-500 text-[10px]">{formatRelativeDate(post.created_at)}</p>
-              </div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-white font-bold text-xs truncate">{post.profiles?.display_name || post.profiles?.username || 'Utilisateur'}</h3>
+              <p className="text-slate-500 text-[10px]">{formatRelativeDate(post.created_at)}</p>
+            </div>
             </div>
 
             {/* Content */}

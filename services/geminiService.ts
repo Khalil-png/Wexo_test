@@ -2,8 +2,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 const getApiKey = () => {
-  // Use the platform-provided free Gemini API key by default
-  return process.env.GEMINI_API_KEY || (window as any).process?.env?.API_KEY || process.env.API_KEY || "AIzaSyBFkhqKIHMTDVnSJ_0IlCK4KyS7LQms67s";
+  // Use VITE_GEMINI_KEY or GEMINI_API_KEY from Vite's built-in env handling
+  // @ts-ignore
+  return import.meta.env.VITE_GEMINI_KEY || 
+         // @ts-ignore
+         import.meta.env.VITE_GEMINI_API_KEY || 
+         // Fallback to the hardcoded test key if absolutely necessary
+         "AIzaSyBFkhqKIHMTDVnSJ_0IlCK4KyS7LQms67s";
 };
 
 const getAI = () => {

@@ -5,9 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Wexo Social</title>
-    <link rel="icon" type="image/png" href="https://n.uguu.se/ETulZagh.png">
+    <link rel="icon" type="image/png" href="http://192.168.1.147:9090/api/files/pbc_2708086759/ckb6419uqwto8h0/w_1_removebg_preview_1_vbjej008kd.png?token=">
     <meta name="theme-color" content="#0f0f0f">
-    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -177,23 +176,31 @@
         .markdown-body li { margin-bottom: 0.25rem; }
         .markdown-body blockquote { border-left: 3px solid rgba(255,255,255,0.2); padding-left: 0.75rem; font-style: italic; color: #94a3b8; margin-bottom: 0.75rem; }
     </style>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body>
+    <style>
+      body { background: #000; color: #fff; margin: 0; padding: 0; }
+      #root { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+      .loader { font-family: monospace; font-size: 14px; color: #666; animation: blink 1s infinite; }
+      @keyframes blink { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+    </style>
     <script>
-      // Global error logging for mobile debugging
-      if (window.location.pathname === '/auth/callback' || window.location.pathname === '/auth/callback/') {
-        if (window.opener) {
-          window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
-          window.close();
-        } else {
-          window.location.href = '/';
-        }
-        // Stop further execution to avoid loading the full app in the popup
-        window.stop();
+      window.__APP_MOUNTED__ = false;
+      function logToScreen(msg) {
+        console.log('[HTML-LOG]', msg);
+        const l = document.getElementById('debug-log');
+        if (l) l.innerText = msg;
       }
+      setTimeout(() => {
+        if (!window.__APP_MOUNTED__) {
+          document.getElementById('root').innerHTML = '<div style="color:red;padding:20px;">ERREUR: L\'application ne s\'est pas chargée.<br/>Vérifiez la console ou votre connexion.</div>';
+        }
+      }, 15000);
     </script>
-    <div id="root"></div>
-<script type="module" src="/index.tsx"></script>
+    <div id="root">
+        <div class="loader">WEXO_BOOTING...</div>
+        <div id="debug-log" style="position:fixed;bottom:10px;left:10px;font-size:10px;color:#333;"></div>
+    </div>
+    <script type="module" src="/index.tsx" onerror="document.getElementById('root').innerHTML='<div style=color:red>SCRIPT_LOADING_ERROR</div>'"></script>
 </body>
 </html>

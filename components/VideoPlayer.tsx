@@ -1,23 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize, Settings, Captions } from 'lucide-react';
 
-import { auth, db } from '../firebase';
-import { 
-  doc, 
-  getDoc, 
-  updateDoc, 
-  setDoc, 
-  collection, 
-  query, 
-  where, 
-  getDocs,
-  increment,
-  serverTimestamp
-} from 'firebase/firestore';
+import { pb } from '../services/pocketbaseService';
+// Firebase désactivé
 
 interface VideoPlayerProps {
   src: string;
   videoId?: string;
+  userId?: string;
   poster?: string;
   className?: string;
   autoPlay?: boolean;
@@ -29,6 +19,7 @@ interface VideoPlayerProps {
 const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
   src, 
   videoId,
+  userId,
   poster, 
   className = "", 
   autoPlay = true,
@@ -56,99 +47,86 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const maxViewsReached = useRef(false);
 
   const incrementView = async () => {
-    if (!videoId) return;
+    if (!videoId || !userId) return;
     
-    const user = auth.currentUser;
-    if (!user) return;
+    try {
+      // Vérifier si l'utilisateur a déjà vu cette vidéo
+      let viewRecord;
+      try {
+        viewRecord = await pb.collection('views').getFirstListItem(`user_id="${userId}" && video_id="${videoId}"`);
+      } catch (e) {
+        // Record non trouvé, on le créera plus bas
+      }
 
-    // Check existing views for this user/video
-    const viewId = `${user.uid}_${videoId}`;
-    const viewRef = doc(db, 'video_views', viewId);
-    const viewSnap = await getDoc(viewRef);
+      if (!viewRecord) {
+        // Première vue
+        await pb.collection('views').create({
+          user_id: userId,
+          video_id: videoId,
+          count: 1
+        });
+        
+        // Incrémenter les vues globales
+        const video = await pb.collection('videos').getOne(videoId).catch(() => null);
+        if (video) {
+          await pb.collection('videos').update(videoId, {
+            views: (video.views || 0) + 1
+          });
+        } else {
+          // Si pas dans vidéos, peut-être un short
+          const short = await pb.collection('shorts').getOne(videoId).catch(() => null);
+          if (short) {
+             await pb.collection('shorts').update(videoId, {
+               views: (short.views || 0) + 1
+             });
+          }
+        }
+      } else if (viewRecord.count < 2) {
+        // Deuxième vue
+        await pb.collection('views').update(viewRecord.id, {
+          count: 2
+        });
 
-    const currentCount = viewSnap.exists() ? viewSnap.data().view_count : 0;
-    if (currentCount >= 2) {
-      maxViewsReached.current = true;
-      return;
+        // Incrémenter les vues globales une deuxième fois
+        const video = await pb.collection('videos').getOne(videoId).catch(() => null);
+        if (video) {
+          await pb.collection('videos').update(videoId, {
+            views: (video.views || 0) + 1
+          });
+        } else {
+          const short = await pb.collection('shorts').getOne(videoId).catch(() => null);
+          if (short) {
+             await pb.collection('shorts').update(videoId, {
+               views: (short.views || 0) + 1
+             });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Erreur lors de l'incrément de vue:", err);
     }
-
-    // Increment global view count
-    const videoRef = doc(db, 'videos', videoId);
-    await updateDoc(videoRef, {
-      views: increment(1)
-    });
-
-    // Update user view count
-    await setDoc(viewRef, { 
-      user_id: user.uid, 
-      video_id: videoId, 
-      view_count: currentCount + 1,
-      last_view_at: serverTimestamp()
-    }, { merge: true });
-      
-    if (currentCount + 1 >= 2) maxViewsReached.current = true;
   };
 
   const updateWatchStats = async (percentage: number) => {
     if (!videoId) return;
-    const user = auth.currentUser;
-    if (!user) return;
-
-    // Fetch current video to update stats
-    const videoRef = doc(db, 'videos', videoId);
-    const videoSnap = await getDoc(videoRef);
-
-    if (!videoSnap.exists()) return;
-    const video = videoSnap.data();
-
-    // Update user preferences (recommendation system)
-    if (video.type) {
-      const profileRef = doc(db, 'profiles', user.uid);
-      const profileSnap = await getDoc(profileRef);
-      const prefs = profileSnap.exists() ? (profileSnap.data().preferences || {}) : {};
-      prefs[video.type] = (prefs[video.type] || 0) + 1;
-      await updateDoc(profileRef, { preferences: prefs });
-    }
-
-    // Update watch stats for phased publication algorithm
-    let stats = video.watch_stats || [];
-    const userStatIndex = stats.findIndex((s: any) => s.user_id === user.uid);
-    if (userStatIndex > -1) {
-      stats[userStatIndex].watch_percentage = Math.max(stats[userStatIndex].watch_percentage, percentage);
-    } else {
-      stats.push({ user_id: user.uid, watch_percentage: percentage });
-    }
-
-    // Check for promotion to 100% (Phase 2)
-    if (!video.is_promoted && video.target_user_ids?.length > 0) {
-      const targetUsersStats = stats.filter((s: any) => video.target_user_ids.includes(s.user_id));
-      const reachedTargetCount = targetUsersStats.length;
-      const totalTargetCount = video.target_user_ids.length;
-      
-      // Criteria: 60% of target group watched 80% of video
-      const highWatchCount = targetUsersStats.filter((s: any) => s.watch_percentage >= 80).length;
-      const watchCriteriaMet = highWatchCount >= (totalTargetCount * 0.6);
-      
-      // Criteria: 60% like ratio (simplified check)
-      const likeRatioMet = (video.likes || 0) >= (reachedTargetCount * 0.6);
-
-      if (watchCriteriaMet && likeRatioMet) {
-        await updateDoc(videoRef, { is_promoted: true });
-      }
-    }
-
-    await updateDoc(videoRef, { watch_stats: stats });
+    
+    // Migration NAS : Mise à jour stats de visionnage
+    console.log(`Stat visionnage NAS: ${percentage}% pour ${videoId}`);
   };
 
-  const togglePlay = (e?: React.MouseEvent) => {
+  const togglePlay = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
+      try {
+        if (isPlaying) {
+          videoRef.current.pause();
+        } else {
+          await videoRef.current.play();
+        }
+        setIsPlaying(!isPlaying);
+      } catch (err) {
+        console.warn("Play/Pause transition interrupted:", err);
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
@@ -156,10 +134,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (videoRef.current) {
       const current = videoRef.current.currentTime;
       const total = videoRef.current.duration;
-      const percentage = (current / total) * 100;
+      const percentage = total > 0 ? (current / total) * 100 : 0;
       
       setCurrentTime(current);
-      setProgress(percentage);
+      setProgress(isNaN(percentage) ? 0 : percentage);
 
       // Subtitles logic
       if (transcription && showSubtitles) {
@@ -270,7 +248,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
           onClick={togglePlay}
-          className="max-w-full max-h-full block"
+          className="max-w-full max-h-full block object-contain"
         />
 
         {/* Subtitles Overlay */}

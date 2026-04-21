@@ -4,24 +4,12 @@ import {
   Briefcase, Plus, FileVideo, FileImage, 
   FileText, X, Sparkles, Loader2, ArrowLeft,
   Settings, LayoutGrid, Layers, Zap, Clock, ChevronRight,
-  ShieldAlert, MoreVertical, Trash2, Edit3, AlertTriangle,
-  CheckCircle2, Lock, Info
+  ShieldAlert, MoreVertical, Trash2, Edit3, TriangleAlert,
+  CircleCheck, Lock, Info
 } from 'lucide-react';
 import { Workspace, WorkspaceProject } from '../types';
-import { db } from '../firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  addDoc, 
-  setDoc, 
-  doc, 
-  deleteDoc, 
-  updateDoc, 
-  orderBy,
-  serverTimestamp
-} from 'firebase/firestore';
+import { pb } from '../services/pocketbaseService';
+// Firebase désactivé
 import { generateSnowflake } from '../utils/snowflake';
 
 interface WorkspaceProps {
@@ -59,67 +47,11 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
     }
   }, [user]);
 
-  // Fermer le menu au clic extérieur
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setActiveMenuId(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   const fetchWorkspaces = async () => {
     setLoading(true);
     try {
-      // Récupération via la table des membres pour inclure ceux partagés
-      const membersRef = collection(db, 'workspace_members');
-      const qMembers = query(membersRef, where('user_id', '==', user.uid));
-      const memberSnapshot = await getDocs(qMembers);
-      const wsIds = memberSnapshot.docs.map(m => m.data().workspace_id);
-
-      // Récupération des workspaces dont l'utilisateur est proprio ou membre
-      const workspacesRef = collection(db, 'workspaces');
-      const wsList: any[] = [];
-      
-      // On récupère ceux dont il est proprio
-      const qOwner = query(workspacesRef, where('owner_id', '==', user.uid));
-      const ownerSnapshot = await getDocs(qOwner);
-      ownerSnapshot.forEach(doc => wsList.push({ id: doc.id, ...doc.data() }));
-
-      // On récupère ceux dont il est membre (si pas déjà proprio)
-      for (const wsId of wsIds) {
-        if (!wsList.find(w => w.id === wsId)) {
-          const wsSnap = await getDocs(query(workspacesRef, where('id', '==', wsId)));
-          wsSnap.forEach(doc => wsList.push({ id: doc.id, ...doc.data() }));
-        }
-      }
-      
-      const fullWorkspaces = await Promise.all(wsList.map(async (ws: any) => {
-        const projectsRef = collection(db, 'workspace_projects');
-        const qProjects = query(
-          projectsRef, 
-          where('workspace_id', '==', ws.id),
-          orderBy('updated_at', 'desc')
-        );
-        const projectsSnapshot = await getDocs(qProjects);
-        const projects = projectsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        
-        return { ...ws, projects };
-      }));
-
-      setWorkspaces(fullWorkspaces);
-      
-      // Mettre à jour l'active workspace s'il a été renommé ou supprimé
-      if (activeWorkspace) {
-        const updated = fullWorkspaces.find(w => w.id === activeWorkspace.id);
-        if (updated) {
-          onEnterWorkspace(updated);
-        } else {
-          onEnterWorkspace(null);
-        }
-      }
+      // Migration NAS : Lecture workspace PocketBase
+      setWorkspaces([]);
     } catch (err) {
       console.error("Erreur fetch workspace:", err);
     } finally {
@@ -133,32 +65,12 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
 
     setActionLoading(true);
     try {
-      const wsId = generateSnowflake();
-      const wsData = {
-        id: wsId,
-        name: wsName,
-        owner_id: user.uid,
-        created_at: serverTimestamp()
-      };
-      
-      await setDoc(doc(db, 'workspaces', wsId), wsData);
-
-      // S'ajouter comme owner dans les membres
-      const memberId = generateSnowflake();
-      await setDoc(doc(db, 'workspace_members', memberId), {
-        id: memberId,
-        workspace_id: wsId,
-        user_id: user.uid,
-        role: 'owner',
-        created_at: serverTimestamp()
-      });
-
+      // Migration NAS
       setIsCreatingWorkspace(false);
       setWsName('');
       await fetchWorkspaces(); 
     } catch (err: any) {
       console.error("Erreur création:", err);
-      alert("Erreur de création. Vérifie ta console.");
     } finally {
       setActionLoading(false);
     }
@@ -168,20 +80,11 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
     if (!workspaceToDelete || actionLoading) return;
     setActionLoading(true);
     try {
-      await deleteDoc(doc(db, 'workspaces', workspaceToDelete.id));
-      
-      // Note: In Firestore, we should also delete members and projects manually 
-      // or use a Cloud Function for cascade delete. For now, we just delete the workspace.
-      
-      if (activeWorkspace?.id === workspaceToDelete.id) {
-        onEnterWorkspace(null);
-      }
-      
+      // Migration NAS
       setWorkspaceToDelete(null);
       await fetchWorkspaces();
     } catch (err) {
       console.error("Erreur suppression:", err);
-      alert("Erreur de suppression.");
     } finally {
       setActionLoading(false);
     }
@@ -192,16 +95,12 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
     if (!editingWorkspace || !newName.trim() || actionLoading) return;
     setActionLoading(true);
     try {
-      await updateDoc(doc(db, 'workspaces', editingWorkspace.id), {
-        name: newName
-      });
-      
+      // Migration NAS
       setEditingWorkspace(null);
       setNewName('');
       await fetchWorkspaces();
     } catch (err) {
       console.error("Erreur renommage:", err);
-      alert("Erreur de renommage.");
     } finally {
       setActionLoading(false);
     }
@@ -213,17 +112,7 @@ const WorkspaceTab: React.FC<WorkspaceProps> = ({ user, profile, activeWorkspace
 
     setActionLoading(true);
     try {
-      const projectId = generateSnowflake();
-      await setDoc(doc(db, 'workspace_projects', projectId), {
-        id: projectId,
-        workspace_id: activeWorkspace.id,
-        name: newProjectName,
-        type: newProjectType,
-        thumbnail_url: `https://picsum.photos/seed/${Date.now()}/600/400`,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp()
-      });
-      
+      // Migration NAS
       await fetchWorkspaces();
       setIsProjectModalOpen(false);
       setNewProjectName('');

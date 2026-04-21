@@ -1,29 +1,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, Bell, LogOut, X, Circle, Menu, UserPlus, Check, Trash2, MessageCircle, User, Camera } from 'lucide-react';
-import { db } from '../firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  deleteDoc, 
-  updateDoc, 
-  serverTimestamp,
-  getDocs,
-  limit
-} from 'firebase/firestore';
-import { generateSnowflake } from '../utils/snowflake';
-import { useClickOutside } from '../utils/hooks';
 import { DEFAULT_AVATAR } from '../constants';
 import Username from './Username';
 import { Copy } from 'lucide-react';
 import { TabId } from '../types';
 import { isMobileDevice } from '../src/utils/device';
+import { useClickOutside } from '../utils/hooks';
+import { pb } from '../services/pocketbaseService';
+// Firebase désactivé
 
 interface Notification {
   id: string;
@@ -120,62 +105,10 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
       Notification.requestPermission();
     }
 
-    // Realtime subscription for notifications
-    const notificationsRef = collection(db, 'notifications');
-    const q = query(
-      notificationsRef,
-      where('user_id', '==', user.uid),
-      orderBy('created_at', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const enrichedNotifs = await Promise.all(snapshot.docs.map(async (docSnapshot) => {
-        const n = docSnapshot.data() as Notification;
-        
-        // Fetch sender info
-        const senderRef = doc(db, 'profiles', n.sender_id);
-        const senderSnap = await getDoc(senderRef);
-        const senderData = senderSnap.exists() ? senderSnap.data() : null;
-
-        let content = n.content;
-        if (n.type === 'message' && !content) {
-          try {
-            const messagesRef = collection(db, 'messages');
-            const mq = query(
-              messagesRef,
-              where('sender_id', '==', n.sender_id),
-              where('receiver_id', '==', user.uid),
-              orderBy('created_at', 'desc'),
-              limit(1)
-            );
-            const mSnap = await getDocs(mq);
-            if (!mSnap.empty) {
-              content = mSnap.docs[0].data().text;
-            }
-          } catch (e) { /* Erreur silencieuse */ }
-        }
-
-        return {
-          ...n,
-          id: docSnapshot.id,
-          sender_name: senderData?.username || 'Utilisateur Wexo',
-          sender_avatar: senderData?.avatar_url || DEFAULT_AVATAR,
-          content
-        };
-      }));
-
-      // Check for new notifications to trigger sound/browser notif
-      const newNotifs = enrichedNotifs.filter(n => 
-        n.status === 'unread' && 
-        !notifications.find(old => old.id === n.id)
-      );
-
-      newNotifs.forEach(n => handleNewNotification(n));
-
-      setNotifications(enrichedNotifs);
-    });
-
-    return () => unsubscribe();
+    // Migration NAS : Les notifications temps réel seront implémentées via PocketBase plus tard
+    console.log("Les notifications temps réel (Firebase) sont désactivées.");
+    
+    return () => {};
   }, [user?.uid, activeTab]);
 
   const handleNewNotification = async (notif: Notification) => {
@@ -231,31 +164,8 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
   };
 
   const handleFriendAction = async (notifId: string, senderId: string, action: 'accept' | 'refuse') => {
-    if (!user?.uid) return;
-    
-    if (action === 'accept') {
-      // Update friendship status
-      const friendshipId = [senderId, user.uid].sort().join('_');
-      await updateDoc(doc(db, 'friendships', friendshipId), {
-        status: 'accepted'
-      });
-
-      // Create notification for sender
-      await setDoc(doc(db, 'notifications', generateSnowflake()), {
-        id: generateSnowflake(),
-        user_id: senderId, 
-        type: 'friend_accepted', 
-        sender_id: user.uid,
-        status: 'unread',
-        created_at: serverTimestamp()
-      });
-    } else {
-      const friendshipId = [senderId, user.uid].sort().join('_');
-      await deleteDoc(doc(db, 'friendships', friendshipId));
-    }
-
-    // Delete the notification
-    await deleteDoc(doc(db, 'notifications', notifId));
+    // Désactivé (Migration NAS requise pour les amitiés)
+    console.log("Friend action non supportée sans Firebase pour le moment");
   };
 
   const handleNotificationClick = async (notif: Notification) => {
@@ -267,28 +177,12 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
       url.searchParams.set('chat', notif.sender_id);
       window.history.pushState({}, '', url);
       window.dispatchEvent(new CustomEvent('select-chat', { detail: notif.sender_id }));
-      
-      // Delete all message notifications from this sender
-      const q = query(
-        collection(db, 'notifications'),
-        where('user_id', '==', user.uid),
-        where('sender_id', '==', notif.sender_id),
-        where('type', '==', 'message')
-      );
-      const snap = await getDocs(q);
-      await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
-      
       setShowNotifications(false);
-    } else {
-      await deleteDoc(doc(db, 'notifications', notif.id));
     }
   };
 
   const handleDeleteAllNotifications = async () => {
-    if (!user?.uid) return;
-    const q = query(collection(db, 'notifications'), where('user_id', '==', user.uid));
-    const snap = await getDocs(q);
-    await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+    setNotifications([]);
   };
 
   const unreadCount = notifications.filter(n => n.status === 'unread').length;
@@ -311,7 +205,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
           className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
         >
           <img 
-            src="https://n.uguu.se/ETulZagh.png" 
+            src="https://carnote.synology.me:9443/api/files/pbc_2708086759/ckb6419uqwto8h0/w_1_removebg_preview_1_vbjej008kd.png?token=" 
             className="w-10 h-10 object-cover" 
             style={{ width: '40px', height: '40px', minWidth: '40px', minHeight: '40px' }}
             alt="Wexo" 
@@ -462,20 +356,6 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                           className="text-lg font-bold text-white truncate" 
                           badgeSize={18} 
                         />
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] font-bold text-slate-500 font-mono">
-                            ID: {profile?.display_id || 'N/A'}
-                          </span>
-                          {profile?.display_id && (
-                            <button 
-                              onClick={copyId}
-                              className="p-1 hover:bg-white/10 rounded-md text-slate-500 hover:text-white transition-all"
-                              title="Copier l'ID"
-                            >
-                              {copiedId ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
-                            </button>
-                          )}
-                        </div>
                       </div>
                     </div>
 

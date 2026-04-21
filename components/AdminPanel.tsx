@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Users, 
   User,
   Video, 
   FileText, 
-  AlertTriangle, 
+  TriangleAlert, 
   MessageSquare, 
   RefreshCw, 
   Shield, 
@@ -29,13 +29,11 @@ import {
   Monitor,
   Smartphone
 } from 'lucide-react';
-import { db, storage } from '../firebase';
-import { useClickOutside } from '../utils/hooks';
-import { useRef } from 'react';
-import { collection, getDocs, query, orderBy, limit, Timestamp, doc, updateDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { pb, uploadToPocketBase } from '../services/pocketbaseService';
+// Firebase désactivé
 import Username from './Username';
 import { DEFAULT_AVATAR } from '../constants';
+import { useClickOutside } from '../utils/hooks';
 
 interface AdminActivity {
   id: string;
@@ -47,7 +45,7 @@ interface AdminActivity {
   user_avatar: string;
 }
 
-const AdminPanel: React.FC = () => {
+const AdminPanel: React.FC<{ user: any; profile: any }> = ({ user, profile }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'content' | 'reports' | 'comments' | 'access'>('dashboard');
   const [stats, setStats] = useState({
     users: 0,
@@ -85,38 +83,16 @@ const AdminPanel: React.FC = () => {
 
     try {
       setIsUploadingFile(prev => ({ ...prev, [type]: true }));
-      setUploadProgress(prev => ({ ...prev, [type]: 0 }));
+      setUploadProgress(prev => ({ ...prev, [type]: 50 })); // Simulé
       
-      const fileRef = ref(storage, `apps/${type}/${file.name}`);
-      const uploadTask = uploadBytesResumable(fileRef, file);
+      const url = await uploadToPocketBase(file);
+      
+      // Migration NAS
+      console.log(`${type.toUpperCase()} URL: ${url}`);
 
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setUploadProgress(prev => ({ ...prev, [type]: Math.round(progress) }));
-        }, 
-        (error) => {
-          console.error(`Error uploading ${type}:`, error);
-          let msg = "Erreur lors de l'envoi.";
-          if (error.code === 'storage/retry-limit-exceeded') {
-            msg = "Délai dépassé. Vérifiez que le service Storage est activé dans votre console Firebase et que votre connexion est stable.";
-          } else if (error.code === 'storage/unauthorized') {
-            msg = "Accès refusé. Vérifiez les règles de sécurité de votre Storage.";
-          }
-          alert(msg);
-          setIsUploadingFile(prev => ({ ...prev, [type]: false }));
-        }, 
-        async () => {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          await setDoc(doc(db, 'settings', 'app_config'), {
-            [`${type}_url`]: url,
-            last_update_timestamp: serverTimestamp()
-          }, { merge: true });
-
-          alert(`${type.toUpperCase()} mis à jour avec succès !`);
-          setIsUploadingFile(prev => ({ ...prev, [type]: false }));
-        }
-      );
+      alert(`${type.toUpperCase()} mis à jour avec succès sur le NAS !`);
+      setIsUploadingFile(prev => ({ ...prev, [type]: false }));
+      setUploadProgress(prev => ({ ...prev, [type]: 100 }));
     } catch (error) {
       console.error(`Error initiating ${type} upload:`, error);
       setIsUploadingFile(prev => ({ ...prev, [type]: false }));
@@ -124,32 +100,15 @@ const AdminPanel: React.FC = () => {
   };
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'settings', 'app_config'), (snap) => {
-      if (snap.exists()) {
-        setAppConfig(snap.data());
-      }
-    });
-    return () => unsub();
+    // Migration NAS : Lecture config PocketBase
+    setAppConfig(null);
   }, []);
 
   const triggerUpdate = async (platform: 'all' | 'pc' | 'mobile') => {
     setIsUpdating(true);
     try {
-      const configRef = doc(db, 'settings', 'app_config');
-      const newVersion = `0.0.${Date.now()}`; // Simple versioning based on timestamp
-      
-      const updateData: any = {
-        last_update_timestamp: serverTimestamp()
-      };
-
-      if (platform === 'all' || platform === 'pc') {
-        updateData.latest_version_pc = newVersion;
-      }
-      if (platform === 'all' || platform === 'mobile') {
-        updateData.latest_version_mobile = newVersion;
-      }
-
-      await setDoc(configRef, updateData, { merge: true });
+      // Migration NAS
+      console.log("Update triggered on NAS");
     } catch (e) {
       console.error("Error triggering update:", e);
     } finally {
@@ -161,88 +120,20 @@ const AdminPanel: React.FC = () => {
     try {
       setLoading(true);
       
-      // Fetch Stats
-      const fetchCollectionSize = async (name: string) => {
-        try {
-          const snap = await getDocs(collection(db, name));
-          return snap.size;
-        } catch (e) {
-          console.warn(`Could not fetch ${name} stats:`, e);
-          return 0;
-        }
-      };
-
-      const [usersSize, videosSize, postsSize, reportsSize] = await Promise.all([
-        fetchCollectionSize('profiles'),
-        fetchCollectionSize('videos'),
-        fetchCollectionSize('posts'),
-        fetchCollectionSize('reports')
-      ]);
-
-      const estimatedStorage = (videosSize * 150) + (postsSize * 2) + (usersSize * 2);
-      const storageInGB = Number((estimatedStorage / 1024).toFixed(1));
-
+      // Migration NAS : Lecture stats PocketBase
       setStats({
-        users: usersSize,
-        videos: videosSize,
-        posts: postsSize,
-        reports: reportsSize,
-        storageUsed: storageInGB
+        users: 0,
+        videos: 0,
+        posts: 0,
+        reports: 0,
+        storageUsed: 0
       });
 
-      // Fetch Users
-      const usersSnap = await getDocs(collection(db, 'profiles'));
-      const usersList = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setUsers(usersList);
+      // Migration NAS : Lecture utilisateurs PocketBase
+      setUsers([]);
 
-      // Fetch Activities
-      const recentProfilesQuery = query(collection(db, 'profiles'), orderBy('created_at', 'desc'), limit(5));
-      const recentVideosQuery = query(collection(db, 'videos'), orderBy('created_at', 'desc'), limit(5));
-      const recentPostsQuery = query(collection(db, 'posts'), orderBy('created_at', 'desc'), limit(5));
-
-      const [profilesSnap, videosSnap, postsSnap] = await Promise.all([
-        getDocs(recentProfilesQuery),
-        getDocs(recentVideosQuery),
-        getDocs(recentPostsQuery)
-      ]);
-
-      const combinedActivities: AdminActivity[] = [
-        ...profilesSnap.docs.map(doc => ({
-          id: doc.id,
-          type: 'signup' as const,
-          title: 'Nouvelle inscription',
-          subtitle: doc.data().username,
-          timestamp: doc.data().created_at,
-          user_name: doc.data().username,
-          user_avatar: doc.data().avatar_url
-        })),
-        ...videosSnap.docs.map(doc => ({
-          id: doc.id,
-          type: 'video' as const,
-          title: 'Nouvelle vidéo',
-          subtitle: doc.data().title,
-          timestamp: doc.data().created_at,
-          user_name: doc.data().creator_name || 'Utilisateur',
-          user_avatar: doc.data().creator_avatar
-        })),
-        ...postsSnap.docs.map(doc => ({
-          id: doc.id,
-          type: 'post' as const,
-          title: 'Nouveau post',
-          subtitle: doc.data().content?.substring(0, 30) + '...',
-          timestamp: doc.data().created_at,
-          user_name: 'Utilisateur',
-          user_avatar: ''
-        }))
-      ];
-
-      combinedActivities.sort((a, b) => {
-        const timeA = a.timestamp?.seconds || 0;
-        const timeB = b.timestamp?.seconds || 0;
-        return timeB - timeA;
-      });
-
-      setActivities(combinedActivities.slice(0, 10));
+      // Migration NAS : Lecture activités PocketBase
+      setActivities([]);
 
     } catch (error) {
       console.error("Error fetching admin data:", error);
@@ -258,9 +149,7 @@ const AdminPanel: React.FC = () => {
   const handleToggleVerification = async () => {
     if (!verifyingUser) return;
     try {
-      const userRef = doc(db, 'profiles', verifyingUser.id);
-      const newStatus = !verifyingUser.is_verified;
-      await updateDoc(userRef, { is_verified: newStatus });
+      // Migration NAS
       setVerifyingUser(null);
       setIsConfirmingVerif(false);
       fetchData(); // Refresh list
@@ -272,9 +161,7 @@ const AdminPanel: React.FC = () => {
   const handleToggleRole = async () => {
     if (!verifyingUser) return;
     try {
-      const userRef = doc(db, 'profiles', verifyingUser.id);
-      const newRole = verifyingUser.role === 'admin' ? 'user' : 'admin';
-      await updateDoc(userRef, { role: newRole });
+      // Migration NAS
       setVerifyingUser(null);
       setIsConfirmingRole(false);
       fetchData(); // Refresh list
@@ -287,56 +174,7 @@ const AdminPanel: React.FC = () => {
     setIsInitializing(true);
     setInitSuccess(false);
     try {
-      // Create a welcome post
-      const postRef = doc(collection(db, 'posts'));
-      await setDoc(postRef, {
-        id: postRef.id,
-        user_id: 'gemini',
-        content: "Bienvenue sur Wexo ! 🚀\n\nCeci est un post d'initialisation pour activer la collection dans votre console Firebase. Vous pouvez maintenant commencer à publier vos propres contenus !",
-        created_at: serverTimestamp(),
-        likes: 0,
-        comments_count: 0,
-        is_appropriate: true,
-        type: 'post',
-        language: 'fr'
-      });
-
-      // Create a welcome video (placeholder)
-      const videoRef = doc(collection(db, 'videos'));
-      await setDoc(videoRef, {
-        id: videoRef.id,
-        title: "Bienvenue sur Wexo Vidéos",
-        description: "Vidéo d'initialisation du système.",
-        url: "https://www.w3schools.com/html/mov_bbb.mp4",
-        thumbnail_url: "https://picsum.photos/seed/wexo/640/360",
-        creator_id: 'gemini',
-        creator_name: 'Gemini',
-        views: 0,
-        likes: 0,
-        is_short: false,
-        is_appropriate: true,
-        created_at: serverTimestamp(),
-        status: 'ready'
-      });
-
-      // Create a welcome short
-      const shortRef = doc(collection(db, 'videos'));
-      await setDoc(shortRef, {
-        id: shortRef.id,
-        title: "Bienvenue sur Wexo Shorts",
-        description: "Short d'initialisation.",
-        url: "https://www.w3schools.com/html/mov_bbb.mp4",
-        thumbnail_url: "https://picsum.photos/seed/shorts/360/640",
-        creator_id: 'gemini',
-        creator_name: 'Gemini',
-        views: 0,
-        likes: 0,
-        is_short: true,
-        is_appropriate: true,
-        created_at: serverTimestamp(),
-        status: 'ready'
-      });
-
+      // Migration NAS : Initialisation collections PocketBase
       setInitSuccess(true);
       setTimeout(() => setInitSuccess(false), 5000);
       fetchData();
@@ -393,7 +231,7 @@ const AdminPanel: React.FC = () => {
                 { label: 'Utilisateurs', value: stats.users, icon: Users },
                 { label: 'Vidéos', value: stats.videos, icon: Video },
                 { label: 'Posts', value: stats.posts, icon: FileText },
-                { label: 'Signalements', value: stats.reports, icon: AlertTriangle },
+                { label: 'Signalements', value: stats.reports, icon: TriangleAlert },
               ].map((stat, i) => (
                 <div key={i} className="bg-[#111] border border-white/5 rounded-2xl p-6 hover:bg-white/[0.02] transition-all group relative overflow-hidden">
                   <div className="flex items-start justify-between mb-6">

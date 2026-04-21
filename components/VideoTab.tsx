@@ -4,23 +4,8 @@ import { renderTextWithEmojis } from '../utils/emoji';
 import VideoPlayer from './VideoPlayer';
 import { useClickOutside } from '../utils/hooks';
 import { Search, Zap, TrendingUp, Tv, PlayCircle, Video as VideoIcon, Loader2, Play, Heart, MessageCircle, Send, X, Plus, Volume2, VolumeX, Copy, Check, ThumbsUp, ThumbsDown, Share2, ArrowLeft, Sparkles, User } from 'lucide-react';
-import { auth, db } from '../firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  deleteDoc, 
-  updateDoc, 
-  increment,
-  getDocs,
-  limit,
-  serverTimestamp
-} from 'firebase/firestore';
+import { pb } from '../services/pocketbaseService';
+// Firebase désactivé
 import { generateSnowflake } from '../utils/snowflake';
 import { Video } from '../types';
 import { DEFAULT_AVATAR } from '../constants';
@@ -41,6 +26,7 @@ interface Comment {
 
 interface VideoTabProps {
   onBecomeCreator: () => void;
+  onTabChange: (id: string) => void;
   user?: any;
   profile?: any;
 }
@@ -68,7 +54,7 @@ const MovieCameraIcon = ({ size = 16, className = "" }) => (
   </svg>
 );
 
-const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) => {
+const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, onTabChange, user, profile }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,6 +72,19 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
   useClickOutside(sharePopupRef, () => setShowSharePopup(false));
   const [copied, setCopied] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [isPostingComment, setIsPostingComment] = useState(false);
+  const isLikeProcessing = useRef(false);
+
+  const handleShare = () => {
+    setShowSharePopup(!showSharePopup);
+  };
+
+  const copyToClipboard = () => {
+    const url = `https://wexo.netlify.app/?video=${selectedVideo?.id}`;
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   const [loadingComments, setLoadingComments] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [showDateTooltip, setShowDateTooltip] = useState(false);
@@ -95,33 +94,89 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
 
   useEffect(() => {
     fetchVideos();
-    
-    // Check for video ID in URL
-    const params = new URLSearchParams(window.location.search);
-    const videoId = params.get('video');
-    if (videoId) {
-      fetchVideoById(videoId);
-    }
   }, []);
+
+  const fetchVideos = async () => {
+    setLoading(true);
+    try {
+      let resultList;
+      try {
+        // Tentative avec filtre et expansion
+        resultList = await pb.collection('videos').getList(1, 40, {
+          sort: '-created',
+          expand: 'author,user_id,creator_id',
+          filter: 'is_short != true'
+        });
+      } catch (err) {
+        console.warn('Filtre ou expansion VideoTab échoué, essai simple:', err);
+        // Fallback sans filtre strict si la structure diffère
+        resultList = await pb.collection('videos').getList(1, 50, {
+          sort: '-created',
+          expand: 'author,user_id,creator_id'
+        });
+      }
+
+      const formattedVideos = resultList.items
+        .filter(v => {
+          // Filtrage manuel si le filtre serveur a échoué
+          if (v.is_short === true) return false;
+          return true;
+        })
+        .map(v => {
+          const author = v.expand?.author || v.expand?.user_id || v.expand?.creator_id;
+          return {
+            id: v.id,
+            title: v.title,
+            description: v.description,
+            url: v.video_url || v.url,
+            thumbnail_url: v.thumbnail_url,
+            creator_id: v.author || v.user_id || v.creator_id,
+            creator_name: author?.username || 'Utilisateur',
+            creator_display_name: author?.name || author?.username || 'Utilisateur',
+            creator_avatar: author?.avatar_url || DEFAULT_AVATAR,
+            creator_is_verified: author?.is_verified || false,
+            views: Number(v.views) || 0,
+            likes: Number(v.likes) || 0,
+            is_short: v.is_short,
+            created_at: v.created
+          };
+        });
+
+      setVideos(formattedVideos as any);
+    } catch (err) {
+      console.error('Error fetching videos completely failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchVideoById = async (id: string) => {
     try {
-      const videoRef = doc(db, 'videos', id);
-      const videoSnap = await getDoc(videoRef);
-      if (videoSnap.exists()) {
-        const data = videoSnap.data();
-        const profileRef = doc(db, 'profiles', data.creator_id);
-        const profileSnap = await getDoc(profileRef);
-        const profileData = profileSnap.exists() ? profileSnap.data() : null;
-
-        setSelectedVideo({ 
-          id: videoSnap.id, 
-          ...data,
-          creator_display_name: profileData?.display_name || profileData?.username || data.creator_name
-        } as Video);
-      }
+      const record = await pb.collection('videos').getOne(id, {
+        expand: 'author'
+      });
+      const author = record.expand?.author;
+      const video = {
+        id: record.id,
+        title: record.title,
+        description: record.description,
+        url: record.video_url,
+        thumbnail_url: record.thumbnail_url,
+        creator_id: record.author,
+        creator_name: author?.username || 'Utilisateur',
+        creator_display_name: author?.name || author?.username || 'Utilisateur',
+        creator_avatar: author?.avatar_url || DEFAULT_AVATAR,
+        creator_is_verified: author?.is_verified || false,
+        views: record.views || 0,
+        likes: record.likes || 0,
+        is_short: record.is_short,
+        created_at: record.created
+      };
+      setSelectedVideo(video as any);
+      return video;
     } catch (err) {
-      console.error("Error fetching video by id:", err);
+      console.error('Error fetching video by id:', err);
+      return null;
     }
   };
 
@@ -177,125 +232,44 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
     setTimeout(() => setCopiedId(false), 2000);
   };
 
-  const fetchVideos = async () => {
-    setLoading(true);
-    
-    try {
-      const videosRef = collection(db, 'videos');
-      const q = query(
-        videosRef,
-        where('is_short', '==', false),
-        where('is_appropriate', '==', true)
-      );
-
-      const snapshot = await getDocs(q);
-      const allVideos = await Promise.all(snapshot.docs.map(async (d) => {
-        const data = d.data();
-        const profileRef = doc(db, 'profiles', data.creator_id);
-        const profileSnap = await getDoc(profileRef);
-        const profileData = profileSnap.exists() ? profileSnap.data() : null;
-        
-        return { 
-          id: d.id, 
-          ...data,
-          creator_display_name: profileData?.display_name || profileData?.username || data.creator_name
-        } as Video;
-      }));
-
-      // Filter based on phased publication
-      let filteredVideos = allVideos.filter(video => {
-        if (video.is_promoted) return true;
-        if (user?.uid && video.target_user_ids?.includes(user.uid)) return true;
-        if (user?.uid && video.creator_id === user.uid) return true; // Always show own videos
-        return false;
-      });
-
-      // Sort based on recommendation system and popularity
-      const userPrefs = profile?.preferences || {};
-      
-      filteredVideos.sort((a, b) => {
-        const scoreA = a.type ? (userPrefs[a.type] || 0) : 0;
-        const scoreB = b.type ? (userPrefs[b.type] || 0) : 0;
-        
-        if (scoreA !== scoreB) return scoreB - scoreA;
-        
-        const popA = (a.likes || 0) + (a.views || 0);
-        const popB = (b.likes || 0) + (b.views || 0);
-        
-        return popB - popA;
-      });
-
-      setVideos(filteredVideos);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error fetching videos:', err);
-      setLoading(false);
-    }
-  };
-
   const fetchVideoData = async () => {
-    if (!selectedVideo || !user?.uid) return;
+    if (!selectedVideo) return;
+    const userId = user?.id || user?.uid;
     setLoadingComments(true);
 
     try {
-      // Fetch Comments
-      const commentsRef = collection(db, 'video_comments');
-      const cq = query(
-        commentsRef,
-        where('video_id', '==', selectedVideo.id),
-        orderBy('created_at', 'desc')
-      );
-      
-      const cSnap = await getDocs(cq);
-      let processedComments = await Promise.all(cSnap.docs.map(async (docSnapshot) => {
-        const c = docSnapshot.data() as Comment;
-        
-        // Fetch profile for display_name
-        const profileRef = doc(db, 'profiles', c.user_id);
-        const profileSnap = await getDoc(profileRef);
-        const profileData = profileSnap.exists() ? profileSnap.data() : null;
+      // Charger le nombre de likes et si l'utilisateur a liké
+      const collection = selectedVideo.is_short ? 'shorts' : 'videos';
+      const videoRecord = await pb.collection(collection).getOne(selectedVideo.id);
+      setLikeCount(videoRecord.likes || 0);
 
-        // Fetch comment likes count
-        const likesRef = collection(db, 'comment_likes');
-        const lq = query(likesRef, where('comment_id', '==', docSnapshot.id));
-        const lSnap = await getDocs(lq);
+      if (userId) {
+        const likeRecord = await pb.collection('likes').getFirstListItem(`user_id="${userId}" && video_id="${selectedVideo.id}"`).catch(() => null);
+        setHasLiked(!!likeRecord);
         
-        // Check if user liked
-        const userLikeRef = doc(db, 'comment_likes', `${user.uid}_${docSnapshot.id}`);
-        const userLikeSnap = await getDoc(userLikeRef);
+        const subRecord = await pb.collection('subscriptions').getFirstListItem(`follower_id="${userId}" && following_id="${selectedVideo.creator_id}"`).catch(() => null);
+        setIsSubscribed(!!subRecord);
+      }
 
-        return {
-          ...c,
-          id: docSnapshot.id,
-          display_name: profileData?.display_name || profileData?.username || c.username,
-          likes: lSnap.size,
-          hasLiked: userLikeSnap.exists()
-        };
+      // Charger les commentaires
+      const commentsRecords = await pb.collection('comments').getList(1, 50, {
+        filter: `video_id="${selectedVideo.id}"`,
+        sort: '-created',
+        expand: 'user_id'
+      });
+
+      const formattedComments = commentsRecords.items.map(record => ({
+        id: record.id,
+        user_id: record.user_id,
+        username: record.expand?.user_id?.username || 'Utilisateur',
+        display_name: record.expand?.user_id?.name || record.expand?.user_id?.username,
+        avatar_url: record.expand?.user_id?.avatar ? pb.getFileUrl(record.expand.user_id, record.expand.user_id.avatar) : DEFAULT_AVATAR,
+        content: record.content,
+        created_at: record.created,
+        likes: record.likes || 0
       }));
-      
-      setComments(processedComments);
 
-      // Fetch Likes
-      const videoRef = doc(db, 'videos', selectedVideo.id);
-      const videoSnap = await getDoc(videoRef);
-      setLikeCount(videoSnap.data()?.likes || 0);
-
-      // Check if user liked
-      const userLikeRef = doc(db, 'video_likes', `${user.uid}_${selectedVideo.id}`);
-      const userLikeSnap = await getDoc(userLikeRef);
-      setHasLiked(userLikeSnap.exists());
-
-      // Fetch Subscriber Count
-      const subsRef = collection(db, 'subscriptions');
-      const sq = query(subsRef, where('creator_id', '==', selectedVideo.creator_id));
-      const sSnap = await getDocs(sq);
-      setSubscriberCount(sSnap.size);
-
-      // Check if user subscribed
-      const userSubRef = doc(db, 'subscriptions', `${user.uid}_${selectedVideo.creator_id}`);
-      const userSubSnap = await getDoc(userSubRef);
-      setIsSubscribed(userSubSnap.exists());
-
+      setComments(formattedComments as any);
     } catch (err) {
       console.error('Error fetching video data:', err);
     } finally {
@@ -304,121 +278,110 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
   };
 
   const handleSubscribe = async () => {
-    if (!user?.uid || !selectedVideo || user.uid === selectedVideo.creator_id) return;
-
-    const subId = `${user.uid}_${selectedVideo.creator_id}`;
-    const subRef = doc(db, 'subscriptions', subId);
-
-    if (isSubscribed) {
-      await deleteDoc(subRef);
-      setIsSubscribed(false);
-      setSubscriberCount(prev => prev - 1);
-    } else {
-      await setDoc(subRef, {
-        id: generateSnowflake(),
-        follower_id: user.uid, 
-        creator_id: selectedVideo.creator_id,
-        created_at: serverTimestamp()
-      });
-      setIsSubscribed(true);
-      setSubscriberCount(prev => prev + 1);
-    }
-  };
-
-  const handleShare = () => {
-    setShowSharePopup(!showSharePopup);
-    setCopied(false);
-  };
-
-  const copyToClipboard = () => {
-    const url = `https://wexo.netlify.app/?video=${selectedVideo?.id}`;
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    // Migration NAS
   };
 
   const incrementViews = async (videoId: string) => {
-    const videoRef = doc(db, 'videos', videoId);
-    await updateDoc(videoRef, {
-      views: increment(1)
-    });
+    try {
+      // On cherche d'abord dans 'videos'
+      const record = await pb.collection('videos').getOne(videoId).catch(() => null);
+      if (record) {
+        await pb.collection('videos').update(videoId, {
+          views: (Number(record.views) || 0) + 1
+        });
+      } else {
+        // Sinon on cherche dans 'shorts'
+        const shortRecord = await pb.collection('shorts').getOne(videoId).catch(() => null);
+        if (shortRecord) {
+          await pb.collection('shorts').update(videoId, {
+            views: (Number(shortRecord.views) || 0) + 1
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Error incrementing views:', err);
+    }
   };
 
-  const handleLike = async () => {
-    if (!user?.uid || !selectedVideo) return;
+  const handleLike = async (e: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!selectedVideo || !user || isLikeProcessing.current) return;
+    
+    isLikeProcessing.current = true;
+    const userId = user.id || user.uid;
+    const isShort = !!selectedVideo.is_short;
+    const collection = isShort ? 'shorts' : 'videos';
 
-    const likeId = `${user.uid}_${selectedVideo.id}`;
-    const likeRef = doc(db, 'video_likes', likeId);
-    const videoRef = doc(db, 'videos', selectedVideo.id);
+    try {
+      // Optimistic Update
+      const prevHasLiked = hasLiked;
+      
+      setHasLiked(!prevHasLiked);
+      setLikeCount(prev => prevHasLiked ? Math.max(0, prev - 1) : prev + 1);
 
-    if (hasLiked) {
-      await deleteDoc(likeRef);
-      await updateDoc(videoRef, { likes: increment(-1) });
-      setLikeCount(prev => prev - 1);
-      setHasLiked(false);
-    } else {
-      await setDoc(likeRef, {
-        id: generateSnowflake(),
-        video_id: selectedVideo.id, 
-        user_id: user.uid,
-        created_at: serverTimestamp()
+      if (prevHasLiked) {
+        // Dé-liker
+        try {
+          const existingLike = await pb.collection('likes').getFirstListItem(`user_id="${userId}" && video_id="${selectedVideo.id}"`);
+          await pb.collection('likes').delete(existingLike.id);
+          await pb.collection(collection).update(selectedVideo.id, {
+            "likes-": 1
+          });
+        } catch (e) {
+          // Si le like n'existait pas vraiment, on ignore l'erreur
+        }
+      } else {
+        // Liker
+        await pb.collection('likes').create({ user_id: userId, video_id: selectedVideo.id });
+        await pb.collection(collection).update(selectedVideo.id, {
+          "likes+": 1
+        });
+      }
+    } catch (err) {
+      console.error('Error handling like:', err);
+      // Re-synchronisation globale en cas d'erreur
+      fetchVideoData();
+    } finally {
+      isLikeProcessing.current = false;
+    }
+  };
+
+  const handlePostComment = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedVideo || !user || !newComment.trim()) return;
+    const userId = user.id || user.uid;
+    setIsPostingComment(true);
+    try {
+      const record = await pb.collection('comments').create({
+        user_id: userId,
+        video_id: selectedVideo.id,
+        content: newComment
       });
-      await updateDoc(videoRef, { likes: increment(1) });
-      setLikeCount(prev => prev + 1);
-      setHasLiked(true);
+
+      const newCommentObj: Comment = {
+        id: record.id,
+        user_id: userId,
+        username: profile?.username || 'Utilisateur',
+        avatar_url: profile?.avatar_url || DEFAULT_AVATAR,
+        content: newComment,
+        created_at: record.created,
+        likes: 0
+      };
+
+      setComments([newCommentObj, ...comments]);
+      setNewComment("");
+    } catch (err) {
+      console.error("Erreur lors du postage du commentaire:", err);
+    } finally {
+      setIsPostingComment(false);
     }
   };
 
   const handleCommentLike = async (commentId: string) => {
-    if (!user?.uid) return;
-
-    const comment = comments.find(c => c.id === commentId);
-    if (!comment) return;
-
-    const likeId = `${user.uid}_${commentId}`;
-    const likeRef = doc(db, 'comment_likes', likeId);
-
-    if (comment.hasLiked) {
-      await deleteDoc(likeRef);
-      setComments(prev => prev.map(c => 
-        c.id === commentId ? { ...c, hasLiked: false, likes: (c.likes || 1) - 1 } : c
-      ));
-    } else {
-      await setDoc(likeRef, {
-        id: generateSnowflake(),
-        comment_id: commentId, 
-        user_id: user.uid,
-        created_at: serverTimestamp()
-      });
-      setComments(prev => prev.map(c => 
-        c.id === commentId ? { ...c, hasLiked: true, likes: (c.likes || 0) + 1 } : c
-      ));
-    }
-  };
-
-  const handlePostComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user?.uid || !newComment.trim() || !selectedVideo) return;
-
-    const commentId = generateSnowflake();
-    const commentData = {
-      id: commentId,
-      video_id: selectedVideo.id,
-      user_id: user.uid,
-      username: profile?.username || user.email?.split('@')[0],
-      display_name: profile?.display_name || profile?.username || user.email?.split('@')[0],
-      avatar_url: profile?.avatar_url || DEFAULT_AVATAR,
-      content: newComment,
-      created_at: serverTimestamp()
-    };
-
-    try {
-      await setDoc(doc(db, 'video_comments', commentId), commentData);
-      setComments(prev => [{ ...commentData, created_at: new Date(), likes: 0, hasLiked: false }, ...prev]);
-      setNewComment('');
-    } catch (err) {
-      console.error('Error posting comment:', err);
-    }
+    // Migration NAS
   };
 
   const filteredVideos = videos.filter(v => {
@@ -441,24 +404,25 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
             {/* Bouton Retour déplacé en dehors du rectangle */}
             <button 
               onClick={() => setSelectedVideo(null)}
-              className="mb-6 flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-2xl transition-all border border-white/10 group active:scale-95"
+              className="mb-6 flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg transition-all border border-white/10 group active:scale-95"
             >
               <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
               <span className="text-xs font-bold">Retour</span>
             </button>
 
             {/* Lecteur Vidéo - Format Rectangle (16:9) */}
-            <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl group mb-6 border border-white/10">
+            <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl group mb-3 border border-white/10">
               <VideoPlayer 
                 src={selectedVideo.url} 
                 videoId={selectedVideo.id}
+                userId={user?.id || user?.uid}
                 transcription={selectedVideo.transcription}
                 className="w-full h-full"
               />
             </div>
 
             {/* Titre et Infos */}
-            <div className="space-y-4">
+            <div className="space-y-2">
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-tight">
                 {renderTextWithEmojis(selectedVideo.title)}
               </h1>
@@ -493,27 +457,15 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                         badgeSize={14} 
                       />
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[10px] font-bold text-slate-500 font-mono">
-                          ID: {selectedVideo.creator_display_id || 'N/A'}
-                        </span>
-                        {selectedVideo.creator_display_id && (
-                          <button 
-                            onClick={(e) => copyId(e, selectedVideo.creator_display_id)}
-                            className="p-0.5 hover:bg-white/10 rounded-md text-slate-500 hover:text-white transition-all"
-                            title="Copier l'ID"
-                          >
-                            {copiedId ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
-                          </button>
-                        )}
-                        <span className="text-slate-700 text-[8px]">•</span>
                         <p className="text-[10px] font-bold text-slate-500">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</p>
                       </div>
                     </div>
                   </div>
                   
                   <div className="flex items-center gap-2">
-                    {user && user.uid === selectedVideo.creator_id ? (
+                    {user && (user.uid === selectedVideo.creator_id || user.id === selectedVideo.creator_id) ? (
                       <button 
+                        onClick={() => onTabChange('ma-chaine')}
                         className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-[12px] font-bold rounded-2xl transition-all"
                       >
                         Gérer les vidéos
@@ -532,7 +484,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                 <div className="flex items-center gap-2 pb-2 md:pb-0">
                   <button 
                     onClick={handleLike}
-                    className={`flex items-center gap-2 px-6 py-2 rounded-2xl transition-all text-[14px] font-bold active:scale-90 ${hasLiked ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                    className={`flex items-center gap-2 px-6 py-2 rounded-full transition-all text-[14px] font-bold active:scale-90 ${hasLiked ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
                   >
                     <Heart size={20} fill={hasLiked ? "currentColor" : "none"} className={hasLiked ? "text-red-500" : "text-slate-400"} /> 
                     {likeCount}
@@ -570,7 +522,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, user, profile }) =
                               {copied ? <Check size={18} className="text-emerald-600" /> : <Copy size={18} />}
                             </button>
                           </div>
-                          <p className="text-[10px] text-slate-500 font-bold text-center">Lien direct vers wexo.netlify.app</p>
+                          <p className="text-[10px] text-slate-500 font-bold text-center">Lien direct vers Wexo</p>
                         </div>
                         {/* Arrow */}
                         <div className="absolute top-full right-6 md:right-auto md:left-1/2 md:-translate-x-1/2 border-8 border-transparent border-t-[#1a1a1a]"></div>

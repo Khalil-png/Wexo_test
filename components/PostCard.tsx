@@ -36,20 +36,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
               className="font-semibold text-sm text-white" 
               badgeSize={14} 
             />
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold text-slate-500 font-mono">
-                ID: {post.author_display_id || 'N/A'}
-              </span>
-              {post.author_display_id && (
-                <button 
-                  onClick={(e) => copyId(e, post.author_display_id)}
-                  className="p-0.5 hover:bg-white/10 rounded-md text-slate-500 hover:text-white transition-all"
-                  title="Copier l'ID"
-                >
-                  {copiedId ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
-                </button>
-              )}
-              <span className="text-slate-700 text-[8px]">•</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
               <p className="text-[10px] text-slate-500">{post.timestamp}</p>
             </div>
           </div>

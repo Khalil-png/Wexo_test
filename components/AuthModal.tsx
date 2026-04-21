@@ -1,17 +1,11 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Mail, Lock, User, Download, Loader2, ArrowRight, RefreshCw, RotateCcw, ArrowLeft, MoreVertical, ShieldCheck, MailCheck, ExternalLink, Camera, Upload } from 'lucide-react';
-import { auth, db } from '../firebase';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signInWithPopup, 
-  GoogleAuthProvider,
-  updateProfile
-} from 'firebase/auth';
-import { doc, setDoc, getDoc, getDocs, collection, query, where, limit } from 'firebase/firestore';
+import { X, Mail, Lock, User, Download, Loader2, ArrowRight, RefreshCw, RotateCcw, ArrowLeft, MoreVertical, ShieldCheck, MailCheck, ExternalLink, Camera, Upload, Eye, EyeOff } from 'lucide-react';
+import { pb, getPocketBaseFileUrl } from '../services/pocketbaseService';
 import { generateNumericId } from '../utils/idGenerator';
+import { uploadToPocketBase } from '../services/pocketbaseService';
 import { DEFAULT_AVATAR } from '../constants';
+// Firebase retiré totalement suite à suppression du projet par l'utilisateur
 
 interface AuthModalProps {
   type: 'login' | 'signup';
@@ -33,6 +27,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
   const [displayName, setDisplayName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(DEFAULT_AVATAR);
   const [isCustomAvatar, setIsCustomAvatar] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
@@ -97,87 +92,142 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
 
     try {
       if (type === 'signup') {
-        if (password.length < 6) {
-          throw new Error("Votre mot de passe doit contenir au moins 6 caractere");
+        const passwordRegex = /[.\s-]/;
+        const usernameRegex = /[.\s]/;
+
+        if (username.length < 3) {
+          throw new Error("Le pseudo doit faire au moins 3 caractères.");
         }
-        if (password !== confirmPassword) {
+        if (usernameRegex.test(username)) {
+          throw new Error("Le pseudo ne peut pas contenir d'espaces ou de points.");
+        }
+        
+        // Stockage en minuscules pour ignorer la casse et nettoyage des espaces
+        const cleanUsernameForNAS = (username || "").trim().toLowerCase();
+        const cleanPassword = password || "";
+        const cleanDisplayName = (displayName || username || "").trim();
+        
+        const finalEmail = email.trim() || `${cleanUsernameForNAS}${Date.now()}@wexo.app`;
+        
+        console.log("Signup debug:", {
+          original_username: username,
+          clean_username: cleanUsernameForNAS,
+          password_length: cleanPassword.length,
+          email: finalEmail
+        });
+        
+        if (cleanPassword.length < 6) {
+          throw new Error("Votre mot de passe doit contenir au moins 6 caractères.");
+        }
+        if (passwordRegex.test(cleanPassword)) {
+          throw new Error("Le mot de passe ne peut pas contenir de points, d'espaces ou de tirets (-).");
+        }
+        if (cleanPassword !== confirmPassword.trim()) {
           throw new Error("Les mots de passe ne correspondent pas.");
         }
 
-        // Vérifier si le pseudo est déjà utilisé
-        const profilesRef = collection(db, 'profiles');
-        const qPseudo = query(profilesRef, where('username', '==', username), limit(1));
-        const pseudoSnapshot = await getDocs(qPseudo);
-        if (!pseudoSnapshot.empty) {
-          throw new Error("Ce pseudo est déja utilisé");
+        // Vérifier si le pseudo est déjà utilisé (insensible à la casse)
+        try {
+          const existing = await pb.collection('users').getList(1, 1, {
+            filter: `username = "${cleanUsernameForNAS}"`
+          });
+          
+          if (existing.totalItems > 0) {
+            throw new Error("Ce pseudo est déjà utilisé. Essayez de vous connecter ou choisissez un autre pseudo.");
+          }
+        } catch (e: any) {
+          if (e.message.includes("déjà utilisé")) throw e;
+          console.warn("Erreur lors de la vérification du pseudo:", e);
         }
 
-        const cleanUsername = username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-        const finalEmail = email.trim() || `${cleanUsername}${Date.now()}@wexo.app`;
-        const usingDummy = !email.trim();
-        setIsDummyEmail(usingDummy);
+        setIsDummyEmail(!email.trim());
 
         try {
-          const userCredential = await createUserWithEmailAndPassword(auth, finalEmail, password);
-          const user = userCredential.user;
-
-          if (user) {
-            // Update Firebase Auth profile
-            await updateProfile(user, {
-              displayName: username,
-              photoURL: selectedAvatar || DEFAULT_AVATAR
-            });
-
-            // Create Firestore profile
-            await setDoc(doc(db, 'profiles', user.uid), {
-              id: user.uid,
-              display_id: generateNumericId(),
-              username: username,
-              display_name: displayName || username,
-              email: finalEmail,
-              avatar_url: selectedAvatar || DEFAULT_AVATAR,
-              auth_method: usingDummy ? 'anonymous' : 'password',
-              is_verified: false,
-              role: 'user',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            });
+          let finalAvatarUrl = selectedAvatar;
+          if (isCustomAvatar && selectedAvatar.startsWith('data:')) {
+            try {
+              const res = await fetch(selectedAvatar);
+              const blob = await res.blob();
+              finalAvatarUrl = await uploadToPocketBase(blob, `avatar_${cleanUsernameForNAS}.jpg`);
+            } catch (pberr) {
+              console.error("PocketBase upload error:", pberr);
+            }
           }
-        } catch (fbErr: any) {
-          if (fbErr.code === 'auth/email-already-in-use') {
-            throw new Error("Cet e-mail est déja utilisé");
+          
+          const pbData = {
+            "username": cleanUsernameForNAS,
+            "email": finalEmail,
+            "emailVisibility": true,
+            "password": cleanPassword,
+            "passwordConfirm": cleanPassword,
+            "name": cleanDisplayName,
+            "avatar_url": finalAvatarUrl,
+            "role": 'user',
+            "display_id": String(generateNumericId())
+          };
+
+          console.log("Create record attempt...");
+          const pbUser = await pb.collection('users').create(pbData);
+          console.log("Inscription NAS réussie:", pbUser);
+          
+          console.log("Auth attempt with email:", {
+            email: finalEmail,
+            passLength: cleanPassword.length
+          });
+          await pb.collection('users').authWithPassword(finalEmail, cleanPassword);
+          console.log("Auth successful!");
+        } catch (err: any) {
+          console.error("Auth process error details:", err.data || err);
+          let msg = err.message || "Erreur lors de la création du compte.";
+          if (err.data && err.data.message) msg = `${msg} (${err.data.message})`;
+          if (err.data && err.data.data) {
+            const details = Object.entries(err.data.data).map(([k, v]: [string, any]) => `${k}: ${v.message}`).join(', ');
+            if (details) msg = `${msg} - ${details}`;
           }
-          throw fbErr;
+          setError(msg);
+          setLoading(false);
+          return;
         }
 
         onClose();
+        window.location.reload();
       } else {
-        // --- CONNEXION PAR PSEUDO ---
+        // --- CONNEXION ---
         if (loginStep === 'pseudo') {
-          const profilesRef = collection(db, 'profiles');
-          const q = query(profilesRef, where('username', '==', loginPseudo), limit(1));
-          const querySnapshot = await getDocs(q);
-
-          if (querySnapshot.empty) {
-            throw new Error("Ce pseudo n'existe pas");
+          try {
+            // Recherche en minuscules pour ignorer la casse du pseudo tapé
+            const searchPseudo = loginPseudo.trim().toLowerCase();
+            const pbUser = await pb.collection('users').getFirstListItem(`username="${searchPseudo}"`);
+            setIdentifiedUser(pbUser);
+            setLoginStep('password');
+            setLoading(false);
+            return;
+          } catch (e) {
+            throw new Error("Ce pseudo n'existe pas.");
           }
-
-          const userData = querySnapshot.docs[0].data();
-          setIdentifiedUser(userData);
-          setLoginStep('password');
-          setLoading(false);
-          return;
         }
 
         // Étape Mot de passe
         if (!identifiedUser) return;
         try {
-          await signInWithEmailAndPassword(auth, identifiedUser.email, password);
-        } catch (fbErr: any) {
-          if (fbErr.code === 'auth/wrong-password' || fbErr.code === 'auth/invalid-credential') {
-            throw new Error("Le mot de passe est invalide");
-          }
-          throw fbErr;
+          // On nettoie l'identité mais garde le mot de passe tel quel
+          const cleanPassword = password || "";
+          const identity = identifiedUser.email || identifiedUser.username;
+          
+          console.log("Tentative de connexion au NAS:", {
+            identity,
+            passLength: cleanPassword.length,
+            passStart: cleanPassword.substring(0, 2) + "..."
+          });
+          
+          // Authenticate on PocketBase (Email est plus fiable)
+          await pb.collection('users').authWithPassword(identity, cleanPassword);
+          console.log("Connexion NAS réussie");
+        } catch (err: any) {
+          console.error("Erreur détaillée connexion NAS:", err.data || err);
+          setError("Mot de passe incorrect ou erreur de connexion au NAS.");
+          setLoading(false);
+          return;
         }
         
         onClose();
@@ -297,42 +347,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
   };
 
   const handleGoogleLogin = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
-      if (user) {
-        // Check if profile exists
-        const docRef = doc(db, 'profiles', user.uid);
-        const docSnap = await getDoc(docRef);
-
-        if (!docSnap.exists()) {
-          await setDoc(docRef, {
-            id: user.uid,
-            display_id: generateNumericId(),
-            username: user.displayName || user.email?.split('@')[0] || 'Utilisateur',
-            display_name: user.displayName || user.email?.split('@')[0] || 'Utilisateur',
-            email: user.email || '',
-            avatar_url: user.photoURL || DEFAULT_AVATAR,
-            auth_method: 'google',
-            is_verified: false,
-            role: 'user',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-        }
-      }
-      
-      onClose();
-    } catch (err: any) {
-      console.error("Google Login Error:", err);
-      setError(err.message || "Une erreur est survenue avec Google.");
-    } finally {
-      setLoading(false);
-    }
+    setError("La connexion Google est désactivée (Migration NAS).");
   };
 
   useEffect(() => {
@@ -421,8 +436,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
         {step === 'form' ? (
           <>
             <div className="text-center mb-8">
-              <img src="https://n.uguu.se/ETulZagh.png" className="w-16 h-16 rounded-2xl mx-auto shadow-lg shadow-white/5 mb-4 object-cover" alt="Wexo" referrerPolicy="no-referrer" />
-              <h2 className="text-2xl font-bold text-white tracking-tight">{type === 'signup' ? 'Créer un compte' : 'Bon retour sur Wexo'}</h2>
+              <h2 className="text-2xl font-bold text-white tracking-tight">{type === 'signup' ? 'Créer un compte' : 'Bon retour'}</h2>
               <p className="text-slate-400 text-sm mt-2">{type === 'signup' ? 'Commencez l\'aventure avec nous.' : 'Utilisez votre pseudo pour vous connecter.'}</p>
             </div>
 
@@ -431,25 +445,128 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
             <form onSubmit={handleAuth} className="space-y-4">
               {type === 'signup' ? (
                 <>
+                  {/* Sélection de l'Avatar */}
+                  <div className="flex flex-col items-center mb-6">
+                    <div className="relative group">
+                      <div className="w-24 h-24 rounded-full overflow-hidden bg-white/5 border-2 border-white/10 group-hover:border-white/20 transition-all">
+                        <img src={selectedAvatar} className="w-full h-full object-cover" alt="Avatar" />
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => setShowAvatarMenu(!showAvatarMenu)}
+                        className="absolute -bottom-2 -right-2 w-10 h-10 bg-white text-black rounded-xl border-4 border-[#1a1a1a] flex items-center justify-center hover:scale-110 transition-all shadow-xl"
+                      >
+                        <Camera size={18} />
+                      </button>
+
+                      {showAvatarMenu && (
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-[#222] border border-white/10 rounded-2xl p-2 shadow-2xl z-50">
+                          <button 
+                            type="button" 
+                            onClick={startCamera}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black uppercase text-white hover:bg-white/5 rounded-xl transition-all"
+                          >
+                            <Camera size={16} />
+                            Prendre une photo
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black uppercase text-white hover:bg-white/5 rounded-xl transition-all"
+                          >
+                            <Upload size={16} />
+                            Choisir un fichier
+                          </button>
+                          <input 
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileChange}
+                            className="hidden"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input required type="text" placeholder="Pseudo" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
+                    <input 
+                      required 
+                      type="text" 
+                      placeholder="Pseudo" 
+                      value={username} 
+                      onChange={(e) => setUsername(e.target.value)} 
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" 
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck="false"
+                      translate="no"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1 px-4">Sans espaces ni points.</p>
                   </div>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input required type="text" placeholder="Pseudo d'affichage" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
+                    <input 
+                      required 
+                      type="text" 
+                      placeholder="Pseudo d'affichage" 
+                      value={displayName} 
+                      onChange={(e) => setDisplayName(e.target.value)} 
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" 
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck="false"
+                      translate="no"
+                    />
                   </div>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input type="email" placeholder="Email (Optionnel)" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
+                    <input 
+                      type="email" 
+                      placeholder="Email (Optionnel)" 
+                      value={email} 
+                      onChange={(e) => setEmail(e.target.value)} 
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" 
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck="false"
+                      translate="no"
+                    />
                   </div>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input required type="password" placeholder="Mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
+                    <input 
+                      required 
+                      type={showPassword ? "text" : "password"} 
+                      placeholder="Mot de passe" 
+                      value={password} 
+                      onChange={(e) => setPassword(e.target.value)} 
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-12 text-sm text-white focus:ring-2 focus:ring-white/20" 
+                      autoComplete="new-password"
+                      translate="no"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} /> }
+                    </button>
+                    <p className="text-[10px] text-slate-500 mt-1 px-4">Min. 6 caractères. Pas de points, espaces ou tirets.</p>
                   </div>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input required type="password" placeholder="Confirmer le mot de passe" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
+                    <input 
+                      required 
+                      type={showPassword ? "text" : "password"} 
+                      placeholder="Confirmer le mot de passe" 
+                      value={confirmPassword} 
+                      onChange={(e) => setConfirmPassword(e.target.value)} 
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-12 text-sm text-white focus:ring-2 focus:ring-white/20" 
+                      autoComplete="new-password"
+                      translate="no"
+                    />
                   </div>
                   <button disabled={loading} type="submit" className="w-full bg-white hover:bg-slate-200 text-black font-bold py-4 rounded-2xl shadow-lg shadow-white/5 transition-all flex items-center justify-center gap-2 mt-4 active:scale-95">
                     {loading ? <Loader2 className="animate-spin" size={20} /> : (
@@ -466,7 +583,18 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
                     <>
                       <div className="relative">
                         <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                        <input required type="text" placeholder="Votre Pseudo" value={loginPseudo} onChange={(e) => setLoginPseudo(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
+                        <input 
+                          required 
+                          type="text" 
+                          placeholder="Votre Pseudo" 
+                          value={loginPseudo} 
+                          onChange={(e) => setLoginPseudo(e.target.value)} 
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" 
+                          autoComplete="username"
+                          autoCorrect="off"
+                          spellCheck="false"
+                          translate="no"
+                        />
                       </div>
                       <button disabled={loading} type="submit" className="w-full bg-white hover:bg-slate-200 text-black font-bold py-4 rounded-2xl shadow-lg shadow-white/5 transition-all flex items-center justify-center gap-2 mt-4 active:scale-95">
                         {loading ? <Loader2 className="animate-spin" size={20} /> : (
@@ -480,6 +608,15 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
                   ) : (
                     <div className="animate-in slide-in-from-right-4 duration-300 space-y-6">
                       <div className="flex flex-col items-center text-center">
+                        {identifiedUser?.avatar_url && (
+                          <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-white/10 mb-3 shadow-xl">
+                            <img 
+                              src={identifiedUser.avatar_url.startsWith('http') ? identifiedUser.avatar_url : getPocketBaseFileUrl('users', identifiedUser.id, identifiedUser.avatar_url)} 
+                              className="w-full h-full object-cover" 
+                              alt="Profile" 
+                            />
+                          </div>
+                        )}
                         <h3 className="text-white font-bold text-lg">{identifiedUser?.username}</h3>
                         <button 
                           type="button" 
@@ -492,29 +629,31 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
 
                       {identifiedUser?.auth_method === 'google' ? (
                         <div className="space-y-4">
-                          <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 text-center">
-                            <p className="text-blue-400 text-xs font-medium">Vous vous êtes inscrit avec Google.</p>
+                          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 text-center">
+                            <p className="text-amber-400 text-xs font-medium">Ce compte semble utiliser Google. Pour l'instant, seuls les comptes NAS sont supportés.</p>
                           </div>
-                          <button 
-                            type="button"
-                            onClick={handleGoogleLogin}
-                            disabled={loading}
-                            className="w-full bg-white text-black font-bold py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 active:scale-95"
-                          >
-                            <svg className="w-5 h-5" viewBox="0 0 24 24">
-                              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
-                              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                            </svg>
-                            Se connecter avec Google
-                          </button>
                         </div>
                       ) : (
                         <>
                           <div className="relative">
                             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                            <input required type="password" placeholder="Mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white focus:ring-2 focus:ring-white/20" />
+                            <input 
+                              required 
+                              type={showPassword ? "text" : "password"} 
+                              placeholder="Mot de passe" 
+                              value={password} 
+                              onChange={(e) => setPassword(e.target.value)} 
+                              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-12 text-sm text-white focus:ring-2 focus:ring-white/20" 
+                              autoComplete="current-password"
+                              translate="no"
+                            />
+                            <button 
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                            >
+                              {showPassword ? <EyeOff size={18} /> : <Eye size={18} /> }
+                            </button>
                           </div>
                           <button disabled={loading} type="submit" className="w-full bg-white hover:bg-slate-200 text-black font-bold py-4 rounded-2xl shadow-lg shadow-white/5 transition-all flex items-center justify-center gap-2 mt-4 active:scale-95">
                             {loading ? <Loader2 className="animate-spin" size={20} /> : (
@@ -610,7 +749,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
                 </div>
                 <div className="flex gap-4">
                   <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-slate-400 flex-shrink-0">2</div>
-                  <p className="text-xs text-slate-400 leading-relaxed">Cliquez sur le lien <span className="text-white">"Confirm your email"</span> pour activer votre compte Wexo.</p>
+                  <p className="text-xs text-slate-400 leading-relaxed">Cliquez sur le lien <span className="text-white">"Confirm your email"</span> pour activer votre compte.</p>
                 </div>
               </div>
             )}

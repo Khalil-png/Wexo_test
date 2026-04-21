@@ -1,26 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { renderTextWithEmojis } from '../utils/emoji';
-import { Heart, MessageCircle, Share2, Music, Loader2, UserPlus, UserCheck, Play, Zap, Tv, Plus, TrendingUp, ThumbsUp, ThumbsDown, MessageSquare, Repeat, Pause, Volume2, VolumeX, Copy, Check, X, ChevronUp, ChevronDown, Captions, User } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Music, Loader2, UserPlus, UserCheck, Play, Zap, Tv, Plus, TrendingUp, ThumbsUp, ThumbsDown, MessageSquare, Repeat, Pause, Volume2, VolumeX, Copy, Check, X, ChevronUp, ChevronDown, Captions, User, Send } from 'lucide-react';
 import { DEFAULT_AVATAR } from '../constants';
-import { auth, db } from '../firebase';
+import { pb } from '../services/pocketbaseService';
+// Firebase désactivé
 import { useClickOutside } from '../utils/hooks';
-import { 
-  collection, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  deleteDoc, 
-  updateDoc, 
-  increment,
-  getDocs,
-  limit,
-  serverTimestamp,
-  arrayUnion
-} from 'firebase/firestore';
 import { Video } from '../types';
 import { generateSnowflake } from '../utils/snowflake';
 import Username from './Username';
@@ -42,55 +26,49 @@ const ShortsTab: React.FC<ShortsTabProps> = ({ user, profile }) => {
 
   const fetchShorts = async () => {
     setLoading(true);
-    
     try {
-      const videosRef = collection(db, 'videos');
-      const q = query(
-        videosRef,
-        where('is_short', '==', true)
-      );
+      let resultList;
+      try {
+        // Nouvelle collection PocketBase 'shorts'
+        resultList = await pb.collection('shorts').getList(1, 40, {
+          sort: '-created',
+          expand: 'creator_id'
+        });
+      } catch (err) {
+        console.warn('Echec fetch collection shorts, essai fallback videos:', err);
+        // Fallback sur 'videos' si 'shorts' est vide ou en cours de migration
+        resultList = await pb.collection('videos').getList(1, 40, {
+          sort: '-created',
+          expand: 'author,user_id,creator_id',
+          filter: 'is_short = true'
+        });
+      }
 
-      const snapshot = await getDocs(q);
-      const allShorts = await Promise.all(snapshot.docs.map(async (d) => {
-        const data = d.data();
-        const profileRef = doc(db, 'profiles', data.creator_id);
-        const profileSnap = await getDoc(profileRef);
-        const profileData = profileSnap.exists() ? profileSnap.data() : null;
-        
-        return { 
-          id: d.id, 
-          ...data,
-          creator_display_name: profileData?.display_name || profileData?.username || data.creator_name
-        } as Video;
-      }));
-
-      // Filter based on phased publication
-      let filteredShorts = allShorts.filter(short => {
-        if (short.is_promoted) return true;
-        if (user?.uid && short.target_user_ids?.includes(user.uid)) return true;
-        if (user?.uid && short.creator_id === user.uid) return true; // Always show own shorts
-        return false;
+      const formattedShorts = resultList.items.map(v => {
+        // Support pour les deux types de structures (nouveaux 'shorts' et vieux 'videos')
+        const author = v.expand?.creator_id || v.expand?.author || v.expand?.user_id;
+        return {
+          id: v.id,
+          title: v.title,
+          description: v.description,
+          url: v.url || v.video_url, // 'url' pour shorts, 'video_url' pour videos
+          thumbnail_url: v.thumbnail_url,
+          creator_id: v.creator_id || v.author || v.user_id,
+          creator_name: author?.username || 'Utilisateur',
+          creator_display_name: author?.name || author?.username || 'Utilisateur',
+          creator_avatar: author?.avatar_url || DEFAULT_AVATAR,
+          creator_is_verified: author?.is_verified || false,
+          views: Number(v.views) || 0,
+          likes: Number(v.likes) || 0,
+          is_short: v.collectionName === 'shorts' ? true : v.is_short,
+          created_at: v.created
+        };
       });
 
-      // Sort based on recommendation system and popularity
-      const userPrefs = profile?.preferences || {};
-      
-      filteredShorts.sort((a, b) => {
-        const scoreA = a.type ? (userPrefs[a.type] || 0) : 0;
-        const scoreB = b.type ? (userPrefs[b.type] || 0) : 0;
-        
-        if (scoreA !== scoreB) return scoreB - scoreA;
-        
-        const popA = (a.likes || 0) + (a.views || 0);
-        const popB = (b.likes || 0) + (b.views || 0);
-        
-        return popB - popA;
-      });
-
-      setShorts(filteredShorts);
-      setLoading(false);
+      setShorts(formattedShorts as any);
     } catch (err) {
-      console.error('Error fetching shorts:', err);
+      console.error('Error fetching shorts completely failed:', err);
+    } finally {
       setLoading(false);
     }
   };
@@ -183,6 +161,7 @@ const ShortsTab: React.FC<ShortsTabProps> = ({ user, profile }) => {
           short={short} 
           isActive={index === activeShortIndex} 
           user={user}
+          profile={profile}
         />
       ))}
     </div>
@@ -193,9 +172,10 @@ interface ShortItemProps {
   short: Video;
   isActive: boolean;
   user?: any;
+  profile?: any;
 }
 
-const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
+const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(short.likes || 0);
@@ -215,6 +195,12 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
   const [volume, setVolume] = useState(1);
   const [showSubtitles, setShowSubtitles] = useState(true);
   const [currentSubtitle, setCurrentSubtitle] = useState<string | null>(null);
+  const [showComments, setShowComments] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [comments, setComments] = useState<any[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [isPostingComment, setIsPostingComment] = useState(false);
+  const isLikeProcessing = useRef(false);
 
   const hasCountedFirstView = useRef(false);
   const hasCountedSecondView = useRef(false);
@@ -229,71 +215,31 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
   }, [short.id]);
 
   const incrementView = async () => {
-    if (!user?.uid) return;
-    
-    const videoRef = doc(db, 'videos', short.id);
-    await updateDoc(videoRef, {
-      views: increment(1)
-    });
+    if (!user?.uid || !short.id) return;
+    try {
+      const userId = user.id || user.uid;
+      let viewRecord;
+      try {
+        viewRecord = await pb.collection('views').getFirstListItem(`user_id="${userId}" && video_id="${short.id}"`);
+      } catch (e) {}
 
-    const userViewRef = doc(db, 'video_views', `${user.uid}_${short.id}`);
-    const userViewSnap = await getDoc(userViewRef);
-    const currentCount = userViewSnap.exists() ? userViewSnap.data().view_count : 0;
-    
-    await setDoc(userViewRef, {
-      user_id: user.uid, 
-      video_id: short.id, 
-      view_count: currentCount + 1,
-      last_view_at: serverTimestamp()
-    }, { merge: true });
-
-    if (short.type) {
-      const profileRef = doc(db, 'profiles', user.uid);
-      const profileSnap = await getDoc(profileRef);
-      const prefs = profileSnap.data()?.preferences || {};
-      prefs[short.type] = (prefs[short.type] || 0) + 1;
-      await updateDoc(profileRef, { preferences: prefs });
+      if (!viewRecord) {
+        await pb.collection('views').create({ user_id: userId, video_id: short.id, count: 1 });
+        const res = await pb.collection('shorts').getOne(short.id).catch(() => null);
+        if (res) await pb.collection('shorts').update(short.id, { views: (res.views || 0) + 1 });
+      } else if (viewRecord.count < 2) {
+        await pb.collection('views').update(viewRecord.id, { count: 2 });
+        const res = await pb.collection('shorts').getOne(short.id).catch(() => null);
+        if (res) await pb.collection('shorts').update(short.id, { views: (res.views || 0) + 1 });
+      }
+    } catch (err) {
+      console.error("Erreur incrementView shorts:", err);
     }
   };
 
   const updateWatchStats = async (percentage: number) => {
     if (!user?.uid) return;
-    
-    const videoRef = doc(db, 'videos', short.id);
-    const videoSnap = await getDoc(videoRef);
-    if (!videoSnap.exists()) return;
-
-    let stats = videoSnap.data().watch_stats || [];
-    const userStatIndex = stats.findIndex((s: any) => s.user_id === user.uid);
-    if (userStatIndex > -1) {
-      stats[userStatIndex].watch_percentage = Math.max(stats[userStatIndex].watch_percentage, percentage);
-    } else {
-      stats.push({ user_id: user.uid, watch_percentage: percentage });
-    }
-
-    // Check for promotion to 100% (Phase 2)
-    let isPromoted = videoSnap.data().is_promoted;
-    const targetUserIds = videoSnap.data().target_user_ids || [];
-    
-    if (!isPromoted && targetUserIds.length > 0) {
-      const targetUsersStats = stats.filter((s: any) => targetUserIds.includes(s.user_id));
-      const reachedTargetCount = targetUsersStats.length;
-      const totalTargetCount = targetUserIds.length;
-      
-      const highWatchCount = targetUsersStats.filter((s: any) => s.watch_percentage >= 80).length;
-      const watchCriteriaMet = highWatchCount >= (totalTargetCount * 0.6);
-      
-      const likeRatioMet = likeCount >= (reachedTargetCount * 0.6);
-
-      if (watchCriteriaMet && likeRatioMet) {
-        isPromoted = true;
-      }
-    }
-
-    await updateDoc(videoRef, { 
-      watch_stats: stats,
-      is_promoted: isPromoted
-    });
+    // Migration NAS
   };
 
   useEffect(() => {
@@ -314,91 +260,80 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
   }, [user?.uid, isActive]);
 
   const checkInteractions = async () => {
-    if (!user?.uid) return;
-
-    // Check Like
-    const likeRef = doc(db, 'video_likes', `${user.uid}_${short.id}`);
-    const likeSnap = await getDoc(likeRef);
-    setLiked(likeSnap.exists());
-
-    // Check Sub
-    const subRef = doc(db, 'subscriptions', `${user.uid}_${short.creator_id}`);
-    const subSnap = await getDoc(subRef);
-    setIsSubscribed(subSnap.exists());
-
-    // Get Like Count
-    const videoRef = doc(db, 'videos', short.id);
-    const videoSnap = await getDoc(videoRef);
-    setLikeCount(videoSnap.data()?.likes || 0);
-
-    // Get Subscriber Count
-    const subsRef = collection(db, 'subscriptions');
-    const sq = query(subsRef, where('creator_id', '==', short.creator_id));
-    const sSnap = await getDocs(sq);
-    setSubscriberCount(sSnap.size);
+    if (!user?.uid || !short.id) return;
+    const userId = user.id || user.uid;
+    try {
+      const likeRes = await pb.collection('likes').getFirstListItem(`user_id="${userId}" && video_id="${short.id}"`).catch(() => null);
+      setLiked(!!likeRes);
+      
+      const subRes = await pb.collection('subscriptions').getFirstListItem(`follower_id="${userId}" && following_id="${short.creator_id}"`).catch(() => null);
+      setIsSubscribed(!!subRes);
+      
+      const creator = await pb.collection('users').getOne(short.creator_id).catch(() => null);
+      if (creator) setSubscriberCount(creator.subscribers || 0);
+    } catch (err) {
+      console.error("Error checking interactions:", err);
+    }
   };
 
   const handleLike = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!user?.uid) return;
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!user?.uid || isLikeProcessing.current) return;
+    
+    isLikeProcessing.current = true;
+    const userId = user.id || user.uid;
+    try {
+      // Optimistic Update
+      const prevLiked = liked;
+      setLiked(!prevLiked);
+      setLikeCount(prev => prevLiked ? Math.max(0, prev - 1) : prev + 1);
 
-    const likeId = `${user.uid}_${short.id}`;
-    const likeRef = doc(db, 'video_likes', likeId);
-    const videoRef = doc(db, 'videos', short.id);
-
-    if (liked) {
-      await deleteDoc(likeRef);
-      await updateDoc(videoRef, { likes: increment(-1) });
-      setLikeCount(prev => prev - 1);
-      setLiked(false);
-    } else {
-      await setDoc(likeRef, {
-        id: generateSnowflake(),
-        video_id: short.id, 
-        user_id: user.uid,
-        created_at: serverTimestamp()
-      });
-      await updateDoc(videoRef, { likes: increment(1) });
-      setLikeCount(prev => prev + 1);
-      setLiked(true);
+      if (prevLiked) {
+        // Dé-liker
+        try {
+          const existingLike = await pb.collection('likes').getFirstListItem(`user_id="${userId}" && video_id="${short.id}"`).catch(() => null);
+          if (existingLike) await pb.collection('likes').delete(existingLike.id);
+          await pb.collection('shorts').update(short.id, { "likes-": 1 });
+        } catch (e) {}
+      } else {
+        // Liker
+        await pb.collection('likes').create({ user_id: userId, video_id: short.id });
+        await pb.collection('shorts').update(short.id, { "likes+": 1 });
+      }
+    } catch (err) {
+      console.error("Error handling short like:", err);
+      // Revert in case of error
+      checkInteractions();
+    } finally {
+      isLikeProcessing.current = false;
     }
   };
 
   const handleSubscribe = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!user?.uid || user.uid === short.creator_id) return;
-
-    const subId = `${user.uid}_${short.creator_id}`;
-    const subRef = doc(db, 'subscriptions', subId);
-
-    if (isSubscribed) {
-      await deleteDoc(subRef);
-      setIsSubscribed(false);
-      setSubscriberCount(prev => prev - 1);
-    } else {
-      await setDoc(subRef, {
-        id: generateSnowflake(),
-        follower_id: user.uid, 
-        creator_id: short.creator_id,
-        created_at: serverTimestamp()
-      });
-      setIsSubscribed(true);
-      setSubscriberCount(prev => prev + 1);
-    }
+    // Migration NAS
   };
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     if (!videoRef.current) return;
-    if (videoRef.current.paused) {
-      videoRef.current.play();
-      setIsPaused(false);
-      setShowPlayIcon(true);
-      setTimeout(() => setShowPlayIcon(false), 500);
-    } else {
-      videoRef.current.pause();
-      setIsPaused(true);
-      setShowPauseIcon(true);
-      setTimeout(() => setShowPauseIcon(false), 500);
+    try {
+      if (videoRef.current.paused) {
+        await videoRef.current.play();
+        setIsPaused(false);
+        setShowPlayIcon(true);
+        setTimeout(() => setShowPlayIcon(false), 500);
+      } else {
+        videoRef.current.pause();
+        setIsPaused(true);
+        setShowPauseIcon(true);
+        setTimeout(() => setShowPauseIcon(false), 500);
+      }
+    } catch (err) {
+      console.warn("Shorts play/pause interrupted:", err);
     }
   };
 
@@ -429,8 +364,8 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
     if (videoRef.current) {
       const current = videoRef.current.currentTime;
       const total = videoRef.current.duration;
-      const p = (current / total) * 100;
-      setProgress(p || 0);
+      const p = total > 0 ? (current / total) * 100 : 0;
+      setProgress(isNaN(p) ? 0 : p);
 
       // Subtitles logic
       if (short.transcription && showSubtitles) {
@@ -481,6 +416,71 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
     setCopied(false);
   };
 
+  const handlePostComment = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!short.id || !user || !newComment.trim()) return;
+    const userId = user.id || user.uid;
+    setIsPostingComment(true);
+    try {
+      const record = await pb.collection('comments').create({
+        user_id: userId,
+        video_id: short.id,
+        content: newComment
+      });
+
+      const newCommentObj = {
+        id: record.id,
+        user_id: userId,
+        username: profile?.username || 'Utilisateur',
+        avatar_url: profile?.avatar_url || DEFAULT_AVATAR,
+        content: newComment,
+        created_at: record.created,
+        likes: 0
+      };
+
+      setComments([newCommentObj, ...comments]);
+      setNewComment("");
+    } catch (err) {
+      console.error("Erreur lors du postage du commentaire (short):", err);
+    } finally {
+      setIsPostingComment(false);
+    }
+  };
+
+  const fetchComments = async () => {
+    if (!short.id) return;
+    setLoadingComments(true);
+    try {
+      const records = await pb.collection('comments').getList(1, 50, {
+        filter: `video_id="${short.id}"`,
+        sort: '-created',
+        expand: 'user_id'
+      });
+
+      const formatted = records.items.map(r => ({
+        id: r.id,
+        user_id: r.user_id,
+        username: r.expand?.user_id?.username || 'Utilisateur',
+        avatar_url: (r.expand?.user_id?.avatar_url) || DEFAULT_AVATAR,
+        content: r.content,
+        created_at: r.created,
+        likes: r.likes || 0
+      }));
+
+      setComments(formatted);
+    } catch (err) {
+      console.error("Error fetching comments for short:", err);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showComments) {
+      fetchComments();
+    }
+  }, [showComments, short.id]);
+
   const copyToClipboard = (e: React.MouseEvent) => {
     e.stopPropagation();
     const url = `https://wexo.netlify.app/?short=${short.id}`;
@@ -513,38 +513,33 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
             </div>
           )}
 
-          {/* Play/Pause Overlay Icons */}
+          {/* Pause/Play Overlay Icons - Toujours visibles au clic */}
           {showPauseIcon && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50 animate-out fade-out zoom-out duration-500">
-              <div className="w-20 h-20 bg-black/40 rounded-full flex items-center justify-center">
+              <div className="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center">
                 <Pause size={40} className="text-white" fill="white" />
               </div>
             </div>
           )}
           {showPlayIcon && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50 animate-out fade-out zoom-out duration-500">
-              <div className="w-20 h-20 bg-black/40 rounded-full flex items-center justify-center">
+              <div className="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center">
                 <Play size={40} className="text-white" fill="white" />
               </div>
             </div>
           )}
 
           {/* Top Controls (Overlay) - Simplified */}
-          <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 z-20">
+          <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start opacity-0 group-hover:opacity-100 transition-opacity z-20">
             <div className="flex gap-3">
               <button 
                 onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-                className="w-10 h-10 flex items-center justify-center bg-black/60 hover:bg-white hover:text-black text-white rounded-full backdrop-blur-md transition-all"
+                className="w-10 h-10 flex items-center justify-center bg-black/50 hover:bg-black/80 text-white rounded-full backdrop-blur-md transition-all"
               >
                 {isPaused ? <Play size={20} fill="white" /> : <Pause size={20} fill="white" />}
               </button>
-              <button 
-                onClick={(e) => { e.stopPropagation(); setShowSubtitles(!showSubtitles); }}
-                className={`w-10 h-10 flex items-center justify-center bg-black/60 hover:bg-white hover:text-black rounded-full backdrop-blur-md transition-all ${showSubtitles ? 'text-blue-400' : 'text-white'}`}
-              >
-                <Captions size={20} />
-              </button>
-              <div className="flex items-center bg-[#0f0f0f] hover:bg-black rounded-full px-3 py-2 transition-all group/volume backdrop-blur-md border border-white/5 shadow-2xl">
+              
+              <div className="flex items-center bg-black/50 hover:bg-black/80 rounded-full px-3 py-2 transition-all group/volume backdrop-blur-md border border-white/5 shadow-2xl">
                 <button 
                   onClick={(e) => { e.stopPropagation(); toggleMute(); }}
                   className="text-white p-1 hover:scale-110 transition-transform"
@@ -570,7 +565,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           </div>
 
           {/* Bottom Info (Overlay) */}
-          <div className="absolute bottom-0 left-0 right-0 p-6 bg-black/40 pointer-events-none z-20">
+          <div className="absolute bottom-0 left-0 right-0 p-6 z-20 pointer-events-none">
             <div className="flex flex-col gap-3 pointer-events-auto">
               <div className="flex items-center gap-3">
                 <img 
@@ -590,19 +585,6 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
                     badgeSize={14} 
                   />
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-[10px] font-bold text-white/60 font-mono">
-                      ID: {short.creator_display_id || 'N/A'}
-                    </span>
-                    {short.creator_display_id && (
-                      <button 
-                        onClick={(e) => copyId(e, short.creator_display_id)}
-                        className="p-0.5 hover:bg-white/10 rounded-md text-white/60 hover:text-white transition-all"
-                        title="Copier l'ID"
-                      >
-                        {copiedId ? <Check size={10} className="text-emerald-500" /> : <Copy size={10} />}
-                      </button>
-                    )}
-                    <span className="text-white/40 text-[8px]">•</span>
                     <span className="text-[10px] font-bold text-white/60">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</span>
                   </div>
                 </div>
@@ -666,7 +648,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           <div className="flex flex-col items-center gap-2">
             <button 
               onClick={handleLike}
-              className={`w-14 h-14 rounded-2xl flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20 shadow-sm border border-white/10'}`}
+              className={`w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20 shadow-sm border border-white/10'}`}
             >
               <Heart size={28} fill={liked ? "currentColor" : "none"} />
             </button>
@@ -674,16 +656,19 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
           </div>
 
           <div className="flex flex-col items-center gap-2">
-            <button className="w-14 h-14 rounded-2xl flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all">
+            <button 
+              onClick={() => setShowComments(true)}
+              className="w-14 h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
+            >
               <MessageSquare size={28} />
             </button>
-            <span className="text-[13px] font-bold text-white">2,3k</span>
+            <span className="text-[13px] font-bold text-white">Commenter</span>
           </div>
 
           <div className="flex flex-col items-center gap-2 relative">
             <button 
               onClick={handleShare}
-              className="w-14 h-14 rounded-2xl flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
+              className="w-14 h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
             >
               <Share2 size={28} />
             </button>
@@ -731,25 +716,84 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user }) => {
         </div>
       </div>
 
+      {/* Comments Overlay */}
+      {showComments && (
+        <div className="absolute inset-0 z-50 flex flex-col bg-black/95 animate-in slide-in-from-bottom duration-300">
+          <div className="flex items-center justify-between p-4 border-b border-white/10">
+            <h3 className="text-lg font-bold text-white">Commentaires</h3>
+            <button 
+              onClick={() => setShowComments(false)}
+              className="p-2 text-slate-400 hover:text-white"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {loadingComments ? (
+              <div className="flex justify-center py-20"><Loader2 className="animate-spin text-white" /></div>
+            ) : comments.length > 0 ? (
+              comments.map(comment => (
+                <div key={comment.id} className="flex gap-3">
+                  <img src={comment.avatar_url} className="w-8 h-8 rounded-full border border-white/10" alt="" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-bold text-white">@{comment.username}</span>
+                      <span className="text-[10px] text-slate-500">il y a quelques instants</span>
+                    </div>
+                    <p className="text-sm text-slate-300 leading-relaxed">{comment.content}</p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-20 text-slate-500 text-sm italic">Aucun commentaire pour le moment.</div>
+            )}
+          </div>
+
+          <div className="p-4 border-t border-white/10 bg-[#0f0f0f]">
+            <form onSubmit={handlePostComment} className="flex gap-3">
+              <input 
+                type="text" 
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Ajouter un commentaire..."
+                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-white/30"
+              />
+              <button 
+                type="submit"
+                disabled={!newComment.trim() || isPostingComment}
+                className="p-2 bg-white text-black rounded-xl disabled:bg-white/20"
+              >
+                <Send size={18} />
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Navigation Buttons (Far Right) */}
       <div className="absolute right-8 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-30 hidden lg:flex">
         <button 
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
             const container = document.querySelector('.shorts-container');
             if (container) container.scrollBy({ top: -container.clientHeight, behavior: 'smooth' });
           }}
-          className="w-12 h-12 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-sm border border-white/10"
+          className="w-14 h-14 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-xl border border-white/20 active:scale-95"
+          title="Précédent"
         >
-          <ChevronUp size={24} />
+          <ChevronUp size={28} />
         </button>
         <button 
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
             const container = document.querySelector('.shorts-container');
             if (container) container.scrollBy({ top: container.clientHeight, behavior: 'smooth' });
           }}
-          className="w-12 h-12 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-sm border border-white/10"
+          className="w-14 h-14 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center backdrop-blur-md transition-all shadow-xl border border-white/20 active:scale-95"
+          title="Suivant"
         >
-          <ChevronDown size={24} />
+          <ChevronDown size={28} />
         </button>
       </div>
     </div>

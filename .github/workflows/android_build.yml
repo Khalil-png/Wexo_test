@@ -34,13 +34,17 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Accept Android Licenses
+        run: yes | sdkmanager --licenses || true
+
       - name: Initialize Capacitor
         run: |
-          # Create capacitor.config.json if it doesn't exist
-          if [ ! -f capacitor.config.json ]; then
-            echo '{"appId": "com.wexo.app", "appName": "Wexo", "webDir": "dist", "bundledWebRuntime": false}' > capacitor.config.json
+          # Capacitor needs the web dir to exist
+          mkdir -p dist
+          # Add android platform if not present
+          if [ ! -d "android" ]; then
+            npx cap add android
           fi
-          npx cap add android
 
       - name: Sync Capacitor
         run: npx cap sync android
@@ -49,7 +53,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

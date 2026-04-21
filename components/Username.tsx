@@ -27,7 +27,7 @@ const Username: React.FC<UsernameProps> = ({
 
   return (
     <div className={`flex items-center gap-1.5 ${className}`}>
-      <span className="truncate">{nameToDisplay}</span>
+      <span className="truncate cursor-text select-text">{nameToDisplay}</span>
       {showAdminBadge && (
         <div 
           className="flex items-center justify-center flex-shrink-0"

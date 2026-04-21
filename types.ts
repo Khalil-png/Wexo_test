@@ -146,3 +146,12 @@ export interface Video {
   watch_stats?: any[];
   status?: 'analyzing' | 'publishing' | 'ready' | 'error';
 }
+
+export interface CallsTabProps {
+  user: any;
+  profile?: UserProfile | null;
+  activeCall?: any;
+  callTimer?: number;
+  onEndCall?: () => void;
+  onStartCall?: (receiver: any) => void;
+}

@@ -1,0 +1,199 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Wexo Social</title>
+    <link rel="icon" type="image/png" href="https://carnote.synology.me:9443/api/files/pbc_2708086759/ckb6419uqwto8h0/w_1_removebg_preview_1_vbjej008kd.png?token=">
+    <meta name="theme-color" content="#0f0f0f">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #0f0f0f;
+            --text-main: #ffffff;
+        }
+        
+        html {
+            background-color: var(--bg-main);
+            scroll-behavior: smooth;
+            height: -webkit-fill-available;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            /* Scroll global fluide */
+            overflow-x: hidden;
+            overflow-y: auto;
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        #root {
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .page-transition {
+            animation: slideUp 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes marquee {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+
+        .animate-marquee {
+            animation: marquee 10s linear infinite;
+        }
+
+        .animate-spin-slow {
+            animation: spin 3s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Hack pour les navigateurs mobiles pour éviter que l'UI du navigateur ne cache le bas */
+        .min-h-screen-custom {
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+        }
+
+        /* Custom Range Input Styling for Volume Slider */
+        .volume-slider {
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 999px;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 5px rgba(0,0,0,0.3);
+            margin-top: -6px; /* Center thumb on a 4px track */
+        }
+
+        .volume-slider::-moz-range-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 5px rgba(0,0,0,0.3);
+        }
+
+        /* Progress Slider Styling */
+        .progress-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            outline: none;
+        }
+
+        .progress-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .progress-slider:hover::-webkit-slider-thumb {
+            opacity: 1;
+        }
+
+        .progress-slider::-moz-range-thumb {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+            border: none;
+        }
+
+        .progress-slider:hover::-moz-range-thumb {
+            opacity: 1;
+        }
+
+        @keyframes blink-green {
+            0%, 100% { color: #10b981; opacity: 1; }
+            50% { color: #059669; opacity: 0.3; }
+        }
+
+        .animate-blink-green {
+            animation: blink-green 1s infinite;
+        }
+
+        /* Markdown Styles */
+        .markdown-body {
+            line-height: 1.6;
+            color: #e2e8f0;
+        }
+        .markdown-body p { margin-bottom: 0.75rem; }
+        .markdown-body p:last-child { margin-bottom: 0; }
+        .markdown-body strong { font-weight: 700; color: #fff; }
+        .markdown-body em { font-style: italic; }
+        .markdown-body h1 { font-size: 1.5rem; font-weight: 800; margin: 1rem 0 0.5rem; color: #fff; }
+        .markdown-body h2 { font-size: 1.25rem; font-weight: 700; margin: 0.75rem 0 0.5rem; color: #fff; }
+        .markdown-body h3 { font-size: 1.1rem; font-weight: 600; margin: 0.5rem 0 0.25rem; color: #fff; }
+        .markdown-body ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.75rem; }
+        .markdown-body ol { list-style-type: decimal; padding-left: 1.25rem; margin-bottom: 0.75rem; }
+        .markdown-body li { margin-bottom: 0.25rem; }
+        .markdown-body blockquote { border-left: 3px solid rgba(255,255,255,0.2); padding-left: 0.75rem; font-style: italic; color: #94a3b8; margin-bottom: 0.75rem; }
+    </style>
+  <script type="module" crossorigin src="./assets/index-DA1GKwhl.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DKPXyY-l.css">
+</head>
+<body>
+    <script>
+      // Global error logging for mobile debugging
+      if (window.location.pathname === '/auth/callback' || window.location.pathname === '/auth/callback/') {
+        if (window.opener) {
+          window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS' }, '*');
+          window.close();
+        } else {
+          window.location.href = '/';
+        }
+        // Stop further execution to avoid loading the full app in the popup
+        window.stop();
+      }
+    </script>
+    <div id="root"></div>
+</body>
+</html>

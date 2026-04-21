@@ -1,26 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Search, MoreVertical, Plus, User, X, Loader2, AlertCircle, ArrowLeft, Sparkles } from 'lucide-react';
-import { db } from '../firebase';
+import { pb } from '../services/pocketbaseService';
+// Firebase désactivé
 import { useClickOutside } from '../utils/hooks';
 import { isMobileDevice } from '../src/utils/device';
-import { 
-  collection, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  addDoc, 
-  setDoc,
-  doc, 
-  getDoc, 
-  getDocs, 
-  limit, 
-  or, 
-  serverTimestamp 
-} from 'firebase/firestore';
 import { DEFAULT_AVATAR } from '../constants';
 import { generateSnowflake } from '../utils/snowflake';
+import { CallsTabProps } from '../types';
 
 interface Call {
   id: string;
@@ -35,16 +22,9 @@ interface Call {
   };
 }
 
-interface CallsTabProps {
-  user: any;
-  activeCall?: any;
-  callTimer?: number;
-  onEndCall?: () => void;
-  onStartCall?: (receiver: any) => void;
-}
-
 const CallsTab: React.FC<CallsTabProps> = ({ 
   user, 
+  profile,
   activeCall: propActiveCall, 
   callTimer: propCallTimer,
   onEndCall,
@@ -84,61 +64,70 @@ const CallsTab: React.FC<CallsTabProps> = ({
   useEffect(() => {
     if (!user?.uid) return;
 
-    const callsRef = collection(db, 'calls');
-    const q = query(
-      callsRef,
-      or(
-        where('caller_id', '==', user.uid),
-        where('receiver_id', '==', user.uid)
-      ),
-      orderBy('created_at', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
+    const fetchCalls = async () => {
+      setLoading(true);
       try {
-        const callsData = await Promise.all(snapshot.docs.map(async (docSnapshot) => {
-          const call = docSnapshot.data() as Call;
-          const otherPartyId = call.caller_id === user.uid ? call.receiver_id : call.caller_id;
-          
-          // Fetch other party profile
-          const profileRef = doc(db, 'profiles', otherPartyId);
-          const profileSnap = await getDoc(profileRef);
-          const otherProfile = profileSnap.exists() ? profileSnap.data() : { username: 'Inconnu', avatar_url: null };
+        const userId = user.uid || user.id;
+        const resultList = await pb.collection('calls').getList(1, 50, {
+          sort: '-created',
+          filter: `caller_id = "${userId}" || receiver_id = "${userId}"`,
+          expand: 'caller_id,receiver_id'
+        });
 
+        const formattedCalls: Call[] = resultList.items.map(record => {
+          const isCaller = record.caller_id === userId;
+          const otherParty = isCaller ? record.expand?.receiver_id : record.expand?.caller_id;
+          
           return {
-            ...call,
-            id: docSnapshot.id,
-            profiles: otherProfile
-          } as Call;
-        }));
-        setCalls(callsData);
-        setLoading(false);
+            id: record.id,
+            caller_id: record.caller_id,
+            receiver_id: record.receiver_id,
+            type: record.type,
+            status: record.status,
+            created_at: record.created,
+            profiles: {
+              username: otherParty?.username || 'Utilisateur inconnu',
+              avatar_url: otherParty?.avatar ? pb.getFileUrl(otherParty, otherParty.avatar) : null
+            }
+          };
+        });
+
+        setCalls(formattedCalls);
       } catch (err) {
-        console.error("Error processing calls snapshot:", err);
-        setError("Erreur lors du traitement des appels.");
+        console.error("Error fetching calls:", err);
+      } finally {
+        setLoading(false);
       }
-    }, (err) => {
-      console.error("Calls subscription error:", err);
-      setError("Impossible de charger l'historique des appels.");
-      setLoading(false);
+    };
+
+    fetchCalls();
+
+    // Realtime subscription for history updates
+    pb.collection('calls').subscribe('*', () => {
+      fetchCalls();
     });
 
-    return () => unsubscribe();
+    return () => {
+      pb.collection('calls').unsubscribe('*');
+    };
   }, [user?.uid]);
 
   const fetchUsers = async () => {
     if (!user?.uid) return;
     try {
-      const usersRef = collection(db, 'profiles');
-      const q = query(usersRef, limit(50));
-      const querySnapshot = await getDocs(q);
-      const usersData = querySnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
+      const result = await pb.collection('users').getList(1, 100, {
+        sort: '-created'
+      });
+      const usersData = result.items
+        .map(u => ({ 
+          id: u.id, 
+          username: u.username, 
+          avatar_url: u.avatar_url || u.avatar ? pb.files.getUrl(u, u.avatar) : DEFAULT_AVATAR 
+        }))
         .filter((u: any) => u.id !== user.uid && u.id !== 'gemini');
       setUsers(usersData);
     } catch (err: any) {
       console.error("Error fetching users:", err);
-      setError("Erreur lors de la recherche d'utilisateurs.");
     }
   };
 
@@ -153,33 +142,44 @@ const CallsTab: React.FC<CallsTabProps> = ({
     setIsCalling(true);
     setError(null);
     try {
-      const callId = generateSnowflake();
-      const callData = {
-        id: callId,
-        caller_id: user.uid,
+      const currentUserId = pb.authStore.model?.id;
+      if (!currentUserId) {
+        throw new Error("Utilisateur non authentifié sur le NAS.");
+      }
+
+      console.log("Tentative de création d'appel:", {
+        caller_id: currentUserId,
         receiver_id: receiver.id,
         type: 'audio',
-        status: 'outgoing',
-        created_at: serverTimestamp()
-      };
+        status: 'incoming'
+      });
 
-      await setDoc(doc(db, 'calls', callId), callData);
-      
-      const callWithProfile = {
-        id: callId,
-        ...callData,
-        profiles: receiver
-      };
+      // Créer l'enregistrement de l'appel
+      const record = await pb.collection('calls').create({
+        caller_id: currentUserId,
+        receiver_id: receiver.id,
+        type: 'audio',
+        status: 'incoming'
+      });
 
+      // Appeler le callback parent pour activer l'overlay d'appel
       if (onStartCall) {
-        onStartCall(callWithProfile);
-      } else {
-        setActiveCall(callWithProfile);
+        onStartCall({
+          id: record.id,
+          caller_id: currentUserId,
+          receiver_id: receiver.id,
+          profiles: {
+            username: receiver.username,
+            avatar_url: receiver.avatar_url
+          }
+        });
       }
-      setView('history');
     } catch (err: any) {
-      console.error("Error starting call:", err);
-      setError("Échec du lancement de l'appel. Réessayez.");
+      console.error("Erreur détaillée lors du lancement de l'appel:", err);
+      if (err.response) {
+        console.error("Détails de la réponse PocketBase:", err.response);
+      }
+      setError(`Impossible de lancer l'appel: ${err.message || 'Erreur inconnue'}`);
     } finally {
       setIsCalling(false);
     }

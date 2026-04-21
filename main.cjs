@@ -19,7 +19,17 @@ function createWindow() {
   // win.loadFile(path.join(__dirname, 'dist/index.html'));
   
   // CHARGEMENT EN DIRECT (Pour les mises à jour automatiques du contenu)
-  win.loadURL('https://wexo.netlify.app');
+  // On charge l'URL de production par défaut
+  const productionUrl = 'https://wexo-test.vercel.app';
+  const url = process.env.VITE_DEV_SERVER_URL || productionUrl;
+  
+  if (process.env.VITE_DEV_SERVER_URL) {
+    win.loadURL(url);
+  } else {
+    // En production Electron, on peut charger le fichier local s'il existe
+    // Sinon on fallback sur l'URL de secours
+    win.loadURL(url);
+  }
 }
 
 app.whenReady().then(createWindow);

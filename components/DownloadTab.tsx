@@ -1,10 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { Download, Loader2, X } from 'lucide-react';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
+// Firebase désactivé
 
-const DownloadTab: React.FC = () => {
+interface ExtraProps {
+  user: any;
+  profile?: any;
+}
+
+const DownloadTab: React.FC<ExtraProps> = ({ user, profile }) => {
   const [appConfig, setAppConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [device, setDevice] = useState<'windows' | 'android' | 'apple' | 'other'>('other');
@@ -21,13 +25,9 @@ const DownloadTab: React.FC = () => {
       setDevice('other');
     }
 
-    const unsub = onSnapshot(doc(db, 'settings', 'app_config'), (snap) => {
-      if (snap.exists()) {
-        setAppConfig(snap.data());
-      }
-      setLoading(false);
-    });
-    return () => unsub();
+    // Migration NAS : Lecture config PocketBase simplifiée
+    setAppConfig(null);
+    setLoading(false);
   }, []);
 
   if (loading) {

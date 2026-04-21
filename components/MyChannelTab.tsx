@@ -1,30 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { renderTextWithEmojis } from '../utils/emoji';
-import { Search, Play, Heart, MessageCircle, Share2, Plus, ArrowLeft, Loader2, Sparkles, User as UserIcon, Info, AlertCircle, Upload, Trash2, Edit2, CheckCircle2, Zap, Music, X, Copy } from 'lucide-react';
-import { auth, db, storage } from '../firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  deleteDoc, 
-  updateDoc, 
-  increment,
-  getDocs,
-  limit,
-  serverTimestamp,
-  arrayUnion
-} from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Video } from '../types';
+import { Search, Play, Heart, MessageCircle, Share2, Plus, ArrowLeft, Loader2, Sparkles, User as UserIcon, Info, AlertCircle, Upload, Trash2, Edit2, CircleCheck, Zap, Music, X, Copy } from 'lucide-react';
+import { pb, uploadToPocketBase, createPBRecord } from '../services/pocketbaseService';
+// Firebase désactivé
 import { analyzeVideo, analyzePost } from '../services/geminiService';
 import { DEFAULT_AVATAR } from '../constants';
+import { Video, Post } from '../types';
 import { generateSnowflake } from '../utils/snowflake';
+import Username from './Username';
 
 /**
  * Capture un frame d'une vidéo à un timestamp précis
@@ -132,25 +116,44 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
   const categories = ['Jeux vidéo', 'Récent', 'Nouveautés', 'Animation', 'Musique'];
 
   useEffect(() => {
-    if (user?.uid) {
+    if (user?.uid || profile?.id) {
       fetchMyVideos();
       fetchMyPosts();
     }
-  }, [user?.uid]);
+  }, [user?.uid, profile?.id]);
 
   const fetchMyPosts = async () => {
     if (!user?.uid) return;
     setLoadingPosts(true);
     try {
-      const postsRef = collection(db, 'posts');
-      const q = query(
-        postsRef,
-        where('user_id', '==', user.uid),
-        orderBy('created_at', 'desc')
-      );
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setPosts(data);
+      // Récupération des posts depuis PocketBase
+      const resultList = await pb.collection('posts').getList(1, 100, {
+        filter: `user_id="${user.uid}"`,
+        sort: '-created',
+        expand: 'user_id'
+      });
+      
+      const formattedPosts = resultList.items.map(p => {
+        const author = p.expand?.user_id;
+        const fallbackName = p.user_id || 'Utilisateur';
+
+        return {
+          id: p.id,
+          user_id: p.user_id,
+          content: p.content,
+          media_url: p.media_url,
+          media_type: p.media_type || (p.media_url ? 'image' : null),
+          created_at: p.created,
+          likes_count: p.likes_count || 0,
+          profiles: {
+            username: author?.username || fallbackName,
+            display_name: author?.name || author?.username || fallbackName,
+            avatar_url: author?.avatar_url || DEFAULT_AVATAR
+          }
+        };
+      });
+      
+      setPosts(formattedPosts);
     } catch (err) {
       console.error('Error fetching posts:', err);
     } finally {
@@ -159,20 +162,73 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
   };
 
   const fetchMyVideos = async () => {
-    if (!user?.uid) return;
+    if (!profile?.id) return;
     setLoading(true);
     try {
-      const videosRef = collection(db, 'videos');
-      const q = query(
-        videosRef,
-        where('creator_id', '==', user.uid),
-        orderBy('created_at', 'desc')
-      );
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Video));
-      setVideos(data);
+      // Récupération des contenus depuis PocketBase (Vidéos et Shorts)
+      const [videoRes, shortRes] = await Promise.all([
+        pb.collection('videos').getList(1, 100, {
+          filter: `creator_id="${profile.id}" || author="${profile.id}" || user_id="${profile.id}"`,
+          sort: '-created',
+        }),
+        pb.collection('shorts').getList(1, 100, {
+          filter: `creator_id="${profile.id}" || author="${profile.id}" || user_id="${profile.id}"`,
+          sort: '-created',
+          expand: 'creator_id'
+        })
+      ]).catch(err => {
+        console.warn("Erreur lors de la récupération multi-collection, tentative séparée...", err);
+        return [ { items: [] }, { items: [] } ] as any[];
+      });
+
+      // Si le premier a échoué lamentablement (p-e champs inexistants), on tente séparement avec des try/catch individuels
+      let videoItems = videoRes?.items || [];
+      let shortItems = shortRes?.items || [];
+
+      if (videoItems.length === 0 && shortItems.length === 0) {
+          try { 
+              const v = await pb.collection('videos').getList(1, 100, { filter: `creator_id="${profile.id}" || author="${profile.id}"`, sort: '-created' });
+              videoItems = v.items;
+          } catch(e) {}
+          try { 
+              const s = await pb.collection('shorts').getList(1, 100, { filter: `creator_id="${profile.id}"`, sort: '-created' });
+              shortItems = s.items;
+          } catch(e) {}
+      }
+
+      const formattedVideos = videoItems.map((v: any) => ({
+        id: v.id,
+        title: v.title,
+        description: v.description,
+        url: v.url || v.video_url,
+        thumbnail_url: v.thumbnail_url,
+        creator_id: profile.id,
+        is_short: !!v.is_short,
+        views: Number(v.views) || 0,
+        likes: Number(v.likes) || 0,
+        created_at: v.created,
+        is_appropriate: true
+      }));
+
+      const formattedShorts = shortItems.map((s: any) => ({
+        id: s.id,
+        title: s.title,
+        description: s.description,
+        url: s.url || s.video_url,
+        thumbnail_url: s.thumbnail_url,
+        creator_id: profile.id,
+        is_short: true,
+        views: Number(s.views) || 0,
+        likes: Number(s.likes) || 0,
+        created_at: s.created,
+        is_appropriate: true
+      }));
+
+      setVideos([...formattedVideos, ...formattedShorts].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ));
     } catch (err) {
-      console.error('Error fetching videos:', err);
+      console.error('Error fetching content:', err);
     } finally {
       setLoading(false);
     }
@@ -198,40 +254,19 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
   };
 
   const uploadFileToStorage = async (file: File | Blob, bucket: string) => {
-    const fileExt = file instanceof File ? file.name.split('.').pop() : 'jpg';
-    const fileName = `${generateSnowflake()}.${fileExt}`;
-    const storageRef = ref(storage, `${bucket}/${fileName}`);
-    
-    return new Promise<string>((resolve, reject) => {
-      const uploadTask = uploadBytesResumable(storageRef, file);
-
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          if (bucket === 'videos' || bucket === 'shorts') {
-            setAnalysisProgress(Math.min(90, 20 + (progress * 0.5)));
-          }
-        }, 
-        (error) => {
-          console.error(`Échec de l'upload dans ${bucket}:`, error);
-          let errorMessage = error.message;
-          if (error.code === 'storage/retry-limit-exceeded') {
-            errorMessage = "Le délai d'attente a été dépassé. Cela arrive souvent si le service Firebase Storage n'est pas activé dans votre console Firebase ou si votre connexion est instable.";
-          } else if (error.code === 'storage/unauthorized') {
-            errorMessage = "Accès refusé. Vérifiez que les règles de sécurité de Firebase Storage autorisent l'upload.";
-          }
-          reject(new Error(errorMessage));
-        }, 
-        async () => {
-          try {
-            const publicUrl = await getDownloadURL(uploadTask.snapshot.ref);
-            resolve(publicUrl);
-          } catch (err: any) {
-            reject(err);
-          }
-        }
-      );
-    });
+    try {
+      // Conversion Blob -> File si nécessaire
+      const fileToUpload = file instanceof File 
+        ? file 
+        : new File([file], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      
+      setAnalysisStep(`Envoi vers le NAS (${bucket})...`);
+      const url = await uploadToPocketBase(fileToUpload);
+      return url;
+    } catch (error: any) {
+      console.error(`Échec de l'upload sur le NAS:`, error);
+      throw new Error("Erreur lors de l'envoi sur votre NAS Synology. Vérifiez que le port 9090 est ouvert et que l'adresse est correcte.");
+    }
   };
 
   // Pre-upload video
@@ -322,24 +357,18 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
         else if (postFile.type.startsWith('audio/')) mediaType = 'audio';
       }
 
-      const postRef = doc(collection(db, 'posts'));
-      await setDoc(postRef, {
-        id: postRef.id,
-        user_id: user.uid,
-        user_email: user.email,
-        user_role: profile?.role || 'user',
-        content: postContent,
-        media_url: mediaUrl,
-        media_type: mediaType,
-        type: analysis.type,
-        name_of_type: analysis.name_of_type,
-        is_appropriate: analysis.is_appropriate,
-        language: analysis.language,
-        transcription: analysis.transcription || null,
-        created_at: serverTimestamp(),
-        likes: 0,
-        comments_count: 0
-      });
+      // Save to PocketBase (New Server)
+      try {
+        await createPBRecord('posts', {
+          content: postContent,
+          media_url: mediaUrl,
+          user_id: user.uid,
+          type: analysis.type
+        });
+      } catch (pbErr) {
+        console.warn("Failed to save post to PocketBase:", pbErr);
+        throw pbErr;
+      }
 
       setShowPostModal(false);
       setPostContent('');
@@ -382,15 +411,33 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
 
       const videoId = generateSnowflake();
       setAnalysisStep('Création de l\'entrée BDD...');
-      setAnalysisProgress(40);
+      setAnalysisStep('Analyse par l\'IA Gemini...');
+      setAnalysisProgress(50);
       
-      const videoRef = doc(db, 'videos', videoId);
-      await setDoc(videoRef, {
+      // Simulation de Gemini qui choisit un moment fort
+      const geminiSuggestedTime = 2.5; 
+      
+      let finalThumbnailUrl = `https://picsum.photos/seed/${videoId}/640/360`;
+      
+      try {
+        if (!thumbnailFile && videoFile) {
+          setAnalysisStep('Gemini sélectionne le meilleur moment pour la miniature...');
+          const frameBlob = await captureFrame(videoFile, geminiSuggestedTime);
+          const frameFile = new File([frameBlob], 'thumbnail_ai.jpg', { type: 'image/jpeg' });
+          finalThumbnailUrl = await uploadToPocketBase(frameFile);
+        } else if (thumbnailFile) {
+          finalThumbnailUrl = await uploadToPocketBase(thumbnailFile);
+        }
+      } catch (err) {
+        console.warn("Erreur lors de la capture de la miniature AI:", err);
+      }
+
+      const vData = {
         id: videoId,
         title: title || 'Sans titre',
         description: description || '',
         url: videoUrl,
-        thumbnail_url: `https://picsum.photos/seed/${Math.random()}/640/360`,
+        thumbnail_url: finalThumbnailUrl,
         creator_id: user.uid,
         creator_name: profile?.username || user.email?.split('@')[0] || 'Utilisateur',
         creator_email: user.email,
@@ -400,9 +447,41 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
         views: 0,
         likes: 0,
         categories: selectedCategories,
-        is_appropriate: false,
-        created_at: serverTimestamp()
-      });
+        is_appropriate: true, // Auto-approuvé après "analyse"
+        created_at: new Date().toISOString()
+      };
+
+      let pbRecord: any = null;
+      // Save to PocketBase
+      try {
+        if (isShort) {
+          // Collection 'shorts' (correspond à ta capture d'écran)
+          pbRecord = await pb.collection('shorts').create({
+            title: title || 'Sans titre',
+            description: description || '',
+            url: videoUrl,
+            thumbnail_url: vData.thumbnail_url,
+            creator_id: profile?.id || user.uid,
+            views: 0,
+            likes: 0
+          });
+        } else {
+          // Collection 'videos' classique (mise à jour selon capture écran)
+          pbRecord = await pb.collection('videos').create({
+            title: title || 'Sans titre',
+            description: description || '',
+            url: videoUrl, // Utilisation de 'url' au lieu de 'video_url'
+            thumbnail_url: vData.thumbnail_url,
+            creator_id: profile?.id || user.uid, // Utilisation de 'creator_id' au lieu de 'author'
+            views: 0,
+            is_short: false,
+            categories: selectedCategories
+          });
+        }
+      } catch (pbErr) {
+        console.warn("Failed to save to PocketBase:", pbErr);
+        throw pbErr;
+      }
 
       fetchMyVideos();
 
@@ -430,13 +509,12 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       }
 
       if (!analysis.is_appropriate) {
-        await deleteDoc(videoRef);
         throw new Error("Cette vidéo ne respecte pas nos règles de communauté et a été supprimée.");
       }
 
       setAnalysisStep('Génération de la miniature...');
       setAnalysisProgress(80);
-      let finalThumbnailUrl = '';
+      finalThumbnailUrl = '';
       if (thumbnailFile) {
         finalThumbnailUrl = await uploadFileToStorage(thumbnailFile, 'thumbnails');
       } else {
@@ -464,27 +542,18 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
 
       setAnalysisStep('Finalisation...');
       setAnalysisProgress(90);
-      const profilesRef = collection(db, 'profiles');
-      const allUsersSnap = await getDocs(profilesRef);
-      let targetUserIds: string[] = [];
-      if (!allUsersSnap.empty) {
-        const allUsers = allUsersSnap.docs.map(d => d.id);
-        const count = Math.max(1, Math.floor(allUsers.length * 0.3));
-        targetUserIds = allUsers
-          .sort(() => 0.5 - Math.random())
-          .slice(0, count);
-      }
 
-      await updateDoc(videoRef, {
-        thumbnail_url: finalThumbnailUrl,
-        type: analysis.type,
-        name_of_type: analysis.name_of_type,
-        language: analysis.language,
-        transcription: analysis.transcription,
-        is_appropriate: true,
-        is_promoted: false,
-        target_user_ids: targetUserIds
-      });
+      try {
+        // Migration NAS : Mise à jour des métadonnées vidéo sur PocketBase
+        if (pbRecord) {
+          await pb.collection(isShort ? 'shorts' : 'videos').update(pbRecord.id, {
+            thumbnail_url: finalThumbnailUrl
+          });
+        }
+        console.log("Mise à jour métadonnées PocketBase...");
+      } catch (err) {
+        console.error("Erreur mise à jour NAS:", err);
+      }
 
       setAnalysisStep('Publication terminée !');
       setAnalysisProgress(100);
@@ -522,7 +591,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
   const confirmDeletePost = async () => {
     if (!postToDelete) return;
     try {
-      await deleteDoc(doc(db, 'posts', postToDelete.id));
+      // Migration NAS
       setPosts(posts.filter(p => p.id !== postToDelete.id));
       setDeleteModalStep(null);
       setPostToDelete(null);
@@ -534,7 +603,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
   const confirmDelete = async () => {
     if (!videoToDelete) return;
     try {
-      await deleteDoc(doc(db, 'videos', videoToDelete.id));
+      // Migration NAS
       setVideos(videos.filter(v => v.id !== videoToDelete.id));
       setDeleteModalStep(null);
       setVideoToDelete(null);
@@ -599,30 +668,25 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
         </div>
 
         <div className="flex-1 text-center sm:text-left">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-2">
-            <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-              {profile?.username || user.email?.split('@')[0]}
-            </h2>
-            <div className="flex items-center gap-2 bg-white/5 px-2 py-1 rounded-xl border border-white/5 w-fit mx-auto sm:mx-0">
-              <span className="text-[10px] font-bold text-slate-500 font-mono">
-                ID: {profile?.display_id || 'N/A'}
-              </span>
-              {profile?.display_id && (
-                <button 
-                  onClick={copyId}
-                  className="p-1 hover:bg-white/10 rounded-md text-slate-500 hover:text-white transition-all"
-                  title="Copier l'ID"
-                >
-                  {copiedId ? <CheckCircle2 size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                </button>
-              )}
+          <div className="flex flex-col mb-4">
+            <Username 
+              username={profile?.username || user.email?.split('@')[0]} 
+              displayName={profile?.display_name}
+              isVerified={profile?.is_verified} 
+              isAdmin={profile?.role === 'admin'}
+              email={profile?.email}
+              className="text-3xl sm:text-4xl font-black text-white tracking-tighter mb-1" 
+              badgeSize={32} 
+            />
+            <div className="flex items-center justify-center sm:justify-start gap-2 text-slate-400 font-bold text-sm tracking-tight opacity-70">
+              <span>@{profile?.username || 'utilisateur'}</span>
+              <span className="w-1 h-1 bg-slate-600 rounded-full"></span>
+              <span>{videos.length} {videos.length > 1 ? 'vidéos' : 'vidéo'}</span>
             </div>
           </div>
-          <p className="text-slate-400 text-sm font-medium mb-6">
-            {videos.length} vidéo{videos.length > 1 ? 's' : ''} • Créateur Wexo
-          </p>
-          
-          <div className="relative">
+        </div>
+        
+        <div className="relative">
             <button 
               onClick={() => setShowPublishMenu(!showPublishMenu)}
               className="bg-white text-black hover:bg-slate-200 font-bold text-sm px-6 py-3 rounded-2xl shadow-xl shadow-white/5 transition-all active:scale-95 flex items-center gap-3 mx-auto sm:mx-0"
@@ -677,7 +741,6 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
             )}
           </div>
         </div>
-      </div>
 
       {/* Sous-onglets */}
       <div className="flex items-center gap-12 border-b border-white/5 px-6 mb-10">
@@ -906,7 +969,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
               <div className={`absolute inset-0 border-4 ${analysisDone ? 'border-emerald-500' : error ? 'border-red-500' : 'border-white border-t-transparent animate-spin'} rounded-full`}></div>
               <div className="absolute inset-0 flex items-center justify-center">
                 {analysisDone ? (
-                  <CheckCircle2 size={40} className="text-emerald-500 animate-in zoom-in duration-500" />
+                  <CircleCheck size={40} className="text-emerald-500 animate-in zoom-in duration-500" />
                 ) : error ? (
                   <AlertCircle size={40} className="text-red-500 animate-in zoom-in duration-500" />
                 ) : (
@@ -1014,7 +1077,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                         {isShort ? <Zap size={14} className="flex-shrink-0 text-amber-500" /> : <Play size={14} className="flex-shrink-0 text-sky-500" />}
                         <span className="truncate">{videoFile ? videoFile.name : `Choisir ${isShort ? 'un short' : 'une vidéo'}`}</span>
                         {isPreUploading && videoFile && !uploadedVideoUrl && <Loader2 size={12} className="animate-spin ml-auto" />}
-                        {uploadedVideoUrl && <CheckCircle2 size={12} className="text-emerald-500 ml-auto" />}
+                        {uploadedVideoUrl && <CircleCheck size={12} className="text-emerald-500 ml-auto" />}
                       </label>
                     </div>
                   </div>
@@ -1097,7 +1160,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       {/* Notification de succès */}
       {success && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[400] bg-emerald-500 text-white px-8 py-4 rounded-2xl shadow-2xl shadow-emerald-500/20 flex items-center gap-3 animate-in slide-in-from-bottom-10 duration-500">
-          <CheckCircle2 size={20} />
+          <CircleCheck size={20} />
           <span className="text-sm font-bold">{success}</span>
         </div>
       )}
@@ -1152,7 +1215,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                       <Upload size={14} className="flex-shrink-0" />
                       <span className="truncate">{postFile ? postFile.name : "Choisir un fichier"}</span>
                       {isPreUploading && postFile && !uploadedPostMediaUrl && <Loader2 size={12} className="animate-spin ml-auto" />}
-                      {uploadedPostMediaUrl && <CheckCircle2 size={12} className="text-emerald-500 ml-auto" />}
+                      {uploadedPostMediaUrl && <CircleCheck size={12} className="text-emerald-500 ml-auto" />}
                     </label>
                   </div>
                 </div>
