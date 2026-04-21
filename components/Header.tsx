@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, LogOut, X, Circle, Menu, UserPlus, Check, Trash2, MessageCircle, User, Camera } from 'lucide-react';
+import { Search, Bell, LogOut, X, Circle, Menu, UserPlus, Check, Trash2, MessageCircle, User, Camera, Home } from 'lucide-react';
 import { DEFAULT_AVATAR } from '../constants';
 import Username from './Username';
 import { Copy } from 'lucide-react';
@@ -30,6 +30,7 @@ interface HeaderProps {
   onTabChange: (id: any) => void;
   activeTab: TabId;
   onOpenCamera?: () => void;
+  isKeyboardActive?: boolean;
 }
 
 const NOTIF_BADGE_URL = "https://media-mrs2-3.cdn.whatsapp.net/v/t61.24694-24/648205020_2400601040389975_6782283630986826495_n.jpg?stp=dst-jpg_s96x96_tt6&ccb=11-4&oh=01_Q5Aa4AF8snxJ_C2NiaM_ALXpEsITJanZhm_2hnc7PIA8DQU8jw&oe=69BA9C61&_nc_sid=5e03e0&_nc_cat=106";
@@ -86,7 +87,7 @@ const composeNotificationIcon = async (avatarUrl: string): Promise<string> => {
   });
 };
 
-const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout, onToggleSidebar, onTabChange, activeTab, onOpenCamera }) => {
+const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout, onToggleSidebar, onTabChange, activeTab, onOpenCamera, isKeyboardActive }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -202,15 +203,21 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
         <button onClick={onToggleSidebar} className="lg:hidden p-2.5 text-slate-400 hover:text-white rounded-2xl"><Menu size={24} /></button>
         <div 
           onClick={() => onTabChange('accueil')}
-          className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+          className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-all"
         >
-          <img 
-            src="https://carnote.synology.me:9443/api/files/pbc_2708086759/ckb6419uqwto8h0/w_1_removebg_preview_1_vbjej008kd.png?token=" 
-            className="w-10 h-10 object-cover" 
-            style={{ width: '40px', height: '40px', minWidth: '40px', minHeight: '40px' }}
-            alt="Wexo" 
-            referrerPolicy="no-referrer" 
-          />
+          {isKeyboardActive && isMobileDevice() ? (
+            <div className="w-10 h-10 bg-white/10 rounded-2xl flex items-center justify-center text-white animate-in zoom-in duration-300">
+              <Home size={22} />
+            </div>
+          ) : (
+            <img 
+              src="https://carnote.synology.me:9443/api/files/pbc_2708086759/ckb6419uqwto8h0/w_1_removebg_preview_1_vbjej008kd.png?token=" 
+              className="w-10 h-10 object-cover" 
+              style={{ width: '40px', height: '40px', minWidth: '40px', minHeight: '40px' }}
+              alt="Wexo" 
+              referrerPolicy="no-referrer" 
+            />
+          )}
           <span className="text-xl font-bold text-white hidden xs:block uppercase">Wexo</span>
         </div>
       </div>

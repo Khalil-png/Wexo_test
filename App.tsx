@@ -48,6 +48,35 @@ const AppContent: React.FC = () => {
   const [activeCall, setActiveCall] = useState<any>(null);
   const [callTimer, setCallTimer] = useState(0);
   const [showCamera, setShowCamera] = useState(false);
+  const [isKeyboardActive, setIsKeyboardActive] = useState(false);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (!isMobileDevice()) return;
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+        setIsKeyboardActive(true);
+      }
+    };
+
+    const handleBlur = () => {
+      if (!isMobileDevice()) return;
+      // Small timeout to avoid flicker when switching fields
+      setTimeout(() => {
+        const activeEl = document.activeElement;
+        if (!activeEl || (activeEl.tagName !== 'INPUT' && activeEl.tagName !== 'TEXTAREA')) {
+          setIsKeyboardActive(false);
+        }
+      }, 50);
+    };
+
+    window.addEventListener('focusin', handleFocus);
+    window.addEventListener('focusout', handleBlur);
+    return () => {
+      window.removeEventListener('focusin', handleFocus);
+      window.removeEventListener('focusout', handleBlur);
+    };
+  }, []);
   
   const [notification, setNotification] = useState<{message: string, show: boolean, type?: 'error' | 'success'}>({
     message: '',
@@ -423,6 +452,7 @@ const AppContent: React.FC = () => {
         onTabChange={handleTabChange}
         activeTab={activeTab}
         onOpenCamera={() => setShowCamera(true)}
+        isKeyboardActive={isKeyboardActive}
       />
       
       <div className="flex flex-1 w-full relative">
@@ -463,7 +493,7 @@ const AppContent: React.FC = () => {
 
       {authModal && <AuthModal type={authModal} onClose={() => setAuthModal(null)} onTriggerVerifyWarning={showVerifyWarning} />}
       {showLogoutModal && <LogoutModal onClose={() => setShowLogoutModal(false)} />}
-      {isMobileDevice() && <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />}
+      {isMobileDevice() && !isKeyboardActive && <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />}
       
       <AnimatePresence>
         {incomingCall && (
