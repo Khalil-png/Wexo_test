@@ -102,8 +102,8 @@ const DownloadTab: React.FC<ExtraProps> = ({ user, profile }) => {
               Installez l'application Wexo sur votre smartphone Android via le fichier APK. Mises à jour automatiques via le cloud.
             </p>
             <a 
-              href="/downloads/Wexo.apk"
-              download="Wexo.apk"
+              href="/downloads/app-release.apk"
+              download="app-release.apk"
               className="flex items-center justify-center gap-3 w-full py-4 bg-emerald-500 text-white hover:bg-emerald-600 text-xs font-black rounded-2xl transition-all duration-300"
             >
               <Download size={18} />
