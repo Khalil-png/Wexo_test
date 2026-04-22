@@ -27,7 +27,6 @@ import { HelpCircle, TriangleAlert, X, Construction, CheckCircle } from 'lucide-
 import { generateSnowflake } from '@/utils/snowflake';
 import { AnimatePresence } from 'motion/react';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
-import { ErrorBoundary } from 'react-error-boundary';
 // Firebase désactivé
 
 const CURRENT_VERSION = "0.0.1";

@@ -1,0 +1,26 @@
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <div style={{ 
+      height: '100vh', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      background: '#000',
+      color: '#fff',
+      flexDirection: 'column',
+      fontFamily: 'sans-serif'
+    }}>
+      <h1>WEXO_TEST_MINIMAL</h1>
+      <p>Si vous voyez ce message, Google AI Studio fonctionne.</p>
+      <button onClick={() => window.location.reload()} style={{ padding: '10px 20px', marginTop: '20px' }}>
+        RECHARGER
+      </button>
+    </div>
+  );
+}

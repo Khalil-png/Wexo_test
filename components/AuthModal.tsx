@@ -190,7 +190,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
         }
 
         onClose();
-        window.location.reload();
       } else {
         // --- CONNEXION ---
         if (loginStep === 'pseudo') {
