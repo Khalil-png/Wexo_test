@@ -102,8 +102,11 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
     if (!user?.uid) return;
 
     // Request browser notification permission
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission();
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      const winNotif = (window as any).Notification;
+      if (winNotif && winNotif.permission === 'default') {
+        winNotif.requestPermission();
+      }
     }
 
     // Migration NAS : Les notifications temps réel seront implémentées via PocketBase plus tard
@@ -118,49 +121,52 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
     audio.play().catch(e => console.log('Audio play failed:', e));
 
     // Browser notification
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      const isMessageTab = notif.type === 'message' && activeTab === 'message';
-      const isTabVisible = document.visibilityState === 'visible';
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      const winNotif = (window as any).Notification;
+      if (winNotif && winNotif.permission === 'granted') {
+        const isMessageTab = notif.type === 'message' && activeTab === 'message';
+        const isTabVisible = document.visibilityState === 'visible';
 
-      if (isMessageTab && isTabVisible) return;
+        if (isMessageTab && isTabVisible) return;
 
-      let title = 'Wexo Social';
-      let body = '';
-      
-      if (notif.type === 'message') {
-        title = notif.sender_name || 'Nouveau message';
-        body = notif.content || 'Vous a envoyé un message';
-      } else if (notif.type === 'friend_request') {
-        title = `Demande d'ami`;
-        body = `${notif.sender_name} veut être votre ami !`;
-      } else if (notif.type === 'friend_accepted') {
-        title = `Demande acceptée`;
-        body = `${notif.sender_name} a accepté votre demande !`;
-      }
-
-      const composedIcon = await composeNotificationIcon(notif.sender_avatar || DEFAULT_AVATAR);
-      
-      const browserNotif = new Notification(title, { 
-        body, 
-        icon: composedIcon,
-        badge: NOTIF_BADGE_URL,
-        tag: notif.id,
-        silent: false,
-        requireInteraction: false
-      });
-
-      browserNotif.onclick = () => {
-        window.focus();
+        let title = 'Wexo Social';
+        let body = '';
+        
         if (notif.type === 'message') {
-          onTabChange('message');
-          const url = new URL(window.location.href);
-          url.searchParams.set('chat', notif.sender_id);
-          window.history.pushState({}, '', url);
-          window.dispatchEvent(new CustomEvent('select-chat', { detail: notif.sender_id }));
-        } else if (notif.type === 'friend_request' || notif.type === 'friend_accepted') {
-          onTabChange('message');
+          title = notif.sender_name || 'Nouveau message';
+          body = notif.content || 'Vous a envoyé un message';
+        } else if (notif.type === 'friend_request') {
+          title = `Demande d'ami`;
+          body = `${notif.sender_name} veut être votre ami !`;
+        } else if (notif.type === 'friend_accepted') {
+          title = `Demande acceptée`;
+          body = `${notif.sender_name} a accepté votre demande !`;
         }
-      };
+
+        const composedIcon = await composeNotificationIcon(notif.sender_avatar || DEFAULT_AVATAR);
+        
+        const browserNotif = new winNotif(title, { 
+          body, 
+          icon: composedIcon,
+          badge: NOTIF_BADGE_URL,
+          tag: notif.id,
+          silent: false,
+          requireInteraction: false
+        });
+
+        browserNotif.onclick = () => {
+          window.focus();
+          if (notif.type === 'message') {
+            onTabChange('message');
+            const url = new URL(window.location.href);
+            url.searchParams.set('chat', notif.sender_id);
+            window.history.pushState({}, '', url);
+            window.dispatchEvent(new CustomEvent('select-chat', { detail: notif.sender_id }));
+          } else if (notif.type === 'friend_request' || notif.type === 'friend_accepted') {
+            onTabChange('message');
+          }
+        };
+      }
     }
   };
 
@@ -237,8 +243,11 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
               <button 
                 onClick={() => {
                   setShowNotifications(!showNotifications);
-                  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-                    Notification.requestPermission();
+                  if (typeof window !== 'undefined' && 'Notification' in window) {
+                    const winNotif = (window as any).Notification;
+                    if (winNotif && winNotif.permission === 'default') {
+                      winNotif.requestPermission();
+                    }
                   }
                 }} 
                 className={`p-2.5 rounded-2xl relative ${showNotifications ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}

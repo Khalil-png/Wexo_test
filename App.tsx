@@ -94,9 +94,34 @@ const AppContent: React.FC = () => {
         const perm = await LocalNotifications.requestPermissions();
         console.log('Notification permissions status:', perm.display);
 
+        // Create a default notification channel for Android
+        // This is often required for the OS to show the notification settings toggle
+        try {
+          await LocalNotifications.createChannel({
+            id: 'default',
+            name: 'Notifications générales',
+            description: 'Notifications pour les messages et appels',
+            importance: 5, // High importance
+            visibility: 1, // Public
+            sound: 'default',
+            vibration: true
+          });
+          console.log('Notification channel created');
+        } catch (err) {
+          console.error('Failed to create notification channel:', err);
+        }
+
         // Standard browser/webview permission request as fallback/complement
-        if ('Notification' in window && Notification.permission !== 'granted') {
-          await Notification.requestPermission();
+        // Use window.Notification to avoid ReferenceError
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+           const winNotif = (window as any).Notification;
+           if (winNotif && winNotif.permission !== 'granted') {
+             try {
+               await winNotif.requestPermission();
+             } catch (e) {
+               console.warn('Fallback Notification.requestPermission failed', e);
+             }
+           }
         }
 
         // Proactive Camera/Mic permission request
@@ -210,8 +235,9 @@ const AppContent: React.FC = () => {
                     title: "Appel manqué",
                     body: `Vous avez manqué un appel de ${incomingCall.profiles.username}`,
                     id: Math.floor(Math.random() * 10000),
-                    schedule: { at: new Date(Date.now() + 1000) },
-                    sound: 'default'
+                    schedule: { at: new Date(Date.now() + 100) },
+                    sound: 'default',
+                    channelId: 'default'
                   }
                 ]
               });
@@ -255,6 +281,7 @@ const AppContent: React.FC = () => {
                     id: Math.floor(Math.random() * 10000),
                     schedule: { at: new Date(Date.now() + 100) },
                     sound: 'default',
+                    channelId: 'default',
                     extra: {
                       senderId: record.sender_id
                     }
