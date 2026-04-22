@@ -465,8 +465,8 @@ const AppContent: React.FC = () => {
         
         <main className={`flex-1 w-full lg:ml-72 transition-all duration-500 ${
           (activeTab === 'message' || activeTab === 'shorts' || activeTab === 'appel')
-            ? `p-0 pt-20 h-screen h-[100dvh] overflow-hidden bg-[#0f0f0f] ${isMobileDevice() ? 'pb-24' : ''}` 
-            : `p-4 sm:p-10 md:p-14 pt-[125px] lg:pt-[105px] ${isMobileDevice() ? 'pb-28' : 'pb-10'}`
+            ? `p-0 ${isMobileDevice() ? 'pt-32' : 'pt-20'} h-screen h-[100dvh] overflow-hidden bg-[#0f0f0f] ${isMobileDevice() ? 'pb-24' : ''}` 
+            : `p-4 sm:p-10 md:p-14 ${isMobileDevice() ? 'pt-[145px]' : 'pt-[125px]'} lg:pt-[105px] ${isMobileDevice() ? 'pb-28' : 'pb-10'}`
         }`}>
           <div className={`${
             (activeTab === 'message' || activeTab === 'shorts' || activeTab === 'appel')
