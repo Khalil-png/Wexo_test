@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Phone, PhoneOff, MessageSquare, ChevronUp, X, User } from 'lucide-react';
 import { DEFAULT_AVATAR } from '../constants';
@@ -29,6 +29,83 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
   onSendMessage 
 }) => {
   const [showQuickMessages, setShowQuickMessages] = useState(false);
+  const ringtoneRef = useRef<HTMLAudioElement | null>(null);
+
+  // Native Call Integration: Vibration, MediaSession, and WakeLock
+  useEffect(() => {
+    // 0. Audio Ringtone
+    const ringtoneUrl = "https://assets.mixkit.co/active_storage/sfx/1355/1355-preview.mp3";
+    ringtoneRef.current = new Audio(ringtoneUrl);
+    ringtoneRef.current.loop = true;
+    
+    // Play ringtone with a slight delay to avoid browser policy issues
+    const playRingtone = async () => {
+      try {
+        if (ringtoneRef.current) {
+          await ringtoneRef.current.play();
+        }
+      } catch (err) {
+        console.warn("Ringtone blocked:", err);
+      }
+    };
+    playRingtone();
+
+    // 1. Vibration pattern (ringtone-like)
+    const startVibration = () => {
+      if ('vibration' in navigator) {
+        navigator.vibrate([1000, 500, 1000, 500, 1000]);
+        return setInterval(() => {
+          navigator.vibrate([1000, 500, 1000, 500, 1000]);
+        }, 3000);
+      }
+      return null;
+    };
+
+    const vibrationInterval = startVibration();
+
+    // 2. MediaSession API (Lock screen controls)
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: `Appel entrant de ${caller.username}`,
+        artist: 'Wexo Social',
+        album: 'Wexo Social',
+        artwork: [
+          { src: caller.avatar_url || DEFAULT_AVATAR, sizes: '512x512', type: 'image/png' }
+        ]
+      });
+
+      navigator.mediaSession.setActionHandler('play', onAccept);
+      navigator.mediaSession.setActionHandler('pause', onDecline);
+      navigator.mediaSession.setActionHandler('hangup', onDecline);
+      navigator.mediaSession.setActionHandler('answercall', onAccept);
+    }
+
+    // 3. Wake Lock (Keep screen on)
+    let wakeLock: any = null;
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.error('Wake Lock error:', err);
+      }
+    };
+    requestWakeLock();
+
+    return () => {
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current.currentTime = 0;
+      }
+      if (vibrationInterval) clearInterval(vibrationInterval);
+      if ('vibration' in navigator) navigator.vibrate(0);
+      if (wakeLock) wakeLock.release();
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = null;
+      }
+    };
+  }, [caller, onAccept, onDecline]);
 
   const handleDragEnd = (event: any, info: any, action: 'accept' | 'decline') => {
     // Swipe up detection (negative y offset)

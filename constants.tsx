@@ -48,7 +48,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'admin-panel', label: 'Espace Admin', icon: 'ShieldCheck', group: 'admin' },
 ];
 
-export const DEFAULT_AVATAR = "https://carnote.synology.me:9443/api/files/pbc_2708086759/ckb6419uqwto8h0/w_1_removebg_preview_1_vbjej008kd.png?token=";
+export const DEFAULT_AVATAR = "http://192.168.1.147:9090/api/files/pbc_2708086759/irue23ttw61s3oi/copie_de_panel_admin_z0giqqeanz.png?token=";
 
 export const getIcon = (iconName: string, active: boolean) => {
   const size = 20;
