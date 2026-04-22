@@ -204,7 +204,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
   };
 
   return (
-    <header className={`fixed top-0 left-0 right-0 ${isMobileDevice() ? 'h-32 pt-12 items-end pb-4' : 'h-20 items-center'} bg-[#0f0f0f] border-b border-white/10 flex justify-between px-4 md:px-10 z-[100]`}>
+    <header className={`fixed top-0 left-0 right-0 ${isMobileDevice() ? 'h-[140px] pt-16 items-end pb-4' : 'h-20 items-center'} bg-[#0f0f0f] border-b border-white/10 flex justify-between px-4 md:px-10 z-[100]`}>
       <div className="flex items-center gap-5">
         <button onClick={onToggleSidebar} className="lg:hidden p-2.5 text-slate-400 hover:text-white rounded-2xl"><Menu size={24} /></button>
         <div 

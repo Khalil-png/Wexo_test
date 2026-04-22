@@ -94,21 +94,66 @@ const AppContent: React.FC = () => {
         const perm = await LocalNotifications.requestPermissions();
         console.log('Notification permissions status:', perm.display);
 
-        // Create a default notification channel for Android
-        // This is often required for the OS to show the notification settings toggle
+        // Create specialized notification channels for Android
         try {
+          // General messages channel
           await LocalNotifications.createChannel({
-            id: 'default',
-            name: 'Notifications générales',
-            description: 'Notifications pour les messages et appels',
-            importance: 5, // High importance
-            visibility: 1, // Public
+            id: 'messages',
+            name: 'Messages',
+            description: 'Notifications pour les nouveaux messages',
+            importance: 5, 
+            visibility: 1, 
             sound: 'default',
             vibration: true
           });
-          console.log('Notification channel created');
+
+          // High priority calls channel
+          await LocalNotifications.createChannel({
+            id: 'calls',
+            name: 'Appels entrants',
+            description: 'Alertes lors d\'un appel entrant',
+            importance: 5, // High importance
+            visibility: 1, // Public/Lockscreen
+            sound: 'ringtone.mp3', // Note: Needs to be in res/raw to work, otherwise default
+            vibration: true,
+            lights: true,
+            lightColor: '#10b981'
+          });
+          
+          // Default channel for backward compatibility
+          await LocalNotifications.createChannel({
+            id: 'default',
+            name: 'Général',
+            description: 'Autres notifications',
+            importance: 3,
+            visibility: 1
+          });
+
+          console.log('Notification channels created');
+
+          // Register Action Types (Buttons in notifications)
+          await LocalNotifications.registerActionTypes({
+            types: [
+              {
+                id: 'INCOMING_CALL',
+                actions: [
+                  {
+                    id: 'accept',
+                    title: 'Répondre',
+                    foreground: true
+                  },
+                  {
+                    id: 'decline',
+                    title: 'Décliner',
+                    destructive: true,
+                    foreground: false
+                  }
+                ]
+              }
+            ]
+          });
         } catch (err) {
-          console.error('Failed to create notification channel:', err);
+          console.error('Failed to create notification channels:', err);
         }
 
         // Standard browser/webview permission request as fallback/complement
@@ -189,37 +234,65 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (!pbUser?.id) return;
 
+    // Écouter les actions sur les notifications (clic sur les boutons Répondre/Décliner)
+    const setupNotificationListeners = async () => {
+      await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+        const { notification, actionId } = action;
+        if (notification.extra?.type === 'call') {
+          if (actionId === 'accept') {
+            handleAcceptCallFromNotification(notification.extra.callId);
+          } else if (actionId === 'decline') {
+            handleDeclineCallFromNotification(notification.extra.callId);
+          }
+        }
+      });
+    };
+    setupNotificationListeners();
+
     // Écouter les appels entrants
     pb.collection('calls').subscribe('*', async ({ action, record }) => {
       if (action === 'create' && record.receiver_id === pbUser.id && record.status === 'incoming') {
         const caller = record.expand?.caller_id;
-        
+        let callerName = "Utilisateur inconnu";
+        let avatar = DEFAULT_AVATAR;
+
         if (caller) {
-          setIncomingCall({
-            id: record.id,
-            caller_id: record.caller_id,
-            receiver_id: record.receiver_id,
-            profiles: {
-              username: caller.username,
-              avatar_url: caller.avatar ? pb.files.getUrl(caller, caller.avatar) : (caller.avatar_url || DEFAULT_AVATAR)
-            }
-          });
-        } else {
-          // Fallback si l'expansion a échoué
-          try {
-            const callerData = await pb.collection('users').getOne(record.caller_id);
-            setIncomingCall({
-              id: record.id,
-              caller_id: record.caller_id,
-              receiver_id: record.receiver_id,
-              profiles: {
-                username: callerData.username,
-                avatar_url: callerData.avatar ? pb.files.getUrl(callerData, callerData.avatar) : (callerData.avatar_url || DEFAULT_AVATAR)
-              }
-            });
-          } catch (err) {
-            console.error("Error fetching caller info:", err);
+          callerName = caller.username;
+          avatar = caller.avatar ? pb.files.getUrl(caller, caller.avatar) : (caller.avatar_url || DEFAULT_AVATAR);
+        }
+
+        // 1. Déclencher le Overlay React (si l'app est au premier plan)
+        setIncomingCall({
+          id: record.id,
+          caller_id: record.caller_id,
+          receiver_id: record.receiver_id,
+          profiles: {
+            username: callerName,
+            avatar_url: avatar
           }
+        });
+
+        // 2. Déclencher une notification système (style appel natif)
+        if (isMobileDevice()) {
+          LocalNotifications.schedule({
+            notifications: [
+              {
+                title: `Appel de ${callerName}`,
+                body: "C'est un appel Wexo",
+                id: 999, // Un ID unique pour l'appel pour pouvoir l'annuler si besoin
+                schedule: { at: new Date(Date.now() + 100) },
+                sound: 'default',
+                channelId: 'calls',
+                ongoing: true, // Keep notification until answered
+                autoCancel: false,
+                extra: {
+                  type: 'call',
+                  callId: record.id
+                },
+                actionTypeId: 'INCOMING_CALL'
+              }
+            ]
+          });
         }
       }
 
@@ -229,11 +302,14 @@ const AppContent: React.FC = () => {
           if (incomingCall?.id === record.id) {
             // Trigger local notification for missed call if it was an incoming call for us
             if (record.status === 'missed' && record.receiver_id === pbUser.id) {
+              // Cancel incoming notification if it existed
+              LocalNotifications.cancel({ notifications: [{ id: 999 }] });
+              
               LocalNotifications.schedule({
                 notifications: [
                   {
                     title: "Appel manqué",
-                    body: `Vous avez manqué un appel de ${incomingCall.profiles.username}`,
+                    body: `Vous avez manqué un appel de ${incomingCall?.profiles.username || 'un utilisateur'}`,
                     id: Math.floor(Math.random() * 10000),
                     schedule: { at: new Date(Date.now() + 100) },
                     sound: 'default',
@@ -241,6 +317,9 @@ const AppContent: React.FC = () => {
                   }
                 ]
               });
+            } else if (record.status === 'completed') {
+               // Cancel call notification on completion
+               LocalNotifications.cancel({ notifications: [{ id: 999 }] });
             }
             setIncomingCall(null);
           }
@@ -281,7 +360,7 @@ const AppContent: React.FC = () => {
                     id: Math.floor(Math.random() * 10000),
                     schedule: { at: new Date(Date.now() + 100) },
                     sound: 'default',
-                    channelId: 'default',
+                    channelId: 'messages',
                     extra: {
                       senderId: record.sender_id
                     }
@@ -317,12 +396,28 @@ const AppContent: React.FC = () => {
 
   const handleAcceptCall = async () => {
     if (!incomingCall) return;
+    handleAcceptCallFromNotification(incomingCall.id);
+  };
+
+  const handleAcceptCallFromNotification = async (callId: string) => {
     try {
-      await pb.collection('calls').update(incomingCall.id, { status: 'completed' });
-      setActiveCall(incomingCall);
+      await pb.collection('calls').update(callId, { status: 'completed' });
+      const record = await pb.collection('calls').getOne(callId, { expand: 'caller_id' });
+      const caller = record.expand?.caller_id;
+      
+      setActiveCall({
+        id: record.id,
+        caller_id: record.caller_id,
+        receiver_id: record.receiver_id,
+        profiles: {
+          username: caller?.username || 'Utilisateur',
+          avatar_url: caller?.avatar ? pb.files.getUrl(caller, caller.avatar) : (caller?.avatar_url || DEFAULT_AVATAR)
+        }
+      });
       setIncomingCall(null);
       setActiveTab('appel');
       navigate('/appel');
+      LocalNotifications.cancel({ notifications: [{ id: 999 }] });
     } catch (err) {
       console.error("Error accepting call:", err);
     }
@@ -330,9 +425,14 @@ const AppContent: React.FC = () => {
 
   const handleDeclineCall = async () => {
     if (!incomingCall) return;
+    handleDeclineCallFromNotification(incomingCall.id);
+  };
+
+  const handleDeclineCallFromNotification = async (callId: string) => {
     try {
-      await pb.collection('calls').update(incomingCall.id, { status: 'missed' });
+      await pb.collection('calls').update(callId, { status: 'missed' });
       setIncomingCall(null);
+      LocalNotifications.cancel({ notifications: [{ id: 999 }] });
     } catch (err) {
       console.error("Error declining call:", err);
     }

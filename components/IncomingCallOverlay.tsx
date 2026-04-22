@@ -76,8 +76,7 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
 
       navigator.mediaSession.setActionHandler('play', onAccept);
       navigator.mediaSession.setActionHandler('pause', onDecline);
-      navigator.mediaSession.setActionHandler('hangup', onDecline);
-      navigator.mediaSession.setActionHandler('answercall', onAccept);
+      // Remove non-standard actions to pass lint
     }
 
     // 3. Wake Lock (Keep screen on)

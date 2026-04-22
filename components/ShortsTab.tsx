@@ -495,7 +495,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
       {/* Main Content Area (Centered) */}
       <div className={`relative flex h-full w-full justify-center ${isMobileDevice() ? 'items-stretch px-0' : 'items-center gap-6 max-w-screen-xl px-4'}`}>
         
-        {/* Video Container */}
+        {/* Video Container (Wrapper for everything that must stay in the video area) */}
         <div className={`relative h-full bg-black overflow-hidden flex items-center justify-center group ${isMobileDevice() ? 'w-full rounded-0' : 'max-h-[calc(100vh-100px)] aspect-[9/16] rounded-2xl shadow-2xl border border-white/10'}`}>
           <video 
             ref={videoRef}
@@ -566,7 +566,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
           </div>
 
           {/* Bottom Info (Overlay) */}
-          <div className="absolute bottom-0 left-0 right-0 p-6 z-20 pointer-events-none">
+          <div className="absolute bottom-6 left-0 right-16 p-6 z-20 pointer-events-none">
             <div className="flex flex-col gap-3 pointer-events-auto">
               <div className="flex items-center gap-3">
                 <img 
@@ -599,22 +599,9 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
                 )}
               </div>
               
-              <p className="text-sm font-medium text-white line-clamp-2 leading-snug">
+              <p className="text-sm font-medium text-white line-clamp-2 leading-snug drop-shadow-lg">
                 {renderTextWithEmojis(short.title)}
               </p>
-
-              {short.type && (
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 bg-white/20 text-white text-[9px] font-bold rounded">
-                    {short.type}
-                  </span>
-                  {short.name_of_type && (
-                    <span className="text-[10px] font-bold text-white/60 truncate">
-                      {short.name_of_type}
-                    </span>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
@@ -633,76 +620,76 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
               }}
             />
           </div>
-        </div>
 
-        {/* Right Side Actions */}
-        <div className={`flex flex-col gap-5 items-center justify-end ${isMobileDevice() ? 'absolute right-4 bottom-24 z-40' : 'pb-12'}`}>
-          <div className="flex flex-col items-center gap-2">
-            <button 
-              onClick={handleLike}
-              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20 shadow-sm border border-white/10'}`}
-            >
-              <Heart size={isMobileDevice() ? 24 : 28} fill={liked ? "currentColor" : "none"} />
-            </button>
-            <span className="text-[12px] sm:text-[13px] font-bold text-white drop-shadow-md">{likeCount}</span>
-          </div>
-
-          <div className="flex flex-col items-center gap-2">
-            <button 
-              onClick={() => setShowComments(true)}
-              className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
-            >
-              <MessageSquare size={isMobileDevice() ? 24 : 28} />
-            </button>
-            <span className="text-[10px] sm:text-[13px] font-bold text-white drop-shadow-md">Commenter</span>
-          </div>
-
-          <div className="flex flex-col items-center gap-2 relative">
-            <button 
-              onClick={handleShare}
-              className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
-            >
-              <Share2 size={isMobileDevice() ? 24 : 28} />
-            </button>
-            <span className="text-[10px] sm:text-[13px] font-bold text-white drop-shadow-md">Partager</span>
-
-            {showSharePopup && (
-              <div 
-                ref={sharePopupRef}
-                className="absolute bottom-full mb-4 right-0 w-72 bg-[#1a1a1a] border border-white/10 rounded-2xl p-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 z-50 pointer-events-auto"
+          {/* Right Side Actions - Moved INSIDE video container wrapper for mobile constraints */}
+          <div className={`flex flex-col gap-6 items-center justify-end absolute right-4 bottom-12 z-40`}>
+            <div className="flex flex-col items-center gap-2">
+              <button 
+                onClick={handleLike}
+                className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20 shadow-sm border border-white/10'}`}
               >
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-sm font-bold text-white">Partager</h4>
-                  <button onClick={(e) => { e.stopPropagation(); setShowSharePopup(false); }} className="text-slate-400 hover:text-white">
-                    <X size={20} />
-                  </button>
-                </div>
-                <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl p-3">
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value={`https://wexo.netlify.app/?short=${short.id}`}
-                    className="bg-transparent text-xs text-slate-400 outline-none flex-1 truncate"
-                  />
-                  <button 
-                    onClick={copyToClipboard}
-                    className="w-10 h-10 bg-white text-black rounded-2xl hover:bg-slate-200 transition-all active:scale-95 flex items-center justify-center shadow-lg flex-shrink-0"
-                    title={copied ? "Copié !" : "Copier le lien"}
-                  >
-                    {copied ? <Check size={18} className="text-emerald-600" /> : <Copy size={18} />}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+                <Heart size={isMobileDevice() ? 24 : 28} fill={liked ? "currentColor" : "none"} />
+              </button>
+              <span className="text-[12px] sm:text-[13px] font-bold text-white drop-shadow-md">{likeCount}</span>
+            </div>
 
-          <div className="mt-4">
-            <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/10 animate-spin-slow shadow-lg">
-              <img 
-                src={short.thumbnail_url || `https://picsum.photos/seed/${short.id}/100/100`} 
-                className="w-full h-full object-cover" 
-                alt="" 
-              />
+            <div className="flex flex-col items-center gap-2">
+              <button 
+                onClick={() => setShowComments(true)}
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
+              >
+                <MessageSquare size={isMobileDevice() ? 24 : 28} />
+              </button>
+              <span className="text-[10px] sm:text-[11px] font-bold text-white drop-shadow-md">Avis</span>
+            </div>
+
+            <div className="flex flex-col items-center gap-2 relative">
+              <button 
+                onClick={handleShare}
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
+              >
+                <Share2 size={isMobileDevice() ? 24 : 28} />
+              </button>
+              <span className="text-[10px] sm:text-[11px] font-bold text-white drop-shadow-md">Share</span>
+
+              {showSharePopup && (
+                <div 
+                  ref={sharePopupRef}
+                  className="absolute bottom-full mb-4 right-0 w-72 bg-[#1a1a1a] border border-white/10 rounded-2xl p-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300 z-50 pointer-events-auto"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-sm font-bold text-white">Partager</h4>
+                    <button onClick={(e) => { e.stopPropagation(); setShowSharePopup(false); }} className="text-slate-400 hover:text-white">
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl p-3">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={`https://wexo.netlify.app/?short=${short.id}`}
+                      className="bg-transparent text-xs text-slate-400 outline-none flex-1 truncate"
+                    />
+                    <button 
+                      onClick={copyToClipboard}
+                      className="w-10 h-10 bg-white text-black rounded-2xl hover:bg-slate-200 transition-all active:scale-95 flex items-center justify-center shadow-lg flex-shrink-0"
+                      title={copied ? "Copié !" : "Copier le lien"}
+                    >
+                      {copied ? <Check size={18} className="text-emerald-600" /> : <Copy size={18} />}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4">
+              <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/20 animate-spin-slow shadow-lg">
+                <img 
+                  src={short.creator_avatar || DEFAULT_AVATAR} 
+                  className="w-full h-full object-cover" 
+                  alt="" 
+                />
+              </div>
             </div>
           </div>
         </div>
