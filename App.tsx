@@ -27,6 +27,7 @@ import { HelpCircle, TriangleAlert, X, Construction, CheckCircle } from 'lucide-
 import { generateSnowflake } from '@/utils/snowflake';
 import { AnimatePresence } from 'motion/react';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
+import { LocalNotifications } from '@capacitor/local-notifications';
 // Firebase désactivé
 
 const CURRENT_VERSION = "0.0.1";
@@ -82,6 +83,40 @@ const AppContent: React.FC = () => {
     show: false,
     type: 'error'
   });
+
+  // Check Permissions on Startup (Mobile)
+  useEffect(() => {
+    const requestPermissions = async () => {
+      if (!isMobileDevice()) return;
+
+      try {
+        // Request Notification Permissions (Android 13+)
+        const perm = await LocalNotifications.requestPermissions();
+        console.log('Notification permissions status:', perm.display);
+
+        // Standard browser/webview permission request as fallback/complement
+        if ('Notification' in window && Notification.permission !== 'granted') {
+          await Notification.requestPermission();
+        }
+
+        // Proactive Camera/Mic permission request
+        // This ensures the OS sees the app as "using" these features
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            stream.getTracks().forEach(track => track.stop());
+            console.log('Camera/Mic permissions granted proactively');
+          } catch (err) {
+            console.warn('Initial camera/mic permission request failed or was denied:', err);
+          }
+        }
+      } catch (err) {
+        console.error('Error requesting permissions:', err);
+      }
+    };
+
+    requestPermissions();
+  }, []);
 
   // Check NAS Connection
   useEffect(() => {
@@ -166,7 +201,23 @@ const AppContent: React.FC = () => {
       // Si l'appelant annule ou si le statut change (ex: décliné par un autre appareil)
       if (action === 'update' && (record.receiver_id === pbUser.id || record.caller_id === pbUser.id)) {
         if (record.status === 'completed' || record.status === 'missed') {
-          if (incomingCall?.id === record.id) setIncomingCall(null);
+          if (incomingCall?.id === record.id) {
+            // Trigger local notification for missed call if it was an incoming call for us
+            if (record.status === 'missed' && record.receiver_id === pbUser.id) {
+              LocalNotifications.schedule({
+                notifications: [
+                  {
+                    title: "Appel manqué",
+                    body: `Vous avez manqué un appel de ${incomingCall.profiles.username}`,
+                    id: Math.floor(Math.random() * 10000),
+                    schedule: { at: new Date(Date.now() + 1000) },
+                    sound: 'default'
+                  }
+                ]
+              });
+            }
+            setIncomingCall(null);
+          }
           if (activeCall?.id === record.id) setActiveCall(null);
         }
       }
@@ -181,6 +232,49 @@ const AppContent: React.FC = () => {
       pb.collection('calls').unsubscribe('*');
     };
   }, [pbUser?.id, incomingCall?.id, activeCall?.id]);
+
+  // Global Messages Subscription for Notifications
+  useEffect(() => {
+    if (!pbUser?.id) return;
+
+    const setupMessageSubscription = async () => {
+      await pb.collection('messages').subscribe('*', async ({ action, record }) => {
+        if (action === 'create' && record.receiver_id === pbUser.id) {
+          // New message received
+          try {
+            const sender = await pb.collection('users').getOne(record.sender_id);
+            
+            // Only show notification if we're not currently on the message tab for this sender
+            // (Simple version: always show if it's a mobile app and we're receiving a message)
+            if (isMobileDevice()) {
+              LocalNotifications.schedule({
+                notifications: [
+                  {
+                    title: `Message de ${sender.username}`,
+                    body: record.text || (record.media ? "Média reçu" : "Nouveau message"),
+                    id: Math.floor(Math.random() * 10000),
+                    schedule: { at: new Date(Date.now() + 100) },
+                    sound: 'default',
+                    extra: {
+                      senderId: record.sender_id
+                    }
+                  }
+                ]
+              });
+            }
+          } catch (err) {
+            console.error("Error creating message notification:", err);
+          }
+        }
+      });
+    };
+
+    setupMessageSubscription();
+
+    return () => {
+      pb.collection('messages').unsubscribe('*');
+    };
+  }, [pbUser?.id]);
 
   useEffect(() => {
     let interval: any;
