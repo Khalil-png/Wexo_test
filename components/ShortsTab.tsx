@@ -8,6 +8,7 @@ import { useClickOutside } from '../utils/hooks';
 import { Video } from '../types';
 import { generateSnowflake } from '../utils/snowflake';
 import Username from './Username';
+import { isMobileDevice } from '../src/utils/device';
 
 interface ShortsTabProps {
   user?: any;
@@ -490,19 +491,19 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
   };
 
   return (
-    <div className="h-full w-full snap-start relative flex items-center justify-center bg-[#0f0f0f] overflow-hidden">
+    <div className="h-full w-full snap-start relative flex items-center justify-center bg-black overflow-hidden">
       {/* Main Content Area (Centered) */}
-      <div className="relative flex items-center gap-6 h-full w-full max-w-screen-xl px-4 justify-center">
+      <div className={`relative flex h-full w-full justify-center ${isMobileDevice() ? 'items-stretch px-0' : 'items-center gap-6 max-w-screen-xl px-4'}`}>
         
         {/* Video Container */}
-        <div className="relative h-full max-h-[calc(100vh-140px)] sm:max-h-[calc(100vh-100px)] aspect-[9/16] bg-black rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center group border border-white/10">
+        <div className={`relative h-full bg-black overflow-hidden flex items-center justify-center group ${isMobileDevice() ? 'w-full rounded-0' : 'max-h-[calc(100vh-100px)] aspect-[9/16] rounded-2xl shadow-2xl border border-white/10'}`}>
           <video 
             ref={videoRef}
             src={short.url}
             loop
             playsInline
             onTimeUpdate={handleTimeUpdate}
-            className="h-full w-full object-contain cursor-pointer bg-black"
+            className="h-full w-full object-cover sm:object-contain cursor-pointer bg-black"
             onClick={togglePlay}
           />
 
@@ -614,15 +615,6 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
                   )}
                 </div>
               )}
-
-              <div className="flex items-center gap-2">
-                <Music size={14} className="text-white" />
-                <div className="overflow-hidden whitespace-nowrap w-full">
-                  <p className="text-xs font-bold text-white leading-relaxed animate-marquee inline-block">
-                    Son original - {short.creator_name} • {renderTextWithEmojis(short.title)}
-                  </p>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -643,36 +635,36 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
           </div>
         </div>
 
-        {/* Right Side Actions (Next to Video) */}
-        <div className="flex flex-col gap-5 items-center justify-end pb-12">
+        {/* Right Side Actions */}
+        <div className={`flex flex-col gap-5 items-center justify-end ${isMobileDevice() ? 'absolute right-4 bottom-24 z-40' : 'pb-12'}`}>
           <div className="flex flex-col items-center gap-2">
             <button 
               onClick={handleLike}
-              className={`w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20 shadow-sm border border-white/10'}`}
+              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20 shadow-sm border border-white/10'}`}
             >
-              <Heart size={28} fill={liked ? "currentColor" : "none"} />
+              <Heart size={isMobileDevice() ? 24 : 28} fill={liked ? "currentColor" : "none"} />
             </button>
-            <span className="text-[13px] font-bold text-white">{likeCount}</span>
+            <span className="text-[12px] sm:text-[13px] font-bold text-white drop-shadow-md">{likeCount}</span>
           </div>
 
           <div className="flex flex-col items-center gap-2">
             <button 
               onClick={() => setShowComments(true)}
-              className="w-14 h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
+              className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
             >
-              <MessageSquare size={28} />
+              <MessageSquare size={isMobileDevice() ? 24 : 28} />
             </button>
-            <span className="text-[13px] font-bold text-white">Commenter</span>
+            <span className="text-[10px] sm:text-[13px] font-bold text-white drop-shadow-md">Commenter</span>
           </div>
 
           <div className="flex flex-col items-center gap-2 relative">
             <button 
               onClick={handleShare}
-              className="w-14 h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
+              className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
             >
-              <Share2 size={28} />
+              <Share2 size={isMobileDevice() ? 24 : 28} />
             </button>
-            <span className="text-[13px] font-bold text-white">Partager</span>
+            <span className="text-[10px] sm:text-[13px] font-bold text-white drop-shadow-md">Partager</span>
 
             {showSharePopup && (
               <div 

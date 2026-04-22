@@ -47,13 +47,18 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare }) => {
       });
       
       setStream(mediaStream);
+      setError(null);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
       setLoading(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Camera error:", err);
-      setError("Impossible d'accéder à la caméra. Veuillez vérifier les permissions.");
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError("L'accès à la caméra a été refusé. Veuillez autoriser l'appareil photo dans les paramètres de votre navigateur ou de l'application.");
+      } else {
+        setError("Impossible d'accéder à la caméra. Vérifiez qu'elle n'est pas déjà utilisée par une autre application.");
+      }
       setLoading(false);
     }
   };
