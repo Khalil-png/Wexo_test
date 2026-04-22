@@ -102,7 +102,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
     if (!user?.uid) return;
 
     // Request browser notification permission
-    if (Notification.permission === 'default') {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission();
     }
 
@@ -118,7 +118,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
     audio.play().catch(e => console.log('Audio play failed:', e));
 
     // Browser notification
-    if (Notification.permission === 'granted') {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       const isMessageTab = notif.type === 'message' && activeTab === 'message';
       const isTabVisible = document.visibilityState === 'visible';
 
@@ -237,7 +237,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
               <button 
                 onClick={() => {
                   setShowNotifications(!showNotifications);
-                  if (Notification.permission === 'default') {
+                  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
                     Notification.requestPermission();
                   }
                 }} 
