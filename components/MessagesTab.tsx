@@ -275,11 +275,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const [editText, setEditText] = useState('');
   const [copiedId, setCopiedId] = useState(false);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const initialHeight = useRef(window.innerHeight);
 
   useEffect(() => {
     const handleResize = () => {
-      // If the height decreases significantly, the keyboard is likely open
-      if (window.innerHeight < 500) {
+      // Détection plus fiable : si la hauteur chute de plus de 15%, le clavier est sorti
+      const currentHeight = window.innerHeight;
+      if (currentHeight < initialHeight.current * 0.85) {
         setIsKeyboardOpen(true);
       } else {
         setIsKeyboardOpen(false);
@@ -1584,14 +1586,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             {/* Zone Noire "Hors App" - Fixée au bas absolu pour APK */}
             {isMobileDevice() && (
               <div 
-                className={`fixed bottom-0 left-0 right-0 bg-black z-[100] transition-opacity duration-100 ${isPhysicalKeyboardOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-                style={{ height: '31px' }} // Hauteur réduite de 1.10x (34 / 1.10 ≈ 31)
+                className={`fixed bottom-0 left-0 right-0 bg-black z-[100] ${isPhysicalKeyboardOpen ? 'hidden' : 'block'}`}
+                style={{ height: '40px' }} // Taille augmentée (34 * 1.15 approx)
               />
             )}
 
             {/* Barre de Saisie - Positionnée dynamiquement pour l'APK */}
-            <div className={`${isMobileDevice() ? 'fixed left-0 right-0 z-[110]' : 'relative'} flex flex-col transition-all duration-200`} 
-                 style={isMobileDevice() ? { bottom: isPhysicalKeyboardOpen ? '0' : '31px' } : {}}>
+            <div className={`${isMobileDevice() ? 'fixed left-0 right-0 z-[110]' : 'relative'} flex flex-col`} 
+                 style={isMobileDevice() ? { bottom: isPhysicalKeyboardOpen ? '0' : '40px' } : {}}>
               <div className={`w-full px-2 sm:px-4 py-1.5 bg-[#0f0f0f] border-t border-white/10`}>
                 {localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold">
