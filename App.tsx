@@ -537,9 +537,27 @@ const AppContent: React.FC = () => {
     });
   };
 
-  const handleCameraShare = (media: string, destination: 'story' | 'message' | 'short' | 'video', type: 'image' | 'video') => {
+  useEffect(() => {
+    const handleOpenCamera = () => setShowCamera(true);
+    window.addEventListener('open-camera', handleOpenCamera);
+    return () => window.removeEventListener('open-camera', handleOpenCamera);
+  }, []);
+
+  const handleCameraShare = async (media: string, destination: 'story' | 'message' | 'short' | 'video', type: 'image' | 'video') => {
     setShowCamera(false);
     
+    // Broadcast event for MessagesTab if destination is message
+    if (destination === 'message') {
+      window.dispatchEvent(new CustomEvent('media-captured', {
+        detail: {
+          media,
+          type,
+          destination,
+          fileName: type === 'video' ? `Vidéo_${Date.now()}.mp4` : `Photo_${Date.now()}.png`
+        }
+      }));
+    }
+
     // Map destination to tab
     const tabMap: Record<string, TabId> = {
       'story': 'posts',

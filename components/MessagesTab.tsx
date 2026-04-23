@@ -579,12 +579,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   }, [selectedId, user, profile]);
 
   useEffect(() => {
-    // Listen for custom event from Header
+    // Listen for custom event from Header or Camera
     const handleSelectChat = (e: any) => {
       setSelectedId(e.detail);
       setMobileView('chat');
     };
     window.addEventListener('select-chat', handleSelectChat);
+
+    const handleMediaCapture = (e: any) => {
+      if (e.detail && e.detail.destination === 'message') {
+        const { media, type, fileName } = e.detail;
+        sendMessage('', {
+          url: media,
+          name: fileName || (type === 'video' ? 'Capture vidéo.mp4' : 'Capture photo.png'),
+          type: type === 'video' ? 'video/mp4' : 'image/png',
+          size: 0 // On n'a pas la taille exacte ici sans fetch, mais on peut l'estimer ou laisser 0
+        });
+      }
+    };
+    window.addEventListener('media-captured', handleMediaCapture);
 
     // Check URL param on mount
     const params = new URLSearchParams(window.location.search);
@@ -1322,8 +1335,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   );
                 }
 
-                const isImage = msg.file_type?.startsWith('image/') || msg.isGeneratingImage;
-                const isVideo = msg.file_type?.startsWith('video/') || msg.isGeneratingVideo;
+                const isImage = msg.file_type?.startsWith('image/') || 
+                                msg.isGeneratingImage || 
+                                /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(msg.file_name || '');
+                const isVideo = msg.file_type?.startsWith('video/') || 
+                                msg.isGeneratingVideo || 
+                                /\.(mp4|mov|avi|wmv|flv|mkv|webm)$/i.test(msg.file_name || '');
                 const isDeleted = msg.is_deleted_for_everyone;
                 const hasPrevSameSender = idx > 0 && messages[idx - 1].sender_id === msg.sender_id;
                 const hasNextSameSender = idx < messages.length - 1 && messages[idx + 1].sender_id === msg.sender_id;
@@ -1627,18 +1644,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
                     <div className="flex items-center gap-1.5">
                       {isMobileDevice() && (
-                        <button onClick={() => fileInputRef.current?.click()} className="p-1.5 mr-1 text-slate-400 hover:text-white transition-colors">
+                        <button onClick={() => fileInputRef.current?.click()} className="p-1.5 mr-0.5 text-slate-400 hover:text-white transition-colors">
                           <Paperclip size={22} />
                         </button>
                       )}
 
-                      {isMobileDevice() && !messageText.trim() && (
-                        <button className="p-1.5 text-slate-400 hover:text-white transition-colors"><Camera size={22} /></button>
+                      {isMobileDevice() && (
+                        <button 
+                          onClick={() => {
+                            window.dispatchEvent(new CustomEvent('open-camera'));
+                          }} 
+                          className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                        >
+                          <Camera size={22} />
+                        </button>
                       )}
 
                       {!isMobileDevice() && (
                         <button onClick={() => sendMessage(messageText)} className="h-10 w-10 bg-blue-600 text-white rounded-xl flex items-center justify-center transition-all active:scale-95">
-                          {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} fill="currentColor" />}
+                          {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} />}
                         </button>
                       )}
                     </div>
@@ -1646,7 +1670,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
                   {isMobileDevice() && (
                     <button onClick={() => sendMessage(messageText)} className="bg-blue-600 text-white h-[48px] w-[48px] min-w-[48px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90">
-                      {messageText.trim() ? <Send size={22} fill="currentColor" /> : <Mic size={24} fill="currentColor" />}
+                      {messageText.trim() ? <Send size={22} fill="currentColor" /> : <Mic size={24} />}
                     </button>
                   )}
                 </div>
@@ -1654,7 +1678,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
               {/* Zone Noire "Hors App" - Permanente mais masquée quand le clavier est là */}
               {isMobileDevice() && !isPhysicalKeyboardOpen && (
-                <div className="w-full bg-black flex-shrink-0" style={{ height: '36px' }} />
+                <div className="w-full bg-black flex-shrink-0" style={{ height: '32px' }} />
               )}
             </div>
 
