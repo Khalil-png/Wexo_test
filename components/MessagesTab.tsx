@@ -1541,7 +1541,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
-            <div className={`p-2 sm:p-3 bg-[#0f0f0f] border-t border-white/10 flex-shrink-0 z-20 relative`}>
+            <div className={`p-2 sm:p-4 bg-[#0f0f0f] border-t border-white/10 flex-shrink-0 z-20 relative ${isMobileDevice() ? 'pb-8 sm:pb-4' : ''}`}>
               {localUploadError && (
                 <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold animate-in fade-in slide-in-from-bottom-2">
                   <div className="flex items-center gap-2">
@@ -1575,87 +1575,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                 </div>
               )}
               <div className="flex items-center gap-2 max-w-full">
-                <div className={`flex-1 flex items-center gap-1 bg-white/5 ${isMobileDevice() ? 'rounded-full' : 'rounded-2xl'} px-3 py-1 border border-white/10 shadow-inner overflow-hidden group/input`}>
+                <div className={`flex-1 flex items-center gap-1 bg-white/5 ${isMobileDevice() ? 'rounded-full' : 'rounded-2xl'} px-3 py-1.5 border border-white/10 shadow-inner overflow-hidden group/input`}>
                   <input 
                     type="file" 
                     ref={fileInputRef} 
                     onChange={handleFileUpload} 
                     className="hidden" 
                   />
-                  <div className="relative flex items-center">
+                  
+                  {/* Sur PC, le Paperclip est à gauche */}
+                  {!isMobileDevice() && (
                     <button 
-                      onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
-                      className={`p-1.5 transition-colors ${showEmojiPicker ? 'text-amber-400' : 'text-slate-400 hover:text-amber-400'}`}
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingFile}
+                      className={`p-1.5 text-slate-400 hover:text-white transition-colors ${uploadingFile ? 'animate-pulse' : ''}`}
                     >
-                      <Smile size={20} />
+                      {uploadingFile ? <Clock size={16} /> : <Paperclip size={18} />}
                     </button>
-
-                    {showEmojiPicker && (
-                      <div 
-                        ref={emojiPickerRef}
-                        className="absolute bottom-full mb-4 left-0 w-72 sm:w-80 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100] animate-in zoom-in-95 slide-in-from-bottom-4 duration-200 flex flex-col"
-                        style={{ fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "Android Emoji", sans-serif' }}
-                      >
-                        {/* WhatsApp-style Category Bar at Top */}
-                        <div className="bg-[#2a2a2a] p-1 flex items-center justify-around border-b border-white/5">
-                          {emojiCategories.map((cat) => (
-                            <button
-                              key={cat.id}
-                              onClick={() => setActiveEmojiCategory(cat.id)}
-                              className={`p-2 rounded-2xl transition-all ${activeEmojiCategory === cat.id ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
-                              title={cat.label}
-                            >
-                              <span className="flex items-center justify-center">{cat.icon}</span>
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* WhatsApp-style Search */}
-                        <div className="bg-[#1a1a1a] p-2 border-b border-white/5">
-                          <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
-                            <input 
-                              type="text"
-                              value={emojiSearchQuery}
-                              onChange={(e) => setEmojiSearchQuery(e.target.value)}
-                              placeholder="Rechercher un emoji..."
-                              className="w-full bg-white/5 border border-white/10 rounded-2xl py-2 pl-9 pr-8 text-[11px] text-white outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all"
-                            />
-                            {emojiSearchQuery && (
-                              <button 
-                                onClick={() => setEmojiSearchQuery('')}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
-                              >
-                                <Plus size={14} className="rotate-45" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Emoji Grid */}
-                        <div className="grid grid-cols-7 sm:grid-cols-8 gap-1 p-3 h-64 overflow-y-auto no-scrollbar bg-[#1a1a1a]">
-                          {(emojiSearchQuery 
-                            ? emojiCategories.flatMap(c => c.emojis).filter(e => e.includes(emojiSearchQuery) || true)
-                            : emojiCategories.find(c => c.id === activeEmojiCategory)?.emojis
-                          )?.map((emoji, i) => (
-                            <button 
-                              key={i} 
-                              onClick={() => setMessageText(prev => prev + emoji)}
-                              className="aspect-square hover:bg-white/10 p-1.5 rounded-none transition-all active:scale-90 flex items-center justify-center"
-                            >
-                              {EMOJI_MAP[emoji] ? (
-                                <img src={EMOJI_MAP[emoji]} alt={emoji} className="w-6 h-6 aspect-square object-cover" referrerPolicy="no-referrer" />
-                              ) : (
-                                <span className="text-2xl">{emoji}</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                        
-                        <div className="absolute top-full left-4 border-8 border-transparent border-t-[#1a1a1a]"></div>
-                      </div>
-                    )}
-                  </div>
+                  )}
 
                   <input 
                     type="text" 
@@ -1667,35 +1604,84 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                   />
 
                   <div className="flex items-center gap-1">
-                    <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadingFile}
-                      className={`p-1.5 text-slate-400 hover:text-white transition-colors ${uploadingFile ? 'animate-pulse' : ''}`}
-                    >
-                      {uploadingFile ? <Clock size={16} /> : <Paperclip size={18} />}
-                    </button>
-                    {!messageText.trim() && (
+                    {/* Emoji Picker toujours à droite */}
+                    <div className="relative flex items-center">
+                      <button 
+                        onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
+                        className={`p-1.5 transition-colors ${showEmojiPicker ? 'text-amber-400' : 'text-slate-400 hover:text-amber-400'}`}
+                      >
+                        <Smile size={20} />
+                      </button>
+
+                      {showEmojiPicker && (
+                        <div 
+                          ref={emojiPickerRef}
+                          className={`absolute bottom-full mb-4 ${isMobileDevice() ? 'left-0' : 'right-0'} w-72 sm:w-80 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100] animate-in zoom-in-95 slide-in-from-bottom-4 duration-200 flex flex-col`}
+                          style={{ fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "Android Emoji", sans-serif' }}
+                        >
+                          <div className="bg-[#2a2a2a] p-1 flex items-center justify-around border-b border-white/5">
+                            {emojiCategories.map((cat) => (
+                              <button key={cat.id} onClick={() => setActiveEmojiCategory(cat.id)} className={`p-2 rounded-2xl transition-all ${activeEmojiCategory === cat.id ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`} title={cat.label}><span className="flex items-center justify-center">{cat.icon}</span></button>
+                            ))}
+                          </div>
+                          <div className="bg-[#1a1a1a] p-2 border-b border-white/5">
+                            <div className="relative">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                              <input type="text" value={emojiSearchQuery} onChange={(e) => setEmojiSearchQuery(e.target.value)} placeholder="Rechercher..." className="w-full bg-white/5 border border-white/10 rounded-2xl py-2 pl-9 pr-8 text-[11px] text-white outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all" />
+                              {emojiSearchQuery && <button onClick={() => setEmojiSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><Plus size={14} className="rotate-45" /></button>}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-7 sm:grid-cols-8 gap-1 p-3 h-64 overflow-y-auto no-scrollbar bg-[#1a1a1a]">
+                            {(emojiSearchQuery ? emojiCategories.flatMap(c => c.emojis).filter(e => e.includes(emojiSearchQuery) || true) : emojiCategories.find(c => c.id === activeEmojiCategory)?.emojis)?.map((emoji, i) => (
+                              <button key={i} onClick={() => setMessageText(prev => prev + emoji)} className="aspect-square hover:bg-white/10 p-1.5 rounded-none transition-all active:scale-90 flex items-center justify-center">{EMOJI_MAP[emoji] ? <img src={EMOJI_MAP[emoji]} alt={emoji} className="w-6 h-6 aspect-square object-cover" referrerPolicy="no-referrer" /> : <span className="text-2xl">{emoji}</span>}</button>
+                            ))}
+                          </div>
+                          <div className={`absolute top-full ${isMobileDevice() ? 'left-4' : 'right-4'} border-8 border-transparent border-t-[#1a1a1a]`}></div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sur mobile, le Paperclip est à droite */}
+                    {isMobileDevice() && (
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingFile}
+                        className={`p-1.5 text-slate-400 hover:text-white transition-colors ${uploadingFile ? 'animate-pulse' : ''}`}
+                      >
+                        {uploadingFile ? <Clock size={16} /> : <Paperclip size={18} />}
+                      </button>
+                    )}
+
+                    {/* Caméra uniquement sur mobile */}
+                    {isMobileDevice() && !messageText.trim() && (
                       <button className="p-1.5 text-slate-400 hover:text-white transition-colors">
                         <Camera size={18} />
+                      </button>
+                    )}
+
+                    {/* Bouton envoyer à l'intérieur sur PC */}
+                    {!isMobileDevice() && (
+                      <button 
+                        onClick={() => sendMessage(messageText)} 
+                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90 ml-1 bg-blue-600 text-white`}
+                      >
+                        {messageText.trim() ? <Send size={16} fill="currentColor" /> : <Mic size={18} fill="currentColor" />}
                       </button>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center justify-center flex-shrink-0">
-                  {messageText.trim() ? (
+                {/* Bouton séparé uniquement sur Mobile */}
+                {isMobileDevice() && (
+                  <div className="flex items-center justify-center flex-shrink-0">
                     <button 
                       onClick={() => sendMessage(messageText)} 
-                      className="bg-[#f06e57] text-black w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90"
+                      className="bg-blue-600 text-white w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90"
                     >
-                      <Send size={18} fill="currentColor" />
+                      {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} fill="currentColor" />}
                     </button>
-                  ) : (
-                    <button className="bg-[#f06e57] text-black w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90">
-                      <Mic size={20} fill="currentColor" />
-                    </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
 
