@@ -273,6 +273,20 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
   const [messageToEdit, setMessageToEdit] = useState<ExtendedMessage | null>(null);
   const [editText, setEditText] = useState('');
   const [copiedId, setCopiedId] = useState(false);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      // If the height decreases significantly, the keyboard is likely open
+      if (window.innerHeight < 500) {
+        setIsKeyboardOpen(true);
+      } else {
+        setIsKeyboardOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const chatId = searchParams.get('chat');
@@ -1541,7 +1555,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
-            <div className={`p-2 sm:p-4 bg-[#0f0f0f] border-t border-white/10 flex-shrink-0 z-20 relative ${isMobileDevice() ? 'pb-8 sm:pb-4' : ''}`}>
+            <div className={`p-2 sm:p-4 bg-[#0f0f0f] border-t border-white/10 flex-shrink-0 z-20 relative ${isMobileDevice() ? (isKeyboardOpen ? 'pb-1' : 'pb-8') : 'sm:pb-4'}`}>
               {localUploadError && (
                 <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold animate-in fade-in slide-in-from-bottom-2">
                   <div className="flex items-center gap-2">
@@ -1575,7 +1589,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                 </div>
               )}
               <div className="flex items-center gap-2 max-w-full">
-                <div className={`flex-1 flex items-center gap-1 bg-white/5 ${isMobileDevice() ? 'rounded-full' : 'rounded-2xl'} px-3 py-1.5 border border-white/10 shadow-inner overflow-hidden group/input`}>
+                <div className={`flex-1 flex items-center gap-1 bg-white/5 ${isMobileDevice() ? 'rounded-full py-2.5' : 'rounded-2xl py-1.5'} px-3 border border-white/10 shadow-inner overflow-hidden group/input`}>
                   <input 
                     type="file" 
                     ref={fileInputRef} 
@@ -1665,7 +1679,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                         onClick={() => sendMessage(messageText)} 
                         className={`w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90 ml-1 bg-blue-600 text-white`}
                       >
-                        {messageText.trim() ? <Send size={16} fill="currentColor" /> : <Mic size={18} fill="currentColor" />}
+                        {messageText.trim() ? <Send size={16} fill="currentColor" /> : <Mic size={18} />}
                       </button>
                     )}
                   </div>
@@ -1678,7 +1692,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                       onClick={() => sendMessage(messageText)} 
                       className="bg-blue-600 text-white w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90"
                     >
-                      {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} fill="currentColor" />}
+                      {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} />}
                     </button>
                   </div>
                 )}
