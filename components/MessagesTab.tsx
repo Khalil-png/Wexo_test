@@ -1563,7 +1563,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             <div className={`bg-black flex-shrink-0 z-20 relative flex flex-col ${isMobileDevice() ? (isAnyKeyboardOpen ? 'pb-0' : 'pb-3') : 'pb-0'}`}>
               
               {/* Conteneur de la barre avec fond gris très foncé pour contraster avec la zone noire */}
-              <div className={`w-full px-2 sm:px-4 py-3 sm:py-4 bg-[#0f0f0f] border-t border-white/10 ${!isAnyKeyboardOpen && isMobileDevice() ? 'mb-0' : ''}`}>
+              <div className={`w-full px-2 sm:px-4 py-2 sm:py-3 bg-[#0f0f0f] border-t border-white/10 ${!isAnyKeyboardOpen && isMobileDevice() ? 'mb-0' : ''}`}>
                 {localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold animate-in fade-in slide-in-from-bottom-2">
                     <div className="flex items-center gap-2">
@@ -1596,7 +1596,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     </div>
                   </div>
                 )}
-                <div className="flex items-center gap-2 max-w-full h-[56px]">
+                <div className="flex items-center gap-2 max-w-full h-[48px]">
                   <div className={`flex-1 h-full flex items-center gap-1 bg-white/5 ${isMobileDevice() ? 'rounded-full' : 'rounded-2xl'} px-4 border border-white/10 shadow-inner overflow-hidden group/input relative`}>
                     <input 
                       type="file" 
@@ -1693,12 +1693,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     </div>
                   </div>
 
-                  {/* Bouton mobile - Fixé à 56px pour correspondre à la barre de saisie fixée à 56px */}
+                  {/* Bouton mobile - Fixé à 48px pour correspondre à la barre de saisie fixée à 48px */}
                   {isMobileDevice() && (
                     <div className="flex items-center justify-center flex-shrink-0">
                       <button 
                         onClick={() => sendMessage(messageText)} 
-                        className="bg-blue-600 text-white h-[56px] w-[56px] min-w-[56px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90"
+                        className="bg-blue-600 text-white h-[48px] w-[48px] min-w-[48px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90"
                       >
                         {messageText.trim() ? <Send size={22} fill="currentColor" /> : <Mic size={24} />}
                       </button>
