@@ -1675,24 +1675,30 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     )}
 
                     {/* Trait horizontal clignotant avant le texte */}
-                    <div className="w-2.5 h-[2px] bg-blue-500 animate-[pulse_1s_infinite] ml-1 self-center" />
+                    <div className="w-2.5 h-[2px] bg-blue-500 animate-[pulse_1000ms_infinite] ml-1 self-center" />
 
                     <input 
                       type="text" 
                       value={messageText} 
                       onChange={(e) => setMessageText(e.target.value)} 
+                      onFocus={() => {
+                        // Forcer le scroll bas sur focus mobile pour imiter WhatsApp
+                        if (isMobileDevice()) {
+                          setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 300);
+                        }
+                      }}
                       onKeyDown={(e) => e.key === 'Enter' && sendMessage(messageText)} 
                       placeholder="Message" 
                       className="flex-1 bg-transparent border-none text-base text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1 h-full pl-0" 
                     />
 
                     <div className="flex items-center gap-1.5">
-                      {/* Sur mobile, Paperclip à droite */}
+                      {/* Sur mobile, Paperclip à droite - décalé légèrement à gauche */}
                       {isMobileDevice() && (
                         <button 
                           onClick={() => fileInputRef.current?.click()}
                           disabled={uploadingFile}
-                          className={`p-1.5 text-slate-400 hover:text-white transition-colors ${uploadingFile ? 'animate-pulse' : ''}`}
+                          className={`p-1.5 mr-0.5 text-slate-400 hover:text-white transition-colors ${uploadingFile ? 'animate-pulse' : ''}`}
                         >
                           {uploadingFile ? <Clock size={20} /> : <Paperclip size={22} />}
                         </button>
@@ -1711,7 +1717,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                           onClick={() => sendMessage(messageText)} 
                           className={`h-10 w-10 min-w-[40px] rounded-xl flex items-center justify-center transition-all shadow-lg active:scale-95 hover:opacity-90 ml-1 bg-blue-600 text-white`}
                         >
-                          {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} fill="currentColor" />}
+                          {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} />}
                         </button>
                       )}
                     </div>
@@ -1724,7 +1730,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                         onClick={() => sendMessage(messageText)} 
                         className="bg-blue-600 text-white h-[48px] w-[48px] min-w-[48px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90"
                       >
-                        {messageText.trim() ? <Send size={22} fill="currentColor" /> : <Mic size={24} fill="currentColor" />}
+                        {messageText.trim() ? <Send size={22} fill="currentColor" /> : <Mic size={24} />}
                       </button>
                     </div>
                   )}
