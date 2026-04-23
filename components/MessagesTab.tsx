@@ -1555,7 +1555,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
-            <div className={`p-2 sm:p-4 bg-[#0f0f0f] border-t border-white/10 flex-shrink-0 z-20 relative ${isMobileDevice() ? (isKeyboardOpen ? 'pb-1' : 'pb-8') : 'sm:pb-4'}`}>
+            <div className={`p-2 sm:p-4 bg-[#0f0f0f] border-t border-white/10 flex-shrink-0 z-20 relative ${isMobileDevice() ? (isKeyboardOpen ? 'pb-1' : 'pb-4') : 'sm:pb-4'}`}>
               {localUploadError && (
                 <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold animate-in fade-in slide-in-from-bottom-2">
                   <div className="flex items-center gap-2">
