@@ -202,6 +202,7 @@ interface ExtendedMessage extends Message {
 interface MessagesTabProps {
   user?: any;
   profile?: any;
+  isKeyboardActive?: boolean;
 }
 
 const formatFileSize = (bytes: number) => {
@@ -245,7 +246,7 @@ const countEmojis = (str: string) => {
   return matches ? matches.length : 0;
 };
 
-const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
+const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActive: isKeyboardActiveProp }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<ExtendedMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('chat'));
@@ -287,6 +288,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Combine internal listener and prop for maximum reliability
+  const isAnyKeyboardOpen = isKeyboardOpen || !!isKeyboardActiveProp;
 
   useEffect(() => {
     const chatId = searchParams.get('chat');
@@ -1556,10 +1560,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
             </div>
 
             {/* Barre de Message avec Zone Noire Footer */}
-            <div className={`bg-black flex-shrink-0 z-20 relative flex flex-col ${isMobileDevice() ? (isKeyboardOpen ? 'pb-0' : 'pb-6') : 'pb-0'}`}>
+            <div className={`bg-black flex-shrink-0 z-20 relative flex flex-col ${isMobileDevice() ? (isAnyKeyboardOpen ? 'pb-0' : 'pb-3') : 'pb-0'}`}>
               
               {/* Conteneur de la barre avec fond gris très foncé pour contraster avec la zone noire */}
-              <div className={`w-full px-2 sm:px-4 py-3 sm:py-4 bg-[#0f0f0f] border-t border-white/10 ${!isKeyboardOpen && isMobileDevice() ? 'mb-1' : ''}`}>
+              <div className={`w-full px-2 sm:px-4 py-3 sm:py-4 bg-[#0f0f0f] border-t border-white/10 ${!isAnyKeyboardOpen && isMobileDevice() ? 'mb-0' : ''}`}>
                 {localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold animate-in fade-in slide-in-from-bottom-2">
                     <div className="flex items-center gap-2">

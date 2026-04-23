@@ -587,7 +587,7 @@ const AppContent: React.FC = () => {
       case 'ma-chaine':
         return <MyChannelTab user={user} profile={profile} />;
       case 'message':
-        return <MessagesTab user={user} profile={profile} />;
+        return <MessagesTab user={user} profile={profile} isKeyboardActive={isKeyboardActive} />;
       case 'appel':
         return (
           <CallsTab 
