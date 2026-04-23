@@ -211,8 +211,8 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
           onClick={() => onTabChange('accueil')}
           className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-all"
         >
-          {isKeyboardActive && isMobileDevice() ? (
-            <div className="w-10 h-10 bg-white/10 rounded-2xl flex items-center justify-center text-white animate-in zoom-in duration-300">
+          {(isKeyboardActive && isMobileDevice()) || (activeTab === 'message' && window.location.search.includes('chat=')) ? (
+            <div className={`w-10 h-10 ${activeTab === 'message' && window.location.search.includes('chat=') ? 'bg-white text-black' : 'bg-white/10 text-white'} rounded-2xl flex items-center justify-center animate-in zoom-in duration-300`}>
               <Home size={22} />
             </div>
           ) : (

@@ -2,7 +2,7 @@
 import React from 'react';
 import { NAV_ITEMS, getIcon } from '../constants';
 import { TabId } from '../types';
-import { ChevronRight, X } from 'lucide-react';
+import { ChevronRight, X, Bell } from 'lucide-react';
 import { isApp } from '../src/utils/device';
 
 interface SidebarProps {
@@ -91,6 +91,33 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
         <div className="mt-8 px-5 space-y-1">
           <h3 className="px-4 text-xs font-bold text-slate-400 mb-4">Compte</h3>
           {personalItems.map(item => <NavButton key={item.id} item={item} />)}
+        </div>
+
+        {/* Debug Section for Notifications */}
+        <div className="mt-8 px-5 space-y-1">
+          <h3 className="px-4 text-xs font-bold text-slate-400 mb-4">Debug APK</h3>
+          <button
+            onClick={async () => {
+              const { LocalNotifications } = await import('@capacitor/local-notifications');
+              await LocalNotifications.schedule({
+                notifications: [
+                  {
+                    title: "Test de Notification Wexo",
+                    body: "Si vous voyez ceci, les notifications fonctionnent !",
+                    id: 12345,
+                    schedule: { at: new Date(Date.now() + 1000) },
+                    sound: 'default',
+                    channelId: 'messages'
+                  }
+                ]
+              });
+              alert("Test envoyé ! Si rien n'apparaît, vérifiez les paramètres de notification du téléphone.");
+            }}
+            className="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-slate-400 hover:bg-white/10 hover:text-white transition-all"
+          >
+            <Bell size={18} />
+            <span className="font-bold text-[15px]">Tester Notif</span>
+          </button>
         </div>
 
         {adminItems.length > 0 && (

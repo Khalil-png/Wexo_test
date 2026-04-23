@@ -1,11 +1,12 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { renderTextWithEmojis, EMOJI_MAP } from '../utils/emoji';
 import { 
   Search, Plus, Smile, Send, X, Image, Pencil,
   CheckCheck, ArrowLeft, Check, Trash2,
   MessageCircle, Info, UserPlus, Clock, 
-  MessageSquarePlus, Users, User, Mic, Paperclip, AlertCircle, Video, Sparkles,
+  MessageSquarePlus, Users, User, Mic, Paperclip, AlertCircle, Video, Sparkles, Camera,
   Dog, Utensils, Trophy, Car, Lightbulb, Heart as HeartIcon, Flag,
   Download, File, FileText, Archive, Ban, Copy
 } from 'lucide-react';
@@ -245,8 +246,9 @@ const countEmojis = (str: string) => {
 };
 
 const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<ExtendedMessage[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('chat'));
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
   const [messageText, setMessageText] = useState('');
@@ -271,6 +273,23 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
   const [messageToEdit, setMessageToEdit] = useState<ExtendedMessage | null>(null);
   const [editText, setEditText] = useState('');
   const [copiedId, setCopiedId] = useState(false);
+
+  useEffect(() => {
+    const chatId = searchParams.get('chat');
+    if (chatId !== selectedId) {
+      setSelectedId(chatId);
+    }
+  }, [searchParams]);
+
+  const handleSelectChat = (id: string | null) => {
+    setSelectedId(id);
+    if (id) {
+      setSearchParams({ chat: id });
+    } else {
+      setSearchParams({});
+    }
+    setMobileView(id ? 'chat' : 'list');
+  };
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
@@ -1018,7 +1037,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
             <h2 className="text-xl font-black text-white tracking-tighter">Messages</h2>
             <div className="flex items-center gap-2 relative">
               <button 
-                onClick={() => {setSelectedId('gemini'); setMobileView('chat');}} 
+                onClick={() => handleSelectChat('gemini')} 
                 className="w-8 h-8 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all overflow-hidden"
                 title="Assistant IA"
               >
@@ -1041,7 +1060,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
 
         <div className="flex-1 overflow-y-auto no-scrollbar">
           {/* Gemini List Item */}
-          <div onClick={() => { setSelectedId('gemini'); setMobileView('chat'); }} className={`flex items-center gap-4 p-4 cursor-pointer border-l-4 transition-all ${selectedId === 'gemini' ? 'bg-white/10 border-white' : 'border-transparent hover:bg-white/5'}`}>
+          <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-4 p-4 cursor-pointer border-l-4 transition-all ${selectedId === 'gemini' ? 'bg-white/10 border-white' : 'border-transparent hover:bg-white/5'}`}>
             <div className="w-10 h-10 rounded-full overflow-hidden relative flex-shrink-0">
               <GeminiAvatarIcon size={20} />
             </div>
@@ -1055,7 +1074,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
 
           {/* User Conversations List */}
           {conversations.filter(c => c.id !== 'gemini').map(c => (
-            <div key={c.id} onClick={() => { setSelectedId(c.id); setMobileView('chat'); }} className={`flex items-center gap-4 p-4 cursor-pointer border-l-4 transition-all ${selectedId === c.id ? 'bg-white/10 border-white' : 'border-transparent hover:bg-white/5'}`}>
+            <div key={c.id} onClick={() => handleSelectChat(c.id)} className={`flex items-center gap-4 p-4 cursor-pointer border-l-4 transition-all ${selectedId === c.id ? 'bg-white/10 border-white' : 'border-transparent hover:bg-white/5'}`}>
               <div className="w-10 h-10 rounded-full border border-white/10 overflow-hidden relative">
                 <img src={c.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                 {c.unreadCount > 0 && (
@@ -1110,7 +1129,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                   <div><h4 className="text-sm font-bold text-white tracking-tight">{u.username}</h4></div>
                 </div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => { setSelectedId(u.id); setIsSearchingUsers(false); setMobileView('chat'); }} className="p-3 bg-white/10 text-white rounded-2xl hover:bg-white hover:text-black transition-all"><MessageSquarePlus size={18} /></button>
+                      <button onClick={() => { handleSelectChat(u.id); setIsSearchingUsers(false); }} className="p-3 bg-white/10 text-white rounded-2xl hover:bg-white hover:text-black transition-all"><MessageSquarePlus size={18} /></button>
                       {isFriend ? (
                         <div className="relative">
                           {showDeleteFriend === u.id && (
@@ -1152,7 +1171,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
           <>
             <div className="p-4 border-b border-white/10 bg-[#0f0f0f]/80 backdrop-blur-md flex items-center justify-between z-10 flex-shrink-0">
               <div className="flex items-center gap-3">
-                <button onClick={() => setMobileView('list')} className="lg:hidden p-2 text-slate-400 mr-1"><ArrowLeft size={20} /></button>
+                <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 mr-1"><ArrowLeft size={20} /></button>
                 <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
                   {selectedId === 'gemini' ? (
                     <GeminiAvatarIcon size={20} />
@@ -1522,7 +1541,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
-            <div className={`p-4 sm:p-6 bg-[#0f0f0f] border-t border-white/10 flex-shrink-0 z-20 relative`}>
+            <div className={`p-2 sm:p-3 bg-[#0f0f0f] border-t border-white/10 flex-shrink-0 z-20 relative`}>
               {localUploadError && (
                 <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold animate-in fade-in slide-in-from-bottom-2">
                   <div className="flex items-center gap-2">
@@ -1555,33 +1574,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                   </div>
                 </div>
               )}
-              <div className={`flex items-center gap-3 bg-white/5 ${isMobileDevice() ? 'rounded-full' : 'rounded-2xl'} p-2 border border-white/10 shadow-inner`}>
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  onChange={handleFileUpload} 
-                  className="hidden" 
-                />
-                <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingFile}
-                  className={`p-2.5 text-slate-400 hover:text-white transition-colors ${uploadingFile ? 'animate-pulse' : ''}`}
-                >
-                  {uploadingFile ? <Clock size={20} /> : <Paperclip size={20} />}
-                </button>
-                <input 
-                  type="text" 
-                  value={messageText} 
-                  onChange={(e) => setMessageText(e.target.value)} 
-                  onKeyDown={(e) => e.key === 'Enter' && sendMessage(messageText)} 
-                  placeholder={`Écrire à ${selectedId === 'gemini' ? 'Gemini' : (selectedProfile?.username || '...')}`} 
-                  className="flex-1 bg-transparent border-none text-sm text-white outline-none focus:ring-0 placeholder:text-slate-500" 
-                />
-                <div className="flex items-center gap-2 relative">
-                  <div className="relative">
+              <div className="flex items-center gap-2 max-w-full">
+                <div className={`flex-1 flex items-center gap-1 bg-white/5 ${isMobileDevice() ? 'rounded-full' : 'rounded-2xl'} px-3 py-1 border border-white/10 shadow-inner overflow-hidden group/input`}>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileUpload} 
+                    className="hidden" 
+                  />
+                  <div className="relative flex items-center">
                     <button 
                       onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
-                      className={`p-2.5 transition-colors ${showEmojiPicker ? 'text-amber-400' : 'text-slate-400 hover:text-amber-400'}`}
+                      className={`p-1.5 transition-colors ${showEmojiPicker ? 'text-amber-400' : 'text-slate-400 hover:text-amber-400'}`}
                     >
                       <Smile size={20} />
                     </button>
@@ -1589,7 +1593,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                     {showEmojiPicker && (
                       <div 
                         ref={emojiPickerRef}
-                        className="absolute bottom-full mb-4 right-0 w-72 sm:w-80 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100] animate-in zoom-in-95 slide-in-from-bottom-4 duration-200 flex flex-col"
+                        className="absolute bottom-full mb-4 left-0 w-72 sm:w-80 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100] animate-in zoom-in-95 slide-in-from-bottom-4 duration-200 flex flex-col"
                         style={{ fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "Android Emoji", sans-serif' }}
                       >
                         {/* WhatsApp-style Category Bar at Top */}
@@ -1648,17 +1652,49 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                           ))}
                         </div>
                         
-                        <div className="absolute top-full right-4 border-8 border-transparent border-t-[#1a1a1a]"></div>
+                        <div className="absolute top-full left-4 border-8 border-transparent border-t-[#1a1a1a]"></div>
                       </div>
                     )}
                   </div>
-                  <button className="p-2 text-slate-400 hover:text-white transition-colors"><Mic size={20} /></button>
-                  <button 
-                    onClick={() => sendMessage(messageText)} 
-                    className="bg-blue-700 text-white w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:bg-blue-600"
-                  >
-                    <Send size={18} fill="currentColor" />
-                  </button>
+
+                  <input 
+                    type="text" 
+                    value={messageText} 
+                    onChange={(e) => setMessageText(e.target.value)} 
+                    onKeyDown={(e) => e.key === 'Enter' && sendMessage(messageText)} 
+                    placeholder="Message" 
+                    className="flex-1 bg-transparent border-none text-sm text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1" 
+                  />
+
+                  <div className="flex items-center gap-1">
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingFile}
+                      className={`p-1.5 text-slate-400 hover:text-white transition-colors ${uploadingFile ? 'animate-pulse' : ''}`}
+                    >
+                      {uploadingFile ? <Clock size={16} /> : <Paperclip size={18} />}
+                    </button>
+                    {!messageText.trim() && (
+                      <button className="p-1.5 text-slate-400 hover:text-white transition-colors">
+                        <Camera size={18} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-center flex-shrink-0">
+                  {messageText.trim() ? (
+                    <button 
+                      onClick={() => sendMessage(messageText)} 
+                      className="bg-[#f06e57] text-black w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90"
+                    >
+                      <Send size={18} fill="currentColor" />
+                    </button>
+                  ) : (
+                    <button className="bg-[#f06e57] text-black w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90">
+                      <Mic size={20} fill="currentColor" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

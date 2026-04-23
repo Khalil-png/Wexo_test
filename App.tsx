@@ -277,14 +277,15 @@ const AppContent: React.FC = () => {
           LocalNotifications.schedule({
             notifications: [
               {
-                title: `Appel de ${callerName}`,
-                body: "C'est un appel Wexo",
-                id: 999, // Un ID unique pour l'appel pour pouvoir l'annuler si besoin
+                title: `APPEL ENTRANT: ${callerName}`,
+                body: "Appuyez pour répondre",
+                id: 999,
                 schedule: { at: new Date(Date.now() + 100) },
                 sound: 'default',
                 channelId: 'calls',
-                ongoing: true, // Keep notification until answered
+                ongoing: true,
                 autoCancel: false,
+                smallIcon: 'ic_stat_name', // Needs to exist in android/res/drawable
                 extra: {
                   type: 'call',
                   callId: record.id
@@ -293,6 +294,11 @@ const AppContent: React.FC = () => {
               }
             ]
           });
+          
+          // Vibrer le téléphone
+          if (navigator.vibrate) {
+            navigator.vibrate([500, 200, 500, 200, 500]);
+          }
         }
       }
 
@@ -713,7 +719,7 @@ const AppContent: React.FC = () => {
 
       {authModal && <AuthModal type={authModal} onClose={() => setAuthModal(null)} onTriggerVerifyWarning={showVerifyWarning} />}
       {showLogoutModal && <LogoutModal onClose={() => setShowLogoutModal(false)} />}
-      {isMobileDevice() && !isKeyboardActive && <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />}
+      {isMobileDevice() && !isKeyboardActive && !(activeTab === 'message' && location.search.includes('chat=')) && <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />}
       
       <AnimatePresence>
         {incomingCall && (

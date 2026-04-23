@@ -491,7 +491,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
   };
 
   return (
-    <div className="h-full w-full snap-start relative flex items-center justify-center bg-black overflow-hidden">
+    <div className="h-full w-full snap-start snap-always relative flex items-center justify-center bg-black overflow-hidden">
       {/* Main Content Area (Centered) */}
       <div className={`relative flex h-full w-full justify-center ${isMobileDevice() ? 'items-stretch px-0' : 'items-center gap-6 max-w-screen-xl px-4'}`}>
         
@@ -640,7 +640,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
               >
                 <MessageSquare size={isMobileDevice() ? 24 : 28} />
               </button>
-              <span className="text-[10px] sm:text-[11px] font-bold text-white drop-shadow-md">Avis</span>
+              <span className="text-[10px] sm:text-[11px] font-bold text-white drop-shadow-md">Commentaire</span>
             </div>
 
             <div className="flex flex-col items-center gap-2 relative">
@@ -683,9 +683,9 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
             </div>
 
             <div className="mt-4">
-              <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/20 animate-spin-slow shadow-lg">
+              <div className="w-12 h-12 rounded-xl overflow-hidden border-2 border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer">
                 <img 
-                  src={short.creator_avatar || DEFAULT_AVATAR} 
+                  src={short.thumbnail_url || short.creator_avatar || DEFAULT_AVATAR} 
                   className="w-full h-full object-cover" 
                   alt="" 
                 />
