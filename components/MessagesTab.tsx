@@ -290,7 +290,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   }, []);
 
   // Combine internal listener and prop for maximum reliability
-  const isAnyKeyboardOpen = isKeyboardOpen || !!isKeyboardActiveProp;
+  // Pour le padding de la barre de message, on se fie UNIQUEMENT au resize (isKeyboardOpen)
+  // pour éviter que la barre ne saute dès qu'on clique (focus) avant que le clavier ne sorte.
+  const isPhysicalKeyboardOpen = isKeyboardOpen;
 
   useEffect(() => {
     const chatId = searchParams.get('chat');
@@ -759,6 +761,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         created: now // Map logic if needed
       };
       await pb.collection('messages').create(pbData);
+
+      // CRÉATION DE LA NOTIFICATION POUR LE DESTINATAIRE
+      if (selectedId && selectedId !== 'gemini') {
+        try {
+          await pb.collection('notifications').create({
+            user_id: selectedId,
+            sender_id: user.uid,
+            type: 'message',
+            title: profile?.display_name || user.displayName || 'Wexo',
+            content: text || (finalFileData ? 'Pièce jointe reçue' : 'Nouveau message'),
+            status: 'pending'
+          });
+        } catch (notifErr: any) {
+          if (notifErr.status !== 404) {
+            console.warn("Échec création notification:", notifErr);
+          }
+        }
+      }
+
       fetchConversations();
     } catch (err) {
       console.error("Erreur envoi message NAS:", err);
@@ -1560,10 +1581,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             </div>
 
             {/* Barre de Message avec Zone Noire Footer */}
-            <div className={`bg-black flex-shrink-0 z-20 relative flex flex-col ${isMobileDevice() ? (isAnyKeyboardOpen ? 'pb-0' : 'pb-3') : 'pb-0'}`}>
+            <div className={`bg-black flex-shrink-0 z-20 relative flex flex-col ${isMobileDevice() ? (isPhysicalKeyboardOpen ? 'pb-0' : 'pb-4') : 'pb-0'}`}>
               
               {/* Conteneur de la barre avec fond gris très foncé pour contraster avec la zone noire */}
-              <div className={`w-full px-2 sm:px-4 py-2 sm:py-3 bg-[#0f0f0f] border-t border-white/10 ${!isAnyKeyboardOpen && isMobileDevice() ? 'mb-0' : ''}`}>
+              <div className={`w-full px-2 sm:px-4 py-2 sm:py-3 bg-[#0f0f0f] border-t border-white/10 ${!isPhysicalKeyboardOpen && isMobileDevice() ? 'mb-0' : ''}`}>
                 {localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold animate-in fade-in slide-in-from-bottom-2">
                     <div className="flex items-center gap-2">

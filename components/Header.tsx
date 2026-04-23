@@ -109,11 +109,53 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
       }
     }
 
-    // Migration NAS : Les notifications temps réel seront implémentées via PocketBase plus tard
-    console.log("Les notifications temps réel (Firebase) sont désactivées.");
+    const fetchNotifications = async () => {
+      try {
+        // Migration NAS : Récupération des vraies notifications
+        const records = await pb.collection('notifications').getList(1, 20, {
+          filter: `user_id="${user.uid}"`,
+          sort: '-created'
+        });
+        
+        const mappedNotifs: Notification[] = records.items.map(record => ({
+          id: record.id,
+          type: record.type as any,
+          sender_id: record.sender_id,
+          sender_name: record.title || 'Inconnu',
+          content: record.content || '',
+          timestamp: new Date(record.created).toLocaleTimeString('fr-FR', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }),
+          read: record.status === 'delivered' || record.read === true,
+          group_id: record.group_id
+        }));
+        
+        setNotifications(mappedNotifs);
+      } catch (err: any) {
+         if (err.status !== 404) {
+           console.warn("Erreur lors de la récupération des notifications:", err);
+         }
+      }
+    };
+
+    fetchNotifications();
+
+    // S'abonner aux notifications en temps réel pour mettre à jour la liste
+    try {
+      pb.collection('notifications').subscribe('*', (e) => {
+        if (e.action === 'create' && e.record.user_id === user.uid) {
+           fetchNotifications();
+        }
+      });
+    } catch (err) {
+      console.warn("Erreur souscription notifications:", err);
+    }
     
-    return () => {};
-  }, [user?.uid, activeTab]);
+    return () => {
+      pb.collection('notifications').unsubscribe('*').catch(() => {});
+    };
+  }, [user?.uid]);
 
   const handleNewNotification = async (notif: Notification) => {
     // Play notification sound
