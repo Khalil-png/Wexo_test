@@ -1581,10 +1581,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             </div>
 
             {/* Barre de Message avec Zone Noire Footer */}
-            <div className={`bg-black flex-shrink-0 z-20 relative flex flex-col ${isMobileDevice() ? (isPhysicalKeyboardOpen ? 'pb-0' : 'pb-4') : 'pb-0'}`}>
+            <div className={`bg-black flex-shrink-0 z-20 relative flex flex-col ${isMobileDevice() ? (isPhysicalKeyboardOpen ? 'pb-0' : 'pb-6') : 'pb-0'}`}>
               
               {/* Conteneur de la barre avec fond gris très foncé pour contraster avec la zone noire */}
-              <div className={`w-full px-2 sm:px-4 py-2 sm:py-3 bg-[#0f0f0f] border-t border-white/10 ${!isPhysicalKeyboardOpen && isMobileDevice() ? 'mb-0' : ''}`}>
+              <div className={`w-full px-2 sm:px-4 py-1 sm:py-2 bg-[#0f0f0f] border-t border-white/10 ${!isPhysicalKeyboardOpen && isMobileDevice() ? 'mb-0' : ''}`}>
                 {localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold animate-in fade-in slide-in-from-bottom-2">
                     <div className="flex items-center gap-2">
@@ -1674,13 +1674,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                       </button>
                     )}
 
+                    {/* Trait horizontal clignotant avant le texte */}
+                    <div className="w-2.5 h-[2px] bg-blue-500 animate-[pulse_1s_infinite] ml-1 self-center" />
+
                     <input 
                       type="text" 
                       value={messageText} 
                       onChange={(e) => setMessageText(e.target.value)} 
                       onKeyDown={(e) => e.key === 'Enter' && sendMessage(messageText)} 
                       placeholder="Message" 
-                      className="flex-1 bg-transparent border-none text-base text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1 h-full" 
+                      className="flex-1 bg-transparent border-none text-base text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1 h-full pl-0" 
                     />
 
                     <div className="flex items-center gap-1.5">
@@ -1708,7 +1711,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                           onClick={() => sendMessage(messageText)} 
                           className={`h-10 w-10 min-w-[40px] rounded-xl flex items-center justify-center transition-all shadow-lg active:scale-95 hover:opacity-90 ml-1 bg-blue-600 text-white`}
                         >
-                          {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} />}
+                          {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} fill="currentColor" />}
                         </button>
                       )}
                     </div>
@@ -1721,7 +1724,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                         onClick={() => sendMessage(messageText)} 
                         className="bg-blue-600 text-white h-[48px] w-[48px] min-w-[48px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90"
                       >
-                        {messageText.trim() ? <Send size={22} fill="currentColor" /> : <Mic size={24} />}
+                        {messageText.trim() ? <Send size={22} fill="currentColor" /> : <Mic size={24} fill="currentColor" />}
                       </button>
                     </div>
                   )}
