@@ -293,6 +293,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   // Pour le padding de la barre de message, on se fie UNIQUEMENT au resize (isKeyboardOpen)
   // pour éviter que la barre ne saute dès qu'on clique (focus) avant que le clavier ne sorte.
   const isPhysicalKeyboardOpen = isKeyboardOpen;
+  const isAnyKeyboardOpen = isKeyboardOpen || !!isKeyboardActiveProp;
 
   useEffect(() => {
     const chatId = searchParams.get('chat');
@@ -1580,14 +1581,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
-            {/* Barre de Message avec Zone Noire Footer */}
-            <div className={`bg-black flex-shrink-0 z-20 relative flex flex-col ${isMobileDevice() && isAnyKeyboardOpen ? 'hidden' : 'block'}`}>
-              <div className={isMobileDevice() ? 'h-8 w-full' : 'h-0'} />
-            </div>
+            {/* Zone Noire "Hors App" - Fixée au bas absolu pour APK */}
+            {isMobileDevice() && (
+              <div 
+                className={`fixed bottom-0 left-0 right-0 bg-black z-[100] transition-opacity duration-100 ${isAnyKeyboardOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                style={{ height: '34px' }} // Taille de la Safe Area APK
+              />
+            )}
 
-            {/* Barre de Saisie Fixée en bas sur mobile pour éviter le soulèvement */}
-            <div className={`${isMobileDevice() ? 'fixed bottom-0 left-0 right-0 z-[110]' : 'relative'} flex flex-col`}>
-              <div className={`w-full px-2 sm:px-4 py-0.5 sm:py-1 bg-[#0f0f0f] border-t border-white/10 ${isMobileDevice() && !isAnyKeyboardOpen ? 'mb-8' : 'mb-0'}`}>
+            {/* Barre de Saisie - Positionnée dynamiquement pour l'APK */}
+            <div className={`${isMobileDevice() ? 'fixed left-0 right-0 z-[110]' : 'relative'} flex flex-col transition-all duration-200`} 
+                 style={isMobileDevice() ? { bottom: isAnyKeyboardOpen ? '0' : '34px' } : {}}>
+              <div className={`w-full px-2 sm:px-4 py-1.5 bg-[#0f0f0f] border-t border-white/10`}>
                 {localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold">
                     <div className="flex items-center gap-2">
@@ -1611,22 +1616,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                       <button onClick={() => fileInputRef.current?.click()} className="p-1.5 text-slate-400 hover:text-white transition-colors"><Paperclip size={22} /></button>
                     )}
 
-                    {/* Curseur clignotant type Terminal Wexo */}
-                    <div className="w-3 h-[3px] bg-blue-500 animate-[pulse_0.8s_infinite] ml-1 self-center shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                    {/* Trait horizontal clignotant type Terminal Wexo */}
+                    <div className="w-2.5 h-[2.5px] bg-blue-500 animate-[wexo-blink_1s_steps(1)_infinite] ml-1 self-center shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                    <style>{`
+                      @keyframes wexo-blink {
+                        0%, 100% { opacity: 1; }
+                        50% { opacity: 0; }
+                      }
+                    `}</style>
 
                     <input 
                       type="text" 
                       value={messageText} 
                       onChange={(e) => setMessageText(e.target.value)} 
-                      onFocus={() => {
-                        if (isMobileDevice()) {
-                          setTimeout(() => {
-                            window.scrollTo(0, document.body.scrollHeight);
-                            const chatScroll = document.querySelector('.chat-messages-container');
-                            if (chatScroll) chatScroll.scrollTop = chatScroll.scrollHeight;
-                          }, 300);
-                        }
-                      }}
                       onKeyDown={(e) => e.key === 'Enter' && sendMessage(messageText)} 
                       placeholder="Message" 
                       className="flex-1 bg-transparent border-none text-base text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1 h-full pl-0.5" 
@@ -1634,7 +1636,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
                     <div className="flex items-center gap-1.5">
                       {isMobileDevice() && (
-                        <button onClick={() => fileInputRef.current?.click()} className="p-1.5 mr-2 text-slate-400 hover:text-white transition-colors">
+                        <button onClick={() => fileInputRef.current?.click()} className="p-1.5 mr-1 text-slate-400 hover:text-white transition-colors">
                           <Paperclip size={22} />
                         </button>
                       )}
