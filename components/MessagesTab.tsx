@@ -278,17 +278,23 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const initialHeight = useRef(window.innerHeight);
 
   useEffect(() => {
-    const handleResize = () => {
-      // Détection plus fiable : si la hauteur chute de plus de 15%, le clavier est sorti
-      const currentHeight = window.innerHeight;
-      if (currentHeight < initialHeight.current * 0.85) {
-        setIsKeyboardOpen(true);
-      } else {
-        setIsKeyboardOpen(false);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    // API VisualViewport : La plus fiable sur APK Android pour détecter le clavier
+    if (window.visualViewport) {
+      const vv = window.visualViewport;
+      const handleResize = () => {
+        // Si la hauteur du viewport visuel est nettement inférieure à la hauteur de la fenêtre, le clavier est là
+        setIsKeyboardOpen(vv.height < window.innerHeight * 0.85);
+      };
+      vv.addEventListener('resize', handleResize);
+      return () => vv.removeEventListener('resize', handleResize);
+    } else {
+      // Fallback resize classique
+      const handleResize = () => {
+        setIsKeyboardOpen(window.innerHeight < initialHeight.current * 0.85);
+      };
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
   }, []);
 
   // Combine internal listener and prop for maximum reliability
@@ -1646,8 +1652,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 </div>
               </div>
 
-              {/* Zone Noire "Hors App" - Permanente et sous la barre */}
-              {isMobileDevice() && (
+              {/* Zone Noire "Hors App" - Permanente mais masquée quand le clavier est là */}
+              {isMobileDevice() && !isPhysicalKeyboardOpen && (
                 <div className="w-full bg-black flex-shrink-0" style={{ height: '36px' }} />
               )}
             </div>

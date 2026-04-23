@@ -503,7 +503,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
             loop
             playsInline
             onTimeUpdate={handleTimeUpdate}
-            className="h-full w-full object-contain cursor-pointer bg-black"
+            className={`h-full w-full ${isMobileDevice() ? 'object-cover' : 'object-contain'} cursor-pointer bg-black`}
             onClick={togglePlay}
           />
 
@@ -623,7 +623,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
         </div>
 
         {/* Right Side Actions - Moved OUTSIDE video container wrapper for PC, absolute on mobile */}
-        <div className={`flex flex-col gap-6 items-center justify-end ${isMobileDevice() ? 'absolute right-4 bottom-12 z-40' : 'relative h-full pb-20'}`}>
+        <div className={`flex flex-col gap-6 items-center justify-end ${isMobileDevice() ? 'absolute right-4 bottom-12 z-40' : 'flex-shrink-0 pb-20'}`}>
           <div className="flex flex-col items-center gap-2">
             <button 
               onClick={handleLike}
