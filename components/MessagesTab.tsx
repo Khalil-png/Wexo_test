@@ -1555,82 +1555,65 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
-            <div className={`p-2 sm:p-4 bg-[#0f0f0f] border-t border-white/10 flex-shrink-0 z-20 relative ${isMobileDevice() ? (isKeyboardOpen ? 'pb-1' : 'pb-4') : 'sm:pb-4'}`}>
-              {localUploadError && (
-                <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold animate-in fade-in slide-in-from-bottom-2">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle size={14} />
-                    <span>{localUploadError}</span>
-                  </div>
-                  <button onClick={() => setLocalUploadError(null)} className="p-1 hover:bg-white/10 rounded-lg transition-colors">
-                    <X size={14} />
-                  </button>
-                </div>
-              )}
-              {stagedFile && (
-                <div className="mb-3 animate-in slide-in-from-bottom-2 duration-200">
-                  <div className="bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center gap-4 max-w-sm relative group">
-                    <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-slate-400">
-                      {getFileIcon(stagedFile.type)}
+            {/* Barre de Message avec Zone Noire Footer */}
+            <div className={`bg-black flex-shrink-0 z-20 relative flex flex-col ${isMobileDevice() ? (isKeyboardOpen ? 'pb-0' : 'pb-6') : 'pb-0'}`}>
+              
+              {/* Conteneur de la barre avec fond gris très foncé pour contraster avec la zone noire */}
+              <div className={`w-full px-2 sm:px-4 py-3 sm:py-4 bg-[#0f0f0f] border-t border-white/10 ${!isKeyboardOpen && isMobileDevice() ? 'mb-1' : ''}`}>
+                {localUploadError && (
+                  <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold animate-in fade-in slide-in-from-bottom-2">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={14} />
+                      <span>{localUploadError}</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-white truncate">{stagedFile.name}</p>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">
-                        {stagedFile.type.split('/')[1] || 'Fichier'} • {formatFileSize(stagedFile.size)}
-                      </p>
-                    </div>
-                    <button 
-                      onClick={() => setStagedFile(null)}
-                      className="p-1.5 bg-black/40 text-slate-400 hover:text-white rounded-2xl transition-colors"
-                    >
-                      <X size={16} />
+                    <button onClick={() => setLocalUploadError(null)} className="p-1 hover:bg-white/10 rounded-lg transition-colors">
+                      <X size={14} />
                     </button>
                   </div>
-                </div>
-              )}
-              <div className="flex items-center gap-2 max-w-full">
-                <div className={`flex-1 flex items-center gap-1 bg-white/5 ${isMobileDevice() ? 'rounded-full py-2.5' : 'rounded-2xl py-1.5'} px-3 border border-white/10 shadow-inner overflow-hidden group/input`}>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleFileUpload} 
-                    className="hidden" 
-                  />
-                  
-                  {/* Sur PC, le Paperclip est à gauche */}
-                  {!isMobileDevice() && (
-                    <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadingFile}
-                      className={`p-1.5 text-slate-400 hover:text-white transition-colors ${uploadingFile ? 'animate-pulse' : ''}`}
-                    >
-                      {uploadingFile ? <Clock size={16} /> : <Paperclip size={18} />}
-                    </button>
-                  )}
-
-                  <input 
-                    type="text" 
-                    value={messageText} 
-                    onChange={(e) => setMessageText(e.target.value)} 
-                    onKeyDown={(e) => e.key === 'Enter' && sendMessage(messageText)} 
-                    placeholder="Message" 
-                    className="flex-1 bg-transparent border-none text-sm text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1" 
-                  />
-
-                  <div className="flex items-center gap-1">
-                    {/* Emoji Picker toujours à droite */}
+                )}
+                {stagedFile && (
+                  <div className="mb-3 animate-in slide-in-from-bottom-2 duration-200">
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center gap-4 max-w-sm relative group">
+                      <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-slate-400">
+                        {getFileIcon(stagedFile.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-white truncate">{stagedFile.name}</p>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">
+                          {stagedFile.type.split('/')[1] || 'Fichier'} • {formatFileSize(stagedFile.size)}
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => setStagedFile(null)}
+                        className="p-1.5 bg-black/40 text-slate-400 hover:text-white rounded-2xl transition-colors"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 max-w-full h-[56px]">
+                  <div className={`flex-1 h-full flex items-center gap-1 bg-white/5 ${isMobileDevice() ? 'rounded-full' : 'rounded-2xl'} px-4 border border-white/10 shadow-inner overflow-hidden group/input relative`}>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleFileUpload} 
+                      className="hidden" 
+                    />
+                    
+                    {/* Emoji Picker à gauche */}
                     <div className="relative flex items-center">
                       <button 
                         onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
                         className={`p-1.5 transition-colors ${showEmojiPicker ? 'text-amber-400' : 'text-slate-400 hover:text-amber-400'}`}
                       >
-                        <Smile size={20} />
+                        <Smile size={24} />
                       </button>
 
                       {showEmojiPicker && (
                         <div 
                           ref={emojiPickerRef}
-                          className={`absolute bottom-full mb-4 ${isMobileDevice() ? 'left-0' : 'right-0'} w-72 sm:w-80 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100] animate-in zoom-in-95 slide-in-from-bottom-4 duration-200 flex flex-col`}
+                          className={`absolute bottom-full mb-6 left-0 w-72 sm:w-80 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100] animate-in zoom-in-95 slide-in-from-bottom-4 duration-200 flex flex-col`}
                           style={{ fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "Android Emoji", sans-serif' }}
                         >
                           <div className="bg-[#2a2a2a] p-1 flex items-center justify-around border-b border-white/5">
@@ -1650,52 +1633,74 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile }) => {
                               <button key={i} onClick={() => setMessageText(prev => prev + emoji)} className="aspect-square hover:bg-white/10 p-1.5 rounded-none transition-all active:scale-90 flex items-center justify-center">{EMOJI_MAP[emoji] ? <img src={EMOJI_MAP[emoji]} alt={emoji} className="w-6 h-6 aspect-square object-cover" referrerPolicy="no-referrer" /> : <span className="text-2xl">{emoji}</span>}</button>
                             ))}
                           </div>
-                          <div className={`absolute top-full ${isMobileDevice() ? 'left-4' : 'right-4'} border-8 border-transparent border-t-[#1a1a1a]`}></div>
+                          <div className={`absolute top-full left-4 border-8 border-transparent border-t-[#1a1a1a]`}></div>
                         </div>
                       )}
                     </div>
 
-                    {/* Sur mobile, le Paperclip est à droite */}
-                    {isMobileDevice() && (
+                    {/* Paperclip à gauche sur PC */}
+                    {!isMobileDevice() && (
                       <button 
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploadingFile}
                         className={`p-1.5 text-slate-400 hover:text-white transition-colors ${uploadingFile ? 'animate-pulse' : ''}`}
                       >
-                        {uploadingFile ? <Clock size={16} /> : <Paperclip size={18} />}
+                        {uploadingFile ? <Clock size={20} /> : <Paperclip size={22} />}
                       </button>
                     )}
 
-                    {/* Caméra uniquement sur mobile */}
-                    {isMobileDevice() && !messageText.trim() && (
-                      <button className="p-1.5 text-slate-400 hover:text-white transition-colors">
-                        <Camera size={18} />
-                      </button>
-                    )}
+                    <input 
+                      type="text" 
+                      value={messageText} 
+                      onChange={(e) => setMessageText(e.target.value)} 
+                      onKeyDown={(e) => e.key === 'Enter' && sendMessage(messageText)} 
+                      placeholder="Message" 
+                      className="flex-1 bg-transparent border-none text-base text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1 h-full" 
+                    />
 
-                    {/* Bouton envoyer à l'intérieur sur PC */}
-                    {!isMobileDevice() && (
+                    <div className="flex items-center gap-1.5">
+                      {/* Sur mobile, Paperclip à droite */}
+                      {isMobileDevice() && (
+                        <button 
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingFile}
+                          className={`p-1.5 text-slate-400 hover:text-white transition-colors ${uploadingFile ? 'animate-pulse' : ''}`}
+                        >
+                          {uploadingFile ? <Clock size={20} /> : <Paperclip size={22} />}
+                        </button>
+                      )}
+
+                      {/* Caméra mobile */}
+                      {isMobileDevice() && !messageText.trim() && (
+                        <button className="p-1.5 text-slate-400 hover:text-white transition-colors">
+                          <Camera size={22} />
+                        </button>
+                      )}
+
+                      {/* Sur PC, bouton envoyer intégré */}
+                      {!isMobileDevice() && (
+                        <button 
+                          onClick={() => sendMessage(messageText)} 
+                          className={`h-10 w-10 min-w-[40px] rounded-xl flex items-center justify-center transition-all shadow-lg active:scale-95 hover:opacity-90 ml-1 bg-blue-600 text-white`}
+                        >
+                          {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bouton mobile - Fixé à 56px pour correspondre à la barre de saisie fixée à 56px */}
+                  {isMobileDevice() && (
+                    <div className="flex items-center justify-center flex-shrink-0">
                       <button 
                         onClick={() => sendMessage(messageText)} 
-                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90 ml-1 bg-blue-600 text-white`}
+                        className="bg-blue-600 text-white h-[56px] w-[56px] min-w-[56px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90"
                       >
-                        {messageText.trim() ? <Send size={16} fill="currentColor" /> : <Mic size={18} />}
+                        {messageText.trim() ? <Send size={22} fill="currentColor" /> : <Mic size={24} />}
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
-
-                {/* Bouton séparé uniquement sur Mobile */}
-                {isMobileDevice() && (
-                  <div className="flex items-center justify-center flex-shrink-0">
-                    <button 
-                      onClick={() => sendMessage(messageText)} 
-                      className="bg-blue-600 text-white w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 hover:opacity-90"
-                    >
-                      {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} />}
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
 
