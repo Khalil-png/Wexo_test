@@ -252,6 +252,9 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
     throw lastError;
   } catch (error: any) {
     console.error("Video Analysis Error:", error);
+    if (error.message?.includes('429') || error?.status === 429 || error?.code === 429) {
+      throw new Error("QUOTA_EXCEEDED");
+    }
     if (error.message?.includes('fetch')) {
       throw new Error("Erreur de connexion (Failed to fetch). Vérifiez votre connexion internet ou essayez une vidéo plus légère.");
     }
@@ -285,6 +288,9 @@ export const analyzePost = async (content: string): Promise<{ is_appropriate: bo
     return JSON.parse(response.text);
   } catch (error: any) {
     console.error("Post Analysis Error:", error);
+    if (error.message?.includes('429') || error?.status === 429 || error?.code === 429) {
+      throw new Error("QUOTA_EXCEEDED");
+    }
     throw error;
   }
 };

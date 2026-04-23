@@ -115,10 +115,82 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
 
   const categories = ['Jeux vidéo', 'Récent', 'Nouveautés', 'Animation', 'Musique'];
 
+  /**
+   * Tente d'analyser les contenus qui n'ont pas encore été analysés
+   * (Utile quand le quota Gemini revient)
+   */
+  const processUnanalyzedContent = async () => {
+    if (!profile?.id || analyzing) return;
+    
+    try {
+      // 1. Chercher les vidéos/shorts non analysés
+      // On utilise fetch pour vérifier les champs existants
+      const unanalyzedVideos = await pb.collection('videos').getList(1, 5, {
+        filter: `creator_id="${profile.id}" && analysis_status != "completed"`,
+        sort: '-created'
+      }).catch(() => ({ items: [] }));
+      
+      const unanalyzedShorts = await pb.collection('shorts').getList(1, 5, {
+        filter: `creator_id="${profile.id}" && analysis_status != "completed"`,
+        sort: '-created'
+      }).catch(() => ({ items: [] }));
+
+      const unanalyzedPosts = await pb.collection('posts').getList(1, 5, {
+        filter: `user_id="${user.uid}" && analysis_status != "completed"`,
+        sort: '-created'
+      }).catch(() => ({ items: [] }));
+
+      const allUnanalyzed = [
+        ...unanalyzedVideos.items.map(v => ({ ...v, collection: 'videos' })),
+        ...unanalyzedShorts.items.map(v => ({ ...v, collection: 'shorts' })),
+        ...unanalyzedPosts.items.map(p => ({ ...p, collection: 'posts' }))
+      ];
+
+      if (allUnanalyzed.length === 0) return;
+
+      console.log(`Traitement de ${allUnanalyzed.length} contenus non analysés...`);
+      
+      for (const item of allUnanalyzed) {
+        try {
+          let analysis;
+          if (item.collection === 'posts') {
+            analysis = await analyzePost(item.content || "Post sans contenu");
+          } else {
+            const videoUrl = item.url || item.video_url;
+            if (!videoUrl) continue;
+            const response = await fetch(videoUrl);
+            const blob = await response.blob();
+            analysis = await analyzeVideo(blob);
+          }
+
+          if (analysis) {
+            await pb.collection(item.collection).update(item.id, {
+              analysis_status: 'completed',
+              is_appropriate: analysis.is_appropriate,
+              analysis_data: JSON.stringify(analysis),
+              language: analysis.language || 'fr',
+              type: analysis.type || 'Inconnu'
+            });
+          }
+        } catch (err: any) {
+          if (err.message?.includes('QUOTA_EXCEEDED') || err.message?.includes('429')) {
+            console.warn("Quota Gemini toujours épuisé, arrêt du traitement auto.");
+            break;
+          }
+          console.error(`Échec de l'analyse différée pour l'item ${item.id}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("Erreur lors du traitement du contenu non analysé:", err);
+    }
+  };
+
   useEffect(() => {
     if (user?.uid || profile?.id) {
       fetchMyVideos();
       fetchMyPosts();
+      // On tente une analyse automatique au chargement
+      processUnanalyzedContent();
     }
   }, [user?.uid, profile?.id]);
 
@@ -145,6 +217,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
           media_type: p.media_type || (p.media_url ? 'image' : null),
           created_at: p.created,
           likes_count: p.likes_count || 0,
+          analysis_status: p.analysis_status,
           profiles: {
             username: author?.username || fallbackName,
             display_name: author?.name || author?.username || fallbackName,
@@ -207,7 +280,8 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
         views: Number(v.views) || 0,
         likes: Number(v.likes) || 0,
         created_at: v.created,
-        is_appropriate: true
+        is_appropriate: v.is_appropriate ?? true,
+        analysis_status: v.analysis_status
       }));
 
       const formattedShorts = shortItems.map((s: any) => ({
@@ -221,7 +295,8 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
         views: Number(s.views) || 0,
         likes: Number(s.likes) || 0,
         created_at: s.created,
-        is_appropriate: true
+        is_appropriate: s.is_appropriate ?? true,
+        analysis_status: s.analysis_status
       }));
 
       setVideos([...formattedVideos, ...formattedShorts].sort((a, b) => 
@@ -321,26 +396,31 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
 
     setUploading(true);
     setError(null);
+    let analysisStatus = 'completed';
 
     try {
       let analysis: any = { is_appropriate: true, type: 'post', language: 'fr' };
-      if (postFile && postFile.type.startsWith('video/')) {
-        setAnalyzing(true);
-        try {
+      try {
+        if (postFile && postFile.type.startsWith('video/')) {
+          setAnalyzing(true);
           analysis = await analyzeVideo(postFile);
-        } finally {
-          setAnalyzing(false);
-        }
-      } else if (postContent) {
-        setAnalyzing(true);
-        try {
+        } else if (postContent) {
+          setAnalyzing(true);
           analysis = await analyzePost(postContent);
-        } finally {
-          setAnalyzing(false);
         }
+      } catch (geminiErr: any) {
+        console.warn("Gemini analysis failed during post creation:", geminiErr);
+        if (geminiErr.message?.includes('QUOTA_EXCEEDED') || geminiErr.message?.includes('429')) {
+          analysisStatus = 'pending_quota';
+          setError("Quota Gemini dépassé. Le post est publié mais sera analysé plus tard. 🙂");
+        } else {
+          analysisStatus = 'failed';
+        }
+      } finally {
+        setAnalyzing(false);
       }
 
-      if (!analysis.is_appropriate) {
+      if (analysisStatus === 'completed' && !analysis.is_appropriate) {
         throw new Error("Ce post ne respecte pas nos règles de communauté.");
       }
 
@@ -363,7 +443,9 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
           content: postContent,
           media_url: mediaUrl,
           user_id: user.uid,
-          type: analysis.type
+          type: analysis.type || 'post',
+          analysis_status: analysisStatus,
+          is_appropriate: analysisStatus === 'completed' ? analysis.is_appropriate : true
         });
       } catch (pbErr) {
         console.warn("Failed to save post to PocketBase:", pbErr);
@@ -375,7 +457,10 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       setPostFile(null);
       setUploadedPostMediaUrl(null);
       fetchMyPosts();
-      setTimeout(() => setSuccess(null), 3000);
+      if (analysisStatus === 'completed') {
+        setSuccess("Post publié avec succès !");
+        setTimeout(() => setSuccess(null), 3000);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -452,10 +537,10 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       };
 
       let pbRecord: any = null;
+      let analysisStatus = 'completed';
       // Save to PocketBase
       try {
         if (isShort) {
-          // Collection 'shorts' (correspond à ta capture d'écran)
           pbRecord = await pb.collection('shorts').create({
             title: title || 'Sans titre',
             description: description || '',
@@ -463,19 +548,20 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
             thumbnail_url: vData.thumbnail_url,
             creator_id: profile?.id || user.uid,
             views: 0,
-            likes: 0
+            likes: 0,
+            analysis_status: 'pending'
           });
         } else {
-          // Collection 'videos' classique (mise à jour selon capture écran)
           pbRecord = await pb.collection('videos').create({
             title: title || 'Sans titre',
             description: description || '',
-            url: videoUrl, // Utilisation de 'url' au lieu de 'video_url'
+            url: videoUrl,
             thumbnail_url: vData.thumbnail_url,
-            creator_id: profile?.id || user.uid, // Utilisation de 'creator_id' au lieu de 'author'
+            creator_id: profile?.id || user.uid,
             views: 0,
             is_short: false,
-            categories: selectedCategories
+            categories: selectedCategories,
+            analysis_status: 'pending'
           });
         }
       } catch (pbErr) {
@@ -498,6 +584,13 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
         analysis = await Promise.race([analysisPromise, timeoutPromise]);
       } catch (err: any) {
         console.error("ERREUR OU TIMEOUT ANALYSE GEMINI:", err);
+        if (err.message?.includes('QUOTA_EXCEEDED') || err.message?.includes('429')) {
+          analysisStatus = 'pending_quota';
+          setUploadError("Quota Gemini dépassé. La vidéo est publiée mais l'analyse IA se fera automatiquement plus tard. 🙂");
+        } else {
+          analysisStatus = 'failed';
+        }
+        
         analysis = {
           type: 'Vidéo',
           name_of_type: null,
@@ -508,7 +601,9 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
         };
       }
 
-      if (!analysis.is_appropriate) {
+      if (analysisStatus === 'completed' && !analysis.is_appropriate) {
+        // En cas de contenu inapproprié détecté immédiatement, on supprime
+        if (pbRecord) await pb.collection(isShort ? 'shorts' : 'videos').delete(pbRecord.id);
         throw new Error("Cette vidéo ne respecte pas nos règles de communauté et a été supprimée.");
       }
 
@@ -521,12 +616,15 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
         let timestamp = analysis.thumbnail_timestamp;
         try {
           const videoElement = document.createElement('video');
-          videoElement.src = URL.createObjectURL(videoFile);
+          videoElement.onloadedmetadata = () => {}; // Just to satisfy types
+          const videoObjectUrl = URL.createObjectURL(videoFile);
+          videoElement.src = videoObjectUrl;
+          
           await new Promise((resolve) => {
             videoElement.onloadedmetadata = () => resolve(true);
           });
           const duration = videoElement.duration;
-          URL.revokeObjectURL(videoElement.src);
+          URL.revokeObjectURL(videoObjectUrl);
 
           if (!timestamp || timestamp <= 0) {
             timestamp = duration / 2;
@@ -544,15 +642,18 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       setAnalysisProgress(90);
 
       try {
-        // Migration NAS : Mise à jour des métadonnées vidéo sur PocketBase
+        // Mise à jour des métadonnées vidéo sur PocketBase
         if (pbRecord) {
           await pb.collection(isShort ? 'shorts' : 'videos').update(pbRecord.id, {
-            thumbnail_url: finalThumbnailUrl
+            thumbnail_url: finalThumbnailUrl,
+            analysis_status: analysisStatus,
+            type: analysis.type,
+            language: analysis.language,
+            is_appropriate: analysis.is_appropriate
           });
         }
-        console.log("Mise à jour métadonnées PocketBase...");
       } catch (err) {
-        console.error("Erreur mise à jour NAS:", err);
+        console.error("Erreur mise à jour PocketBase:", err);
       }
 
       setAnalysisStep('Publication terminée !');
@@ -797,8 +898,18 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                   </div>
                   
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex items-center gap-2 mb-1">
                       <h4 className="text-white font-bold text-lg truncate">{renderTextWithEmojis(video.title)}</h4>
+                      {video.analysis_status === 'pending' && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/10 text-blue-400 text-[9px] font-bold rounded-full animate-pulse border border-blue-500/20">
+                          <Loader2 size={10} className="animate-spin" /> IA en cours
+                        </span>
+                      )}
+                      {video.analysis_status === 'pending_quota' && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[9px] font-bold rounded-full border border-amber-500/20">
+                          <Clock size={10} /> Quota épuisé (auto-retry)
+                        </span>
+                      )}
                     </div>
                     <p className="text-slate-500 text-sm truncate max-w-md">{video.description || 'Aucune description'}</p>
                   </div>
@@ -862,7 +973,19 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                   </div>
                   
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-white font-bold text-lg truncate mb-1">{renderTextWithEmojis(video.title)}</h4>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="text-white font-bold text-lg truncate">{renderTextWithEmojis(video.title)}</h4>
+                      {video.analysis_status === 'pending' && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/10 text-blue-400 text-[9px] font-bold rounded-full animate-pulse border border-blue-500/20">
+                          <Loader2 size={10} className="animate-spin" /> IA en cours
+                        </span>
+                      )}
+                      {video.analysis_status === 'pending_quota' && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[9px] font-bold rounded-full border border-amber-500/20">
+                          <Clock size={10} /> Quota épuisé (auto-retry)
+                        </span>
+                      )}
+                    </div>
                     <p className="text-slate-500 text-sm truncate max-w-md">{video.description || 'Aucune description'}</p>
                   </div>
 
@@ -923,7 +1046,14 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                   </div>
                   
                   <div className="flex-1 min-w-0">
-                    <p className="text-white font-bold text-lg line-clamp-1 leading-tight">{renderTextWithEmojis(post.content || 'Aucune description')}</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-white font-bold text-lg line-clamp-1 leading-tight">{renderTextWithEmojis(post.content || 'Aucune description')}</p>
+                      {post.analysis_status === 'pending_quota' && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[9px] font-bold rounded-full border border-amber-500/20">
+                          <Clock size={10} /> Wait Quota
+                        </span>
+                      )}
+                    </div>
                     <p className="text-slate-500 text-[10px] font-bold mt-2">{formatRelativeDate(post.created_at)}</p>
                   </div>
 
