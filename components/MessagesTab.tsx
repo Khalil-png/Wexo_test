@@ -1583,18 +1583,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
-            {/* Zone Noire "Hors App" - Fixée au bas absolu pour APK */}
-            {isMobileDevice() && (
-              <div 
-                className={`fixed bottom-0 left-0 right-0 bg-black z-[100] ${isPhysicalKeyboardOpen ? 'hidden' : 'block'}`}
-                style={{ height: '40px' }} // Taille augmentée (34 * 1.15 approx)
-              />
-            )}
-
-            {/* Barre de Saisie - Positionnée dynamiquement pour l'APK */}
-            <div className={`${isMobileDevice() ? 'fixed left-0 right-0 z-[110]' : 'relative'} flex flex-col`} 
-                 style={isMobileDevice() ? { bottom: isPhysicalKeyboardOpen ? '0' : '40px' } : {}}>
-              <div className={`w-full px-2 sm:px-4 py-1.5 bg-[#0f0f0f] border-t border-white/10`}>
+            {/* Pied de page Messagerie (Barre + Zone Noire) - Fixé au bas pour APK */}
+            <div className={`${isMobileDevice() ? 'fixed bottom-0 left-0 right-0 z-[110]' : 'relative'} flex flex-col bg-black`}>
+              {/* Barre de Saisie */}
+              <div className="w-full px-2 sm:px-4 py-1.5 bg-[#0f0f0f] border-t border-white/10">
                 {localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold">
                     <div className="flex items-center gap-2">
@@ -1617,15 +1609,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     {!isMobileDevice() && (
                       <button onClick={() => fileInputRef.current?.click()} className="p-1.5 text-slate-400 hover:text-white transition-colors"><Paperclip size={22} /></button>
                     )}
-
-                    {/* Trait horizontal clignotant type Terminal Wexo */}
-                    <div className="w-2.5 h-[2.5px] bg-blue-500 animate-[wexo-blink_1s_steps(1)_infinite] ml-1 self-center shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-                    <style>{`
-                      @keyframes wexo-blink {
-                        0%, 100% { opacity: 1; }
-                        50% { opacity: 0; }
-                      }
-                    `}</style>
 
                     <input 
                       type="text" 
@@ -1662,6 +1645,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   )}
                 </div>
               </div>
+
+              {/* Zone Noire "Hors App" - Permanente et sous la barre */}
+              {isMobileDevice() && (
+                <div className="w-full bg-black flex-shrink-0" style={{ height: '36px' }} />
+              )}
             </div>
 
             {/* Delete Message Modal */}
