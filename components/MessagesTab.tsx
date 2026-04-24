@@ -307,8 +307,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     const chatId = searchParams.get('chat');
     if (chatId !== selectedId) {
       setSelectedId(chatId);
+      setMobileView(chatId ? 'chat' : 'list');
     }
-  }, [searchParams]);
+  }, [searchParams, selectedId]);
 
   const handleSelectChat = (id: string | null) => {
     setSelectedId(id);
@@ -1322,7 +1323,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               )}
             </div>
             
-            <div ref={scrollRef} className={`flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8 ${isMobileDevice() ? 'pb-[80px]' : ''}`}>
+            <div ref={scrollRef} className={`flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8 ${isMobileDevice() ? 'pb-4' : ''}`}>
               {messages.map((msg, idx) => {
                 if (msg.is_screenshot_alert) {
                   return (
@@ -1611,7 +1612,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             </div>
 
             {/* Pied de page Messagerie (Barre + Zone Noire) - Relatif dans le flex pour rester stable */}
-            <div className={`relative flex flex-col bg-[#0f0f0f] flex-shrink-0 z-[110] ${isMobileDevice() ? 'pb-safe' : ''}`}>
+            <div className={`relative flex flex-col bg-[#0f0f0f] flex-shrink-0 z-[110]`}>
               {/* Barre de Saisie */}
               <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1.5' : 'py-6'} bg-[#0f0f0f] border-t border-white/10`}>
                 {localUploadError && (
