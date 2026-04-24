@@ -1234,7 +1234,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         {selectedId ? (
           <div className="flex-1 flex flex-col h-full relative overflow-hidden">
             {/* Header du Chat - Fixé en haut */}
-            <div className="sticky top-0 left-0 right-0 z-[120] px-4 py-3 bg-[#0f0f0f] border-b border-white/10 flex items-center justify-between flex-shrink-0">
+            <div className="p-4 border-b border-white/10 bg-[#0f0f0f]/80 backdrop-blur-md flex items-center justify-between z-10 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
                 <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
@@ -1322,7 +1322,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               )}
             </div>
             
-            <div ref={scrollRef} className={`flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8 ${isMobileDevice() ? 'pb-32' : 'pb-24'}`}>
+            <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8">
               {messages.map((msg, idx) => {
                 if (msg.is_screenshot_alert) {
                   return (
@@ -1610,8 +1610,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
-            {/* Pied de page Messagerie (Barre + Zone Noire) - Fixé au bas pour rester immobile au scroll */}
-            <div className={`${isMobileDevice() ? 'fixed bottom-0 left-0 right-0 z-[110]' : 'relative'} flex flex-col bg-black flex-shrink-0`}>
+            {/* Pied de page Messagerie (Barre + Zone Noire) - Relatif dans le flex pour rester épinglé */}
+            <div className="relative flex flex-col bg-black flex-shrink-0 z-[110]">
               {/* Barre de Saisie */}
               <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1.5' : 'py-6'} bg-[#0f0f0f] border-t border-white/10`}>
                 {localUploadError && (
@@ -1667,12 +1667,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     <div className="flex items-center gap-1.5">
                       {isMobileDevice() && (
                         <>
-                          <button 
-                            onClick={() => fileInputRef.current?.click()} 
-                            className="p-1.5 text-slate-400 hover:text-white transition-colors"
-                          >
-                            <File size={22} />
-                          </button>
                           <button 
                             onClick={() => {
                               window.dispatchEvent(new CustomEvent('open-camera', { detail: { destination: 'message' } }));
