@@ -1321,7 +1321,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               )}
             </div>
             
-            <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8">
+            <div ref={scrollRef} className={`flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8 ${isMobileDevice() ? 'pb-24' : ''}`}>
               {messages.map((msg, idx) => {
                 if (msg.is_screenshot_alert) {
                   return (
@@ -1609,8 +1609,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
-            {/* Pied de page Messagerie (Barre + Zone Noire) - Relatif dans le flex pour rester épinglé */}
-            <div className="relative flex flex-col bg-black flex-shrink-0 z-[110]">
+            {/* Pied de page Messagerie (Barre + Zone Noire) - Fixé au bas pour rester immobile au scroll */}
+            <div className={`${isMobileDevice() ? 'fixed bottom-0 left-0 right-0 z-[110]' : 'relative'} flex flex-col bg-black flex-shrink-0`}>
               {/* Barre de Saisie */}
               <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1.5' : 'py-6'} bg-[#0f0f0f] border-t border-white/10`}>
                 {localUploadError && (
@@ -1671,6 +1671,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                             className="p-1.5 text-slate-400 hover:text-white transition-colors"
                           >
                             <Paperclip size={22} />
+                          </button>
+                          <button 
+                            onClick={() => fileInputRef.current?.click()} 
+                            className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                          >
+                            <File size={22} />
                           </button>
                           <button 
                             onClick={() => {
