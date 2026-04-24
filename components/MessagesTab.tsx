@@ -1230,12 +1230,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       )}
 
       {/* Zone de Chat */}
-      <div className={`flex-1 flex-col bg-[#0f0f0f] relative lg:flex h-full overflow-hidden ${mobileView === 'list' ? 'hidden' : 'flex'}`}>
+      <div className={`flex-1 flex flex-col bg-[#0f0f0f] relative lg:flex h-full overflow-hidden ${mobileView === 'list' ? 'hidden' : 'flex'}`}>
         {selectedId ? (
-          <>
-            <div className="p-4 border-b border-white/10 bg-[#0f0f0f]/80 backdrop-blur-md flex items-center justify-between z-10 flex-shrink-0">
+          <div className="flex-1 flex flex-col h-full relative overflow-hidden">
+            {/* Header du Chat - Fixé en haut */}
+            <div className="sticky top-0 left-0 right-0 z-[120] px-4 py-3 bg-[#0f0f0f] border-b border-white/10 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3">
-                <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 mr-1"><ArrowLeft size={20} /></button>
+                <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
                 <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
                   {selectedId === 'gemini' ? (
                     <GeminiAvatarIcon size={20} />
@@ -1263,7 +1264,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                       <p className="text-[9px] text-slate-500 font-bold">Par Google</p>
                     ) : (
                       <>
-                        <span className="w-1 h-1 rounded-2xl bg-emerald-500 animate-pulse"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
                         <p className="text-[9px] text-slate-500 font-bold">En ligne</p>
                       </>
                     )}
@@ -1321,7 +1322,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               )}
             </div>
             
-            <div ref={scrollRef} className={`flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8 ${isMobileDevice() ? 'pb-24' : ''}`}>
+            <div ref={scrollRef} className={`flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8 ${isMobileDevice() ? 'pb-32' : 'pb-24'}`}>
               {messages.map((msg, idx) => {
                 if (msg.is_screenshot_alert) {
                   return (
@@ -1670,12 +1671,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                             onClick={() => fileInputRef.current?.click()} 
                             className="p-1.5 text-slate-400 hover:text-white transition-colors"
                           >
-                            <Paperclip size={22} />
-                          </button>
-                          <button 
-                            onClick={() => fileInputRef.current?.click()} 
-                            className="p-1.5 text-slate-400 hover:text-white transition-colors"
-                          >
                             <File size={22} />
                           </button>
                           <button 
@@ -1685,6 +1680,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                             className="p-1.5 text-slate-400 hover:text-white transition-colors"
                           >
                             <Camera size={22} />
+                          </button>
+                          <button 
+                            onClick={() => fileInputRef.current?.click()} 
+                            className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                          >
+                            <Paperclip size={22} />
                           </button>
                         </>
                       )}
@@ -1790,7 +1791,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 onClose={() => setSelectedMedia(null)} 
               />
             )}
-          </>
+          </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-[#0f0f0f]">
             <div className="w-20 h-20 bg-white/5 text-slate-700 border border-white/10 rounded-2xl flex items-center justify-center mb-8 shadow-inner animate-in fade-in zoom-in duration-500"><MessageCircle size={40} /></div>
