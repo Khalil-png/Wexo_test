@@ -78,6 +78,26 @@ const AppContent: React.FC = () => {
     };
   }, []);
   
+  useEffect(() => {
+    const handleBackButton = (e: any) => {
+      // Si on est dans un chat ou une vue profonde, on revient en arrière
+      // Sinon, on laisse le comportement par défaut (quitter si on est à la home)
+      if (location.pathname !== '/') {
+        e.preventDefault();
+        navigate(-1);
+      }
+    };
+
+    window.addEventListener('popstate', handleBackButton);
+    // Pour Capacitor/Cordova si présent
+    document.addEventListener('backbutton', handleBackButton);
+
+    return () => {
+      window.removeEventListener('popstate', handleBackButton);
+      document.removeEventListener('backbutton', handleBackButton);
+    };
+  }, [location.pathname, navigate]);
+
   const [notification, setNotification] = useState<{message: string, show: boolean, type?: 'error' | 'success'}>({
     message: '',
     show: false,

@@ -493,7 +493,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
   return (
     <div className="h-full w-full snap-start snap-always relative flex items-center justify-center bg-[#0f0f0f] overflow-hidden">
       {/* Main Content Area (Centered) */}
-      <div className={`relative flex h-full w-full justify-center ${isMobileDevice() ? 'items-stretch px-0' : 'items-center gap-12 max-w-screen-xl px-4'}`}>
+      <div className={`relative flex h-full w-full justify-center ${isMobileDevice() ? 'items-stretch px-0' : 'items-center gap-4 max-w-screen-xl px-4'}`}>
         
         {/* Video Container (Wrapper for everything that must stay in the video area) */}
         <div className={`relative h-full bg-black overflow-hidden flex items-center justify-center group ${isMobileDevice() ? 'w-full rounded-0' : 'max-h-[calc(100vh-120px)] aspect-[9/16] rounded-2xl shadow-2xl border border-white/10'}`}>

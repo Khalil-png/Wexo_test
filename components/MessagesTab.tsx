@@ -1609,7 +1609,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             {/* Pied de page Messagerie (Barre + Zone Noire) - Fixé au bas pour APK */}
             <div className={`${isMobileDevice() ? 'fixed bottom-0 left-0 right-0 z-[110]' : 'relative'} flex flex-col bg-black`}>
               {/* Barre de Saisie */}
-              <div className="w-full px-2 sm:px-4 py-1.5 bg-[#0f0f0f] border-t border-white/10">
+              <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1.5' : 'py-6'} bg-[#0f0f0f] border-t border-white/10`}>
                 {localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold">
                     <div className="flex items-center gap-2">
@@ -1619,8 +1619,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     <button onClick={() => setLocalUploadError(null)} className="p-1 hover:bg-white/10 rounded-lg transition-colors"><X size={14} /></button>
                   </div>
                 )}
-                <div className="flex items-center gap-2 max-w-full h-[48px]">
-                  <div className={`flex-1 h-full flex items-center gap-1 bg-white/5 ${isMobileDevice() ? 'rounded-full' : 'rounded-2xl'} px-4 border border-white/10 shadow-inner overflow-hidden group/input relative`}>
+                <div className={`flex items-center gap-2 max-w-full ${isMobileDevice() ? 'h-[48px]' : 'h-[53px]'}`}>
+                  <div className={`flex-1 h-full flex items-center gap-1 bg-white/5 rounded-full px-4 border border-white/10 shadow-inner overflow-hidden group/input relative`}>
                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
                     
                     <div className="relative flex items-center">
@@ -1661,8 +1661,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                       )}
 
                       {!isMobileDevice() && (
-                        <button onClick={() => sendMessage(messageText)} className="h-10 w-10 bg-blue-600 text-white rounded-xl flex items-center justify-center transition-all active:scale-95">
-                          {messageText.trim() ? <Send size={18} fill="currentColor" /> : <Mic size={20} />}
+                        <button onClick={() => sendMessage(messageText)} className="h-10 w-10 bg-blue-600 text-white rounded-full flex items-center justify-center transition-all active:scale-95">
+                          {messageText.trim() ? <Send size={18} /> : <Mic size={20} />}
                         </button>
                       )}
                     </div>
@@ -1670,7 +1670,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
                   {isMobileDevice() && (
                     <button onClick={() => sendMessage(messageText)} className="bg-blue-600 text-white h-[48px] w-[48px] min-w-[48px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90">
-                      {messageText.trim() ? <Send size={22} fill="currentColor" /> : <Mic size={24} />}
+                      {messageText.trim() ? <Send size={22} /> : <Mic size={24} />}
                     </button>
                   )}
                 </div>
@@ -1678,7 +1678,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
               {/* Zone Noire "Hors App" - Permanente mais masquée quand le clavier est là */}
               {isMobileDevice() && !isPhysicalKeyboardOpen && (
-                <div className="w-full bg-black flex-shrink-0" style={{ height: '32px' }} />
+                <div className="w-full bg-black flex-shrink-0" style={{ height: '30px' }} />
               )}
             </div>
 
