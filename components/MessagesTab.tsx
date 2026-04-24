@@ -1635,7 +1635,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
                     {stagedFile && (
                       <div className="flex items-center gap-2 bg-white/10 px-2 py-1 rounded-xl border border-white/10 animate-in zoom-in duration-200 flex-shrink-0">
-                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-black flex-shrink-0">
+                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#0f0f0f] flex-shrink-0">
                           {stagedFile.type.startsWith('image/') ? (
                             <img src={stagedFile.url} className="w-full h-full object-cover" alt="" />
                           ) : (
@@ -1702,7 +1702,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
               {/* Zone Noire "Hors App" - Permanente mais masquée quand le clavier est là */}
               {isMobileDevice() && !isPhysicalKeyboardOpen && (
-                <div className="w-full bg-black flex-shrink-0" style={{ height: '23px' }} />
+                <div className="w-full bg-[#0f0f0f] flex-shrink-0" style={{ height: '23px' }} />
               )}
             </div>
 
