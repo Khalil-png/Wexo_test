@@ -80,16 +80,23 @@ const AppContent: React.FC = () => {
   
   useEffect(() => {
     const handleBackButton = (e: any) => {
-      // Si on est dans un chat ou une vue profonde, on revient en arrière
-      // Sinon, on laisse le comportement par défaut (quitter si on est à la home)
+      // Si on n'est pas sur la home, on intercepte le bouton retour
       if (location.pathname !== '/') {
         e.preventDefault();
-        navigate(-1);
+        
+        // Si on est dans l'onglet message avec un chat ouvert (recherche de 'chat=')
+        // On laisse MessagesTab réagir au changement de l'URL via HashRouter
+        // Mais si on est sur la liste des messages sans chat actif, on retourne à la home
+        if (location.pathname === '/message' && !location.search.includes('chat=')) {
+          navigate('/');
+        } else {
+          // Comportement standard : on revient d'un cran (ex: chat -> liste)
+          navigate(-1);
+        }
       }
     };
 
     window.addEventListener('popstate', handleBackButton);
-    // Pour Capacitor/Cordova si présent
     document.addEventListener('backbutton', handleBackButton);
 
     return () => {
@@ -806,7 +813,7 @@ const AppContent: React.FC = () => {
         
         <main className={`flex-1 w-full lg:ml-72 transition-all duration-500 ${
           (activeTab === 'message' || activeTab === 'shorts' || activeTab === 'appel')
-            ? `p-0 ${isMobileDevice() ? 'pt-32' : 'pt-20'} h-screen h-[100dvh] overflow-hidden bg-[#0f0f0f] ${isMobileDevice() && !(activeTab === 'message' && location.search.includes('chat=')) ? 'pb-24' : ''}` 
+            ? `p-0 ${isMobileDevice() ? 'pt-[140px]' : 'pt-20'} h-screen h-[100dvh] overflow-hidden bg-[#0f0f0f] ${isMobileDevice() && !(activeTab === 'message' && location.search.includes('chat=')) ? 'pb-24' : ''}` 
             : `p-4 sm:p-10 md:p-14 ${isMobileDevice() ? 'pt-[145px]' : 'pt-[125px]'} lg:pt-[105px] ${isMobileDevice() ? 'pb-28' : 'pb-10'}`
         }`}>
           <div className={`${
