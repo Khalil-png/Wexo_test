@@ -28,6 +28,7 @@ import { generateSnowflake } from '@/utils/snowflake';
 import { AnimatePresence } from 'motion/react';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { App as CapApp } from '@capacitor/app';
 // Firebase désactivé
 
 const CURRENT_VERSION = "0.0.1";
@@ -79,45 +80,57 @@ const AppContent: React.FC = () => {
   }, []);
   
   useEffect(() => {
-    // S'assurer d'avoir de la profondeur dans l'historique pour intercepter le premier "Retour"
-    const initHistory = () => {
-      if (window.history.length <= 1) {
-        window.history.pushState({ appInitialized: true }, '');
-      }
-    };
-    initHistory();
+    // Handler pour le bouton retour matériel (Android/Capacitor)
+    const setupBackButton = async () => {
+      const listener = await CapApp.addListener('backButton', ({ canGoBack }) => {
+        // Obtenir le chemin actuel via location
+        const path = location.pathname;
+        const search = location.search;
 
-    const handleBackButton = (e: any) => {
-      // Si on est déjà sur l'accueil, on laisse le système gérer le retour (quitter l'app)
+        if (path === '/' || path === '/accueil') {
+          // Sur l'accueil : on laisse le système quitter l'app
+          CapApp.exitApp();
+        } else if (path === '/message') {
+          if (search.includes('chat=')) {
+            // Dans une discussion : on revient à la liste des messages
+            navigate('/message', { replace: true });
+          } else {
+            // Sur la liste des messages : on revient à l'accueil
+            navigate('/', { replace: true });
+          }
+        } else {
+          // N'importe quel autre onglet (Shorts, Workspace, etc) -> accueil
+          navigate('/', { replace: true });
+        }
+      });
+
+      return listener;
+    };
+
+    const backButtonPromise = setupBackButton();
+
+    // Fallback pour le bouton retour du navigateur (popstate)
+    const handlePopState = (e: any) => {
+      // Si on est déjà sur l'accueil, on laisse faire
       if (location.pathname === '/') return;
 
-      // Sinon, on intercepte systématiquement
-      if (e.preventDefault) e.preventDefault();
-      
+      // On intercepte et redirige intelligemment
       if (location.pathname === '/message') {
         if (location.search.includes('chat=')) {
-          // Si on est dans un chat, on revient à la liste des messages
           navigate('/message', { replace: true });
         } else {
-          // Si on est sur la liste des messages, on revient à l'accueil
           navigate('/', { replace: true });
         }
       } else {
-        // Pour n'importe quel autre onglet (Shorts, Workspace, etc) -> on force le retour à l'accueil
         navigate('/', { replace: true });
       }
-
-      // On ré-injecte immédiatement un état pour attraper le prochain bouton retour
-      window.history.pushState({ appInitialized: true }, '');
     };
 
-    window.addEventListener('popstate', handleBackButton);
-    // Certains environnements WebView utilisent l'événement spécifique 'backbutton'
-    document.addEventListener('backbutton', handleBackButton);
-
+    window.addEventListener('popstate', handlePopState);
+    
     return () => {
-      window.removeEventListener('popstate', handleBackButton);
-      document.removeEventListener('backbutton', handleBackButton);
+      window.removeEventListener('popstate', handlePopState);
+      backButtonPromise.then(l => l.remove());
     };
   }, [location.pathname, location.search, navigate]);
 
