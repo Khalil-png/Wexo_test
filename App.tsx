@@ -79,47 +79,45 @@ const AppContent: React.FC = () => {
   }, []);
   
   useEffect(() => {
-    // On s'assure d'avoir un état dans l'historique pour pouvoir intercepter le retour
-    const pushInitialState = () => {
-      if (!window.history.state || !window.history.state.appInitialized) {
-        window.history.replaceState({ appInitialized: true, path: location.pathname }, '');
-        window.history.pushState({ appInitialized: true, path: location.pathname }, '');
+    // S'assurer d'avoir de la profondeur dans l'historique pour intercepter le premier "Retour"
+    const initHistory = () => {
+      if (window.history.length <= 1) {
+        window.history.pushState({ appInitialized: true }, '');
       }
     };
-    pushInitialState();
+    initHistory();
 
-    const handleBackButton = (e: PopStateEvent) => {
-      // Si on est sur la home, on ne fait rien de spécial (comportement par défaut)
+    const handleBackButton = (e: any) => {
+      // Si on est déjà sur l'accueil, on laisse le système gérer le retour (quitter l'app)
       if (location.pathname === '/') return;
 
-      // On empêche le comportement par défaut si on veut rester dans l'appli
-      e.preventDefault();
-
+      // Sinon, on intercepte systématiquement
+      if (e.preventDefault) e.preventDefault();
+      
       if (location.pathname === '/message') {
         if (location.search.includes('chat=')) {
           // Si on est dans un chat, on revient à la liste des messages
           navigate('/message', { replace: true });
         } else {
-          // Si on est sur la liste, on revient à l'accueil
+          // Si on est sur la liste des messages, on revient à l'accueil
           navigate('/', { replace: true });
         }
       } else {
-        // Pour toute autre page (profil, etc.), retour à l'accueil
+        // Pour n'importe quel autre onglet (Shorts, Workspace, etc) -> on force le retour à l'accueil
         navigate('/', { replace: true });
       }
-      
-      // On ré-injecte un état pour le prochain retour
-      window.history.pushState({ appInitialized: true, path: location.pathname }, '');
+
+      // On ré-injecte immédiatement un état pour attraper le prochain bouton retour
+      window.history.pushState({ appInitialized: true }, '');
     };
 
-    const handleBackButtonWrapper = (e: any) => handleBackButton(new PopStateEvent('popstate'));
-
     window.addEventListener('popstate', handleBackButton);
-    document.addEventListener('backbutton', handleBackButtonWrapper);
+    // Certains environnements WebView utilisent l'événement spécifique 'backbutton'
+    document.addEventListener('backbutton', handleBackButton);
 
     return () => {
       window.removeEventListener('popstate', handleBackButton);
-      document.removeEventListener('backbutton', handleBackButtonWrapper);
+      document.removeEventListener('backbutton', handleBackButton);
     };
   }, [location.pathname, location.search, navigate]);
 
