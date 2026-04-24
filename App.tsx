@@ -79,40 +79,47 @@ const AppContent: React.FC = () => {
   }, []);
   
   useEffect(() => {
-    // S'assurer qu'il y a un point de retour dans l'historique au chargement
-    if (window.history.length <= 1) {
-      window.history.pushState({ firstState: true }, '');
-    }
-
-    const handleBackButton = (e: any) => {
-      // Si on n'est pas sur la home, on intercepte le bouton retour
-      if (location.pathname !== '/') {
-        // popstate handles browser history. backbutton is for hybrid apps.
-        
-        if (location.pathname === '/message') {
-          // Si on est dans un chat (recherche de 'chat='), on retourne à la liste
-          if (location.search.includes('chat=')) {
-            e.preventDefault();
-            // On utilise navigate avec l'URL exacte car back() pourrait sortir de l'app si history est court
-            navigate('/message', { replace: true });
-          } else {
-            // Si on est sur la liste, on retourne à l'accueil
-            e.preventDefault();
-            navigate('/', { replace: true });
-          }
-        } else if (location.pathname !== '/') {
-          e.preventDefault();
-          navigate('/', { replace: true });
-        }
+    // On s'assure d'avoir un état dans l'historique pour pouvoir intercepter le retour
+    const pushInitialState = () => {
+      if (!window.history.state || !window.history.state.appInitialized) {
+        window.history.replaceState({ appInitialized: true, path: location.pathname }, '');
+        window.history.pushState({ appInitialized: true, path: location.pathname }, '');
       }
     };
+    pushInitialState();
+
+    const handleBackButton = (e: PopStateEvent) => {
+      // Si on est sur la home, on ne fait rien de spécial (comportement par défaut)
+      if (location.pathname === '/') return;
+
+      // On empêche le comportement par défaut si on veut rester dans l'appli
+      e.preventDefault();
+
+      if (location.pathname === '/message') {
+        if (location.search.includes('chat=')) {
+          // Si on est dans un chat, on revient à la liste des messages
+          navigate('/message', { replace: true });
+        } else {
+          // Si on est sur la liste, on revient à l'accueil
+          navigate('/', { replace: true });
+        }
+      } else {
+        // Pour toute autre page (profil, etc.), retour à l'accueil
+        navigate('/', { replace: true });
+      }
+      
+      // On ré-injecte un état pour le prochain retour
+      window.history.pushState({ appInitialized: true, path: location.pathname }, '');
+    };
+
+    const handleBackButtonWrapper = (e: any) => handleBackButton(new PopStateEvent('popstate'));
 
     window.addEventListener('popstate', handleBackButton);
-    document.addEventListener('backbutton', handleBackButton);
+    document.addEventListener('backbutton', handleBackButtonWrapper);
 
     return () => {
       window.removeEventListener('popstate', handleBackButton);
-      document.removeEventListener('backbutton', handleBackButton);
+      document.removeEventListener('backbutton', handleBackButtonWrapper);
     };
   }, [location.pathname, location.search, navigate]);
 
