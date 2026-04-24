@@ -1644,20 +1644,22 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
                     <div className="flex items-center gap-1.5">
                       {isMobileDevice() && (
-                        <button onClick={() => fileInputRef.current?.click()} className="p-1.5 mr-0.5 text-slate-400 hover:text-white transition-colors">
-                          <Paperclip size={22} />
-                        </button>
-                      )}
-
-                      {isMobileDevice() && (
-                        <button 
-                          onClick={() => {
-                            window.dispatchEvent(new CustomEvent('open-camera'));
-                          }} 
-                          className="p-1.5 text-slate-400 hover:text-white transition-colors"
-                        >
-                          <Camera size={22} />
-                        </button>
+                        <>
+                          <button 
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent('open-camera'));
+                            }} 
+                            className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                          >
+                            <Camera size={22} />
+                          </button>
+                          <button 
+                            onClick={() => fileInputRef.current?.click()} 
+                            className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                          >
+                            <Paperclip size={22} />
+                          </button>
+                        </>
                       )}
 
                       {!isMobileDevice() && (
@@ -1678,7 +1680,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
               {/* Zone Noire "Hors App" - Permanente mais masquée quand le clavier est là */}
               {isMobileDevice() && !isPhysicalKeyboardOpen && (
-                <div className="w-full bg-black flex-shrink-0" style={{ height: '27px' }} />
+                <div className="w-full bg-black flex-shrink-0" style={{ height: '23px' }} />
               )}
             </div>
 
