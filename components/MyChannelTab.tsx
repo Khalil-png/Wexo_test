@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { renderTextWithEmojis } from '../utils/emoji';
-import { Search, Play, Heart, MessageCircle, Share2, Plus, ArrowLeft, Loader2, Sparkles, User as UserIcon, Info, AlertCircle, Upload, Trash2, Edit2, CircleCheck, Zap, Music, X, Copy } from 'lucide-react';
+import { Search, Play, Heart, MessageCircle, Share2, Plus, ArrowLeft, Loader2, Sparkles, User as UserIcon, Info, AlertCircle, Upload, Trash2, Edit2, CircleCheck, Zap, Music, X, Copy, Clock } from 'lucide-react';
 import { pb, uploadToPocketBase, createPBRecord } from '../services/pocketbaseService';
 // Firebase désactivé
 import { analyzeVideo, analyzePost } from '../services/geminiService';

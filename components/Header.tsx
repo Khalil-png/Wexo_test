@@ -17,8 +17,9 @@ interface Notification {
   sender_name?: string;
   sender_avatar?: string;
   content?: string;
-  status: 'unread' | 'read';
-  created_at: any;
+  read: boolean;
+  timestamp: string;
+  group_id?: string;
 }
 
 interface HeaderProps {
@@ -122,6 +123,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
           type: record.type as any,
           sender_id: record.sender_id,
           sender_name: record.title || 'Inconnu',
+          sender_avatar: record.sender_avatar || '',
           content: record.content || '',
           timestamp: new Date(record.created).toLocaleTimeString('fr-FR', { 
             hour: '2-digit', 
@@ -234,7 +236,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
     setNotifications([]);
   };
 
-  const unreadCount = notifications.filter(n => n.status === 'unread').length;
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   const copyId = (e: React.MouseEvent) => {
     e.stopPropagation();

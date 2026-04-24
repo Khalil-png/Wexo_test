@@ -58,6 +58,7 @@ export interface Post {
   type?: string;
   is_appropriate?: boolean;
   language?: string;
+  analysis_status?: 'pending' | 'pending_quota' | 'completed' | 'failed';
   transcription?: { start: number, end: number, text: string }[] | null;
 }
 
@@ -141,6 +142,7 @@ export interface Video {
   language?: string;
   transcription?: { start: number, end: number, text: string }[] | null;
   is_appropriate?: boolean;
+  analysis_status?: 'pending' | 'pending_quota' | 'completed' | 'failed';
   is_promoted?: boolean;
   target_user_ids?: string[];
   watch_stats?: any[];

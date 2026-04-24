@@ -1678,7 +1678,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
               {/* Zone Noire "Hors App" - Permanente mais masquée quand le clavier est là */}
               {isMobileDevice() && !isPhysicalKeyboardOpen && (
-                <div className="w-full bg-black flex-shrink-0" style={{ height: '30px' }} />
+                <div className="w-full bg-black flex-shrink-0" style={{ height: '27px' }} />
               )}
             </div>
 
