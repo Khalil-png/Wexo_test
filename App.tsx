@@ -79,19 +79,30 @@ const AppContent: React.FC = () => {
   }, []);
   
   useEffect(() => {
+    // S'assurer qu'il y a un point de retour dans l'historique au chargement
+    if (window.history.length <= 1) {
+      window.history.pushState({ firstState: true }, '');
+    }
+
     const handleBackButton = (e: any) => {
       // Si on n'est pas sur la home, on intercepte le bouton retour
       if (location.pathname !== '/') {
-        e.preventDefault();
+        // popstate handles browser history. backbutton is for hybrid apps.
         
-        // Si on est dans l'onglet message avec un chat ouvert (recherche de 'chat=')
-        // On laisse MessagesTab réagir au changement de l'URL via HashRouter
-        // Mais si on est sur la liste des messages sans chat actif, on retourne à la home
-        if (location.pathname === '/message' && !location.search.includes('chat=')) {
-          navigate('/');
-        } else {
-          // Comportement standard : on revient d'un cran (ex: chat -> liste)
-          navigate(-1);
+        if (location.pathname === '/message') {
+          // Si on est dans un chat (recherche de 'chat='), on retourne à la liste
+          if (location.search.includes('chat=')) {
+            e.preventDefault();
+            // On utilise navigate avec l'URL exacte car back() pourrait sortir de l'app si history est court
+            navigate('/message', { replace: true });
+          } else {
+            // Si on est sur la liste, on retourne à l'accueil
+            e.preventDefault();
+            navigate('/', { replace: true });
+          }
+        } else if (location.pathname !== '/') {
+          e.preventDefault();
+          navigate('/', { replace: true });
         }
       }
     };
@@ -103,7 +114,7 @@ const AppContent: React.FC = () => {
       window.removeEventListener('popstate', handleBackButton);
       document.removeEventListener('backbutton', handleBackButton);
     };
-  }, [location.pathname, navigate]);
+  }, [location.pathname, location.search, navigate]);
 
   const [notification, setNotification] = useState<{message: string, show: boolean, type?: 'error' | 'success'}>({
     message: '',

@@ -1627,14 +1627,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   <div className={`flex-1 h-full flex items-center gap-1 bg-white/5 rounded-full px-4 border border-white/10 shadow-inner overflow-hidden group/input relative`}>
                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
                     
-                    <div className="relative flex items-center">
+                    <div className="relative flex items-center flex-shrink-0">
                       <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className={`p-1.5 transition-colors ${showEmojiPicker ? 'text-amber-400' : 'text-slate-400 hover:text-amber-400'}`}>
                         <Smile size={24} />
                       </button>
                     </div>
 
                     {stagedFile && (
-                      <div className="flex items-center gap-2 bg-white/10 px-2 py-1 rounded-xl border border-white/10 animate-in zoom-in duration-200">
+                      <div className="flex items-center gap-2 bg-white/10 px-2 py-1 rounded-xl border border-white/10 animate-in zoom-in duration-200 flex-shrink-0">
                         <div className="w-8 h-8 rounded-lg overflow-hidden bg-black flex-shrink-0">
                           {stagedFile.type.startsWith('image/') ? (
                             <img src={stagedFile.url} className="w-full h-full object-cover" alt="" />
@@ -1652,7 +1652,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     )}
 
                     {!isMobileDevice() && (
-                      <button onClick={() => fileInputRef.current?.click()} className="p-1.5 text-slate-400 hover:text-white transition-colors"><Paperclip size={22} /></button>
+                      <button onClick={() => fileInputRef.current?.click()} className="p-1.5 text-slate-400 hover:text-white transition-colors flex-shrink-0"><Paperclip size={22} /></button>
                     )}
 
                     <input 
@@ -1661,25 +1661,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                       onChange={(e) => setMessageText(e.target.value)} 
                       onKeyDown={(e) => e.key === 'Enter' && sendMessage(messageText)} 
                       placeholder="Message" 
-                      className="flex-1 bg-transparent border-none text-base text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1 h-full pl-0.5" 
+                      className="flex-1 bg-transparent border-none text-base text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1 h-full pl-0.5 min-w-0" 
                     />
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1 flex-shrink-0">
                       {isMobileDevice() && (
-                        <div className="flex items-center gap-0.5">
+                        <div className="flex items-center gap-0 flex-shrink-0">
                           <button 
                             onClick={() => fileInputRef.current?.click()} 
-                            className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                            className="p-1 px-2 text-slate-400 hover:text-white transition-colors"
                           >
-                            <Paperclip size={22} />
+                            <Paperclip size={20} />
                           </button>
                           <button 
                             onClick={() => {
                               window.dispatchEvent(new CustomEvent('open-camera', { detail: { destination: 'message' } }));
                             }} 
-                            className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                            className="p-1 px-2 text-slate-400 hover:text-white transition-colors"
                           >
-                            <Camera size={22} />
+                            <Camera size={20} />
                           </button>
                         </div>
                       )}
