@@ -589,11 +589,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     const handleMediaCapture = (e: any) => {
       if (e.detail && e.detail.destination === 'message') {
         const { media, type, fileName } = e.detail;
-        sendMessage('', {
+        setStagedFile({
           url: media,
           name: fileName || (type === 'video' ? 'Capture vidéo.mp4' : 'Capture photo.png'),
           type: type === 'video' ? 'video/mp4' : 'image/png',
-          size: 0 // On n'a pas la taille exacte ici sans fetch, mais on peut l'estimer ou laisser 0
+          size: 0
         });
       }
     };
@@ -607,7 +607,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       setMobileView('chat');
     }
 
-    return () => window.removeEventListener('select-chat', handleSelectChat);
+    return () => {
+      window.removeEventListener('select-chat', handleSelectChat);
+      window.removeEventListener('media-captured', handleMediaCapture);
+    };
   }, []);
 
   useEffect(() => {
@@ -1606,8 +1609,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
-            {/* Pied de page Messagerie (Barre + Zone Noire) - Fixé au bas pour APK */}
-            <div className={`${isMobileDevice() ? 'fixed bottom-0 left-0 right-0 z-[110]' : 'relative'} flex flex-col bg-black`}>
+            {/* Pied de page Messagerie (Barre + Zone Noire) - Relatif dans le flex pour rester épinglé */}
+            <div className="relative flex flex-col bg-black flex-shrink-0 z-[110]">
               {/* Barre de Saisie */}
               <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1.5' : 'py-6'} bg-[#0f0f0f] border-t border-white/10`}>
                 {localUploadError && (
@@ -1629,6 +1632,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                       </button>
                     </div>
 
+                    {stagedFile && (
+                      <div className="flex items-center gap-2 bg-white/10 px-2 py-1 rounded-xl border border-white/10 animate-in zoom-in duration-200">
+                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-black flex-shrink-0">
+                          {stagedFile.type.startsWith('image/') ? (
+                            <img src={stagedFile.url} className="w-full h-full object-cover" alt="" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-blue-400">
+                              <Video size={16} />
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-bold text-white max-w-[80px] truncate">{stagedFile.name}</span>
+                        <button onClick={() => setStagedFile(null)} className="p-1 hover:bg-white/20 rounded-full text-slate-400 hover:text-white">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+
                     {!isMobileDevice() && (
                       <button onClick={() => fileInputRef.current?.click()} className="p-1.5 text-slate-400 hover:text-white transition-colors"><Paperclip size={22} /></button>
                     )}
@@ -1646,18 +1667,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                       {isMobileDevice() && (
                         <>
                           <button 
-                            onClick={() => {
-                              window.dispatchEvent(new CustomEvent('open-camera'));
-                            }} 
-                            className="p-1.5 text-slate-400 hover:text-white transition-colors"
-                          >
-                            <Camera size={22} />
-                          </button>
-                          <button 
                             onClick={() => fileInputRef.current?.click()} 
                             className="p-1.5 text-slate-400 hover:text-white transition-colors"
                           >
                             <Paperclip size={22} />
+                          </button>
+                          <button 
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent('open-camera', { detail: { destination: 'message' } }));
+                            }} 
+                            className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                          >
+                            <Camera size={22} />
                           </button>
                         </>
                       )}

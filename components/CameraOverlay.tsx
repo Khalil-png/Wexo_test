@@ -6,9 +6,10 @@ import { motion, AnimatePresence } from 'motion/react';
 interface CameraOverlayProps {
   onClose: () => void;
   onShare: (media: string, destination: 'story' | 'message' | 'short' | 'video', type: 'image' | 'video') => void;
+  initialDestination?: 'story' | 'message' | 'short' | 'video';
 }
 
-const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare }) => {
+const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initialDestination }) => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [capturedVideo, setCapturedVideo] = useState<string | null>(null);
@@ -120,6 +121,14 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare }) => {
       onShare(capturedImage, destination, 'image');
     } else if (capturedVideo) {
       onShare(capturedVideo, destination, 'video');
+    }
+  };
+
+  const handleQuickSend = () => {
+    if (initialDestination) {
+      handleShare(initialDestination);
+    } else {
+      setShowShareMenu(true);
     }
   };
 
@@ -258,12 +267,21 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare }) => {
           </div>
         ) : (
           <div className="w-full flex justify-between items-center max-w-sm">
-            <button 
-              onClick={() => setShowShareMenu(true)}
-              className="p-5 bg-white text-black rounded-2xl flex items-center justify-center shadow-xl active:scale-95 transition-all"
-            >
-              <Share2 size={24} />
-            </button>
+            {initialDestination === 'message' ? (
+              <button 
+                onClick={handleQuickSend}
+                className="px-8 py-4 bg-blue-600 text-white rounded-2xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all font-bold"
+              >
+                Envoyer
+              </button>
+            ) : (
+              <button 
+                onClick={() => setShowShareMenu(true)}
+                className="p-5 bg-white text-black rounded-2xl flex items-center justify-center shadow-xl active:scale-95 transition-all"
+              >
+                <Share2 size={24} />
+              </button>
+            )}
 
             <button 
               onClick={resetCapture}

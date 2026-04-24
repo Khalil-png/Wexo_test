@@ -557,14 +557,20 @@ const AppContent: React.FC = () => {
     });
   };
 
+  const [cameraDestination, setCameraDestination] = useState<'story' | 'message' | 'short' | 'video' | null>(null);
+
   useEffect(() => {
-    const handleOpenCamera = () => setShowCamera(true);
+    const handleOpenCamera = (e: any) => {
+      setCameraDestination(e?.detail?.destination || null);
+      setShowCamera(true);
+    };
     window.addEventListener('open-camera', handleOpenCamera);
     return () => window.removeEventListener('open-camera', handleOpenCamera);
   }, []);
 
   const handleCameraShare = async (media: string, destination: 'story' | 'message' | 'short' | 'video', type: 'image' | 'video') => {
     setShowCamera(false);
+    setCameraDestination(null);
     
     // Broadcast event for MessagesTab if destination is message
     if (destination === 'message') {
@@ -843,8 +849,12 @@ const AppContent: React.FC = () => {
       <AnimatePresence>
         {showCamera && (
           <CameraOverlay 
-            onClose={() => setShowCamera(false)}
+            onClose={() => {
+              setShowCamera(false);
+              setCameraDestination(null);
+            }}
             onShare={handleCameraShare}
+            initialDestination={cameraDestination || undefined}
           />
         )}
       </AnimatePresence>
