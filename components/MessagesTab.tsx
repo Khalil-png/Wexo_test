@@ -45,10 +45,10 @@ const MediaViewer: React.FC<{
 
   return (
     <div 
-      className="fixed inset-0 bg-black/95 backdrop-blur-md z-[300] flex flex-col animate-in fade-in duration-300"
+      className="fixed inset-0 bg-[#0f0f0f]/95 backdrop-blur-md z-[300] flex flex-col animate-in fade-in duration-300"
     >
       {/* Header */}
-      <div className="h-20 px-6 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent z-20 shrink-0">
+      <div className="h-20 px-6 flex items-center justify-between bg-gradient-to-b from-[#0f0f0f]/60 to-transparent z-20 shrink-0">
         <h3 className="text-lg font-bold text-white truncate max-w-[70%]">{media.name}</h3>
         <div className="flex items-center gap-4">
           <button 
@@ -307,8 +307,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     const chatId = searchParams.get('chat');
     if (chatId !== selectedId) {
       setSelectedId(chatId);
-      setMobileView(chatId ? 'chat' : 'list');
     }
+    // Toujours s'assurer que mobileView est synchronisé avec l'URL
+    setMobileView(chatId ? 'chat' : 'list');
   }, [searchParams, selectedId]);
 
   const handleSelectChat = (id: string | null) => {
@@ -1123,7 +1124,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           <div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} /><input type="text" placeholder="Rechercher..." className="w-full bg-white/5 border border-white/10 rounded-2xl py-2.5 pl-11 pr-4 text-xs text-white outline-none" /></div>
         </div>
 
-        <div className="flex-1 overflow-y-auto no-scrollbar">
+        <div className="flex-1 overflow-y-auto no-scrollbar relative">
           {/* Gemini List Item */}
           <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-4 p-4 cursor-pointer border-l-4 transition-all ${selectedId === 'gemini' ? 'bg-white/10 border-white' : 'border-transparent hover:bg-white/5'}`}>
             <div className="w-10 h-10 rounded-full overflow-hidden relative flex-shrink-0">
@@ -1157,6 +1158,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               </div>
             </div>
           ))}
+        </div>
+
+        {/* FABs sur Mobile - Visibles uniquement sur la liste */}
+        <div className="fixed bottom-24 right-5 lg:hidden flex flex-col gap-5 z-[100]">
+          {/* Bouton Gemini - 1.5x plus grand (environ 84px) */}
+          <button 
+            onClick={() => handleSelectChat('gemini')}
+            className="w-[84px] h-[84px] bg-[#272727] text-white rounded-full shadow-2xl flex items-center justify-center active:scale-95 transition-all border border-white/10"
+          >
+            <GeminiAvatarIcon size={42} />
+          </button>
+          {/* Bouton + - 2x plus grand (environ 112px) */}
+          <button 
+            onClick={() => setIsSearchingUsers(true)}
+            className="w-[112px] h-[112px] bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-95 transition-all border border-white/20"
+          >
+            <Plus size={56} />
+          </button>
         </div>
       </div>
 
@@ -1234,8 +1253,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       <div className={`flex-1 flex flex-col bg-[#0f0f0f] relative lg:flex h-full overflow-hidden ${mobileView === 'list' ? 'hidden' : 'flex'}`}>
         {selectedId ? (
           <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-[#0f0f0f]">
-            {/* Header du Chat - Fixé en haut du conteneur de message */}
-            <div className="p-4 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40">
+            {/* Header du Chat - Sticky pour rester visible en haut même avec clavier */}
+            <div className="sticky top-0 p-4 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40">
               <div className="flex items-center gap-3">
                 <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
                 <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
@@ -1323,7 +1342,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               )}
             </div>
             
-            <div ref={scrollRef} className={`flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8 ${isMobileDevice() ? 'pb-4' : ''}`}>
+            <div ref={scrollRef} className={`flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8 ${isMobileDevice() ? 'pb-1' : ''}`}>
               {messages.map((msg, idx) => {
                 if (msg.is_screenshot_alert) {
                   return (
@@ -1471,10 +1490,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                                       >
                                         <video 
                                           src={msg.file_url} 
-                                          className="w-full max-h-[400px] bg-black pointer-events-none" 
+                                          className="w-full max-h-[400px] bg-transparent pointer-events-none" 
                                           poster={`${msg.file_url}#t=0.1`}
                                         />
-                                        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover/vid:bg-black/40 transition-all">
+                                        <div className="absolute inset-0 flex items-center justify-center bg-[#0f0f0f]/20 group-hover/vid:bg-[#0f0f0f]/40 transition-all">
                                           <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white shadow-2xl group-hover/vid:scale-110 transition-transform">
                                             <Video size={24} fill="currentColor" />
                                           </div>
@@ -1519,7 +1538,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                                           className={`w-full py-2.5 text-xs font-bold transition-all border-t ${
                                             msg.is_own 
                                               ? 'bg-white/10 border-white/10 hover:bg-white/20' 
-                                              : 'bg-black/20 border-white/5 hover:bg-black/40'
+                                              : 'bg-[#0f0f0f]/20 border-white/5 hover:bg-[#0f0f0f]/40'
                                           }`}
                                         >
                                           Télécharger
@@ -1709,7 +1728,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
             {/* Delete Message Modal */}
             {messageToDelete && (
-              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+              <div className="fixed inset-0 bg-[#0f0f0f]/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
                 <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl w-full max-w-xs overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
                   <div className="p-6 text-center">
                     <h3 className="text-lg font-bold text-white mb-2">Supprimer le message ?</h3>
@@ -1742,7 +1761,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
             {/* Edit Message Modal */}
             {messageToEdit && (
-              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+              <div className="fixed inset-0 bg-[#0f0f0f]/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
                 <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
                   <div className="p-6">
                     <div className="flex items-center justify-between mb-4">
