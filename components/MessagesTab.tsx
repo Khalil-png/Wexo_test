@@ -297,42 +297,47 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       // Récupérer les profils et construire la liste
       const convs: any[] = [];
       
-      // On ajoute Gemini dans les conversations SI on a un message avec lui
-      // Mais on s'assure qu'il est unique
-      const hasGeminiMessages = participants.has('gemini');
-      if (hasGeminiMessages) {
-        const lastGeminiMsg = resultList.items.find(m => m.sender_id === 'gemini' || m.receiver_id === 'gemini');
-        convs.push({
-          id: 'gemini',
-          username: 'Gemini',
-          lastMessage: lastGeminiMsg?.text || 'Assistant IA',
-          lastMessageTime: lastGeminiMsg ? new Date(lastGeminiMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
-          unreadCount: 0
-        });
-        participants.delete('gemini');
-      }
+      // On ajoute Gemini dans les conversations SYSTEMATIQUEMENT
+      const lastGeminiMsg = resultList.items.find(m => m.sender_id === 'gemini' || m.receiver_id === 'gemini');
+      convs.push({
+        id: 'gemini',
+        username: 'Gemini',
+        display_name: 'Assistant IA',
+        lastMessage: lastGeminiMsg?.text || 'Assistant IA',
+        lastMessageTime: lastGeminiMsg ? new Date(lastGeminiMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
+        unreadCount: 0,
+        isAI: true
+      });
 
-      // Filtrer les participants pour éviter d'avoir un "Doublon" utilisateur nommé Gemini si possible
-      // Mais surtout, s'assurer que si un utilisateur a l'ID 'gemini', il est traité comme l'IA
+      participants.delete('gemini');
 
-      // Pour les autres participants (on filtre tout ce qui ressemble à Gemini pour éviter les doublons avec l'IA)
-      for (const pId of Array.from(participants)) {
+      // Optimisation: récupérer tous les profils en une seule fois pour éviter les boucles de requêtes
+      if (participants.size > 0) {
+        const participantArray = Array.from(participants);
+        const filterStr = participantArray.map(id => `id="${id}"`).join(' || ');
+        
         try {
-          const u = await pb.collection('users').getOne(pId);
-          if (u.id === 'gemini' || u.username.toLowerCase() === 'gemini' || (u.name || '').toLowerCase() === 'gemini') {
-            continue;
-          }
-          const lastMsg = resultList.items.find(m => m.sender_id === pId || m.receiver_id === pId);
-          convs.push({
-            id: u.id,
-            username: u.username,
-            avatar_url: u.avatar_url,
-            lastMessage: lastMsg?.text || '',
-            lastMessageTime: lastMsg ? new Date(lastMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
-            unreadCount: 0
+          const usersRes = await pb.collection('users').getList(1, participantArray.length, {
+            filter: filterStr
           });
+          
+          for (const u of usersRes.items) {
+             if (u.id === 'gemini' || u.username.toLowerCase() === 'gemini' || (u.name || '').toLowerCase() === 'gemini') {
+                continue;
+             }
+             const lastMsg = resultList.items.find(m => m.sender_id === u.id || m.receiver_id === u.id);
+             convs.push({
+               id: u.id,
+               username: u.username,
+               avatar_url: u.avatar_url,
+               display_name: u.name || u.username || u.username,
+               lastMessage: lastMsg?.text || '',
+               lastMessageTime: lastMsg ? new Date(lastMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
+               unreadCount: 0
+             });
+          }
         } catch (e) {
-          console.error("Erreur chargement profil conversation:", e);
+          console.error("Erreur batch chargement profils:", e);
         }
       }
 

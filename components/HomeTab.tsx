@@ -223,6 +223,52 @@ const HomeTab: React.FC<HomeTabProps> = ({ user, profile, onTabChange }) => {
         </div>
       </section>
 
+      {/* Gemini Shortcut - Google AI Studio UI */}
+      <section 
+        id="gemini-ai-shortcut"
+        onClick={() => onTabChange('message')}
+        className="relative overflow-hidden rounded-3xl p-8 bg-[#121212] border border-white/5 group cursor-pointer transition-all hover:scale-[1.01] active:scale-[0.99] hover:bg-[#1a1a1a]"
+      >
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-blue-500/10 blur-[100px] group-hover:bg-blue-500/20 transition-colors" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
+          <div className="relative">
+            <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-3xl flex items-center justify-center p-4 shadow-2xl shadow-blue-500/30 group-hover:rotate-3 transition-transform duration-500">
+               <img 
+                 src="https://static.vecteezy.com/system/resources/thumbnails/055/687/065/small_2x/gemini-google-icon-symbol-logo-free-png.png" 
+                 className="w-full h-full object-contain" 
+                 alt="Gemini Logo" 
+                 referrerPolicy="no-referrer"
+               />
+            </div>
+            <div className="absolute -bottom-2 -right-2 bg-white text-black p-1.5 rounded-xl shadow-lg animate-bounce">
+              <Sparkles size={12} fill="black" />
+            </div>
+          </div>
+
+          <div className="flex-1 text-center md:text-left">
+            <div className="flex items-center justify-center md:justify-start gap-3 mb-2">
+              <h3 className="text-2xl font-black text-white tracking-tight">
+                Google AI Studio
+              </h3>
+              <div className="px-2.5 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full">
+                <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Powered by Gemini</span>
+              </div>
+            </div>
+            <p className="text-slate-400 text-base font-medium max-w-md">
+              Discutez avec l'intelligence artificielle la plus puissante de Google directement dans Wexo.
+            </p>
+          </div>
+
+          <div className="flex flex-col items-center gap-3">
+             <button className="px-8 py-4 bg-white text-black text-xs font-black rounded-2xl hover:bg-blue-50 transition-colors shadow-2xl shadow-white/10 w-full md:w-auto">
+                DÉMARRER LA CONVERSATION
+             </button>
+             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Accès instantané • Gratuit</span>
+          </div>
+        </div>
+      </section>
+
       {/* Section Communauté / Nouveaux Membres */}
       <section className="space-y-6">
         <div className="flex items-center justify-between px-2">

@@ -46,60 +46,47 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const hasCountedSecondView = useRef(false);
   const maxViewsReached = useRef(false);
 
+  // Cache local pour éviter les requêtes répétées au serveur dans la même session
+  const seenVideos = useRef<Set<string>>(new Set());
+
   const incrementView = async () => {
-    if (!videoId || !userId) return;
+    if (!videoId || !userId || seenVideos.current.has(videoId)) return;
     
+    seenVideos.current.add(videoId); // Marquer comme vu localement IMMÉDIATEMENT
+
     try {
-      // Vérifier si l'utilisateur a déjà vu cette vidéo
-      let viewRecord;
-      try {
-        viewRecord = await pb.collection('views').getFirstListItem(`user_id="${userId}" && video_id="${videoId}"`);
-      } catch (e) {
-        // Record non trouvé, on le créera plus bas
-      }
-
-      if (!viewRecord) {
-        // Première vue
-        await pb.collection('views').create({
-          user_id: userId,
-          video_id: videoId,
-          count: 1
+      // Pour alléger le serveur, on fait une seule requête "optimiste" ou groupée si possible
+      // Ici on garde PocketBase mais on réduit le nombre de READS
+      
+      // On incrémente directement via un service spécialisé ou une méthode plus directe
+      // Dans PocketBase, on peut utiliser des hooks ou simplement limiter les étapes.
+      
+      const userIdVal = userId;
+      // On ne vérifie plus si viewRecord existe si on a déjà l'info en local cache (seenVideos)
+      // On lance la création du record de vue en tâche de fond (non bloquant)
+      pb.collection('views').create({
+        user_id: userIdVal,
+        video_id: videoId,
+        count: 1
+      }).catch(() => {
+        // Si ça échoue (déjà existant par exemple), ce n'est pas grave
+      });
+      
+      // Update global count
+      const video = await pb.collection('videos').getOne(videoId).catch(() => null);
+      if (video) {
+        await pb.collection('videos').update(videoId, {
+          "views+": 1 // Utilise l'opérateur d'incrémentation native de PocketBase si supporté
+        }).catch(async () => {
+           // Fallback standard si l'opérateur + n'est pas supporté
+           await pb.collection('videos').update(videoId, { views: (video.views || 0) + 1 });
         });
-        
-        // Incrémenter les vues globales
-        const video = await pb.collection('videos').getOne(videoId).catch(() => null);
-        if (video) {
-          await pb.collection('videos').update(videoId, {
-            views: (video.views || 0) + 1
-          });
-        } else {
-          // Si pas dans vidéos, peut-être un short
-          const short = await pb.collection('shorts').getOne(videoId).catch(() => null);
-          if (short) {
-             await pb.collection('shorts').update(videoId, {
-               views: (short.views || 0) + 1
-             });
-          }
-        }
-      } else if (viewRecord.count < 2) {
-        // Deuxième vue
-        await pb.collection('views').update(viewRecord.id, {
-          count: 2
-        });
-
-        // Incrémenter les vues globales une deuxième fois
-        const video = await pb.collection('videos').getOne(videoId).catch(() => null);
-        if (video) {
-          await pb.collection('videos').update(videoId, {
-            views: (video.views || 0) + 1
-          });
-        } else {
-          const short = await pb.collection('shorts').getOne(videoId).catch(() => null);
-          if (short) {
-             await pb.collection('shorts').update(videoId, {
-               views: (short.views || 0) + 1
-             });
-          }
+      } else {
+        const short = await pb.collection('shorts').getOne(videoId).catch(() => null);
+        if (short) {
+           await pb.collection('shorts').update(videoId, { "views+": 1 }).catch(async () => {
+             await pb.collection('shorts').update(videoId, { views: (short.views || 0) + 1 });
+           });
         }
       }
     } catch (err) {

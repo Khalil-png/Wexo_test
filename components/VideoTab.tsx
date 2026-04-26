@@ -281,23 +281,27 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, onTabChange, user,
     // Migration NAS
   };
 
+  // Cache local pour les vues
+  const viewedVideos = useRef<Set<string>>(new Set());
+
   const incrementViews = async (videoId: string) => {
+    if (viewedVideos.current.has(videoId)) return;
+    viewedVideos.current.add(videoId);
+
     try {
-      // On cherche d'abord dans 'videos'
-      const record = await pb.collection('videos').getOne(videoId).catch(() => null);
-      if (record) {
-        await pb.collection('videos').update(videoId, {
-          views: (Number(record.views) || 0) + 1
-        });
-      } else {
-        // Sinon on cherche dans 'shorts'
-        const shortRecord = await pb.collection('shorts').getOne(videoId).catch(() => null);
-        if (shortRecord) {
-          await pb.collection('shorts').update(videoId, {
-            views: (Number(shortRecord.views) || 0) + 1
-          });
-        }
-      }
+      // On tente d'incrémenter directement via l'opérateur PocketBase
+      const collection = videos.find(v => v.id === videoId)?.is_short ? 'shorts' : 'videos';
+      
+      await pb.collection(collection).update(videoId, {
+        "views+": 1
+      }).catch(async (e) => {
+         // Fallback si l'opérateur + n'est pas dispo (ancienne version PB)
+         console.warn("Détail increment views fallback", e);
+         const record = await pb.collection(collection).getOne(videoId);
+         await pb.collection(collection).update(videoId, {
+           views: (Number(record.views) || 0) + 1
+         });
+      });
     } catch (err) {
       console.warn('Error incrementing views:', err);
     }

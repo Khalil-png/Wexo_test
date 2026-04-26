@@ -217,21 +217,21 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
 
   const incrementView = async () => {
     if (!user?.uid || !short.id) return;
+    const cacheKey = `view_${short.id}`;
+    if (sessionStorage.getItem(cacheKey)) return;
+    
+    sessionStorage.setItem(cacheKey, 'true');
+
     try {
       const userId = user.id || user.uid;
-      let viewRecord;
-      try {
-        viewRecord = await pb.collection('views').getFirstListItem(`user_id="${userId}" && video_id="${short.id}"`);
-      } catch (e) {}
-
-      if (!viewRecord) {
-        await pb.collection('views').create({ user_id: userId, video_id: short.id, count: 1 });
-        const res = await pb.collection('shorts').getOne(short.id).catch(() => null);
-        if (res) await pb.collection('shorts').update(short.id, { views: (res.views || 0) + 1 });
-      } else if (viewRecord.count < 2) {
-        await pb.collection('views').update(viewRecord.id, { count: 2 });
-        const res = await pb.collection('shorts').getOne(short.id).catch(() => null);
-        if (res) await pb.collection('shorts').update(short.id, { views: (res.views || 0) + 1 });
+      // Création optimiste
+      pb.collection('views').create({ user_id: userId, video_id: short.id, count: 1 }).catch(() => {});
+      
+      const res = await pb.collection('shorts').getOne(short.id).catch(() => null);
+      if (res) {
+        await pb.collection('shorts').update(short.id, { "views+": 1 }).catch(async () => {
+          await pb.collection('shorts').update(short.id, { views: (res.views || 0) + 1 });
+        });
       }
     } catch (err) {
       console.error("Erreur incrementView shorts:", err);
@@ -263,15 +263,38 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
   const checkInteractions = async () => {
     if (!user?.uid || !short.id) return;
     const userId = user.id || user.uid;
+    
+    // Cache local pour les interactions pour éviter de matraquer le serveur au scroll
+    const cacheKey = `interactions_${short.id}_${userId}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      const data = JSON.parse(cached);
+      setLiked(data.liked);
+      setIsSubscribed(data.isSubscribed);
+      setSubscriberCount(data.subscriberCount);
+      return;
+    }
+
     try {
       const likeRes = await pb.collection('likes').getFirstListItem(`user_id="${userId}" && video_id="${short.id}"`).catch(() => null);
-      setLiked(!!likeRes);
+      const isLiked = !!likeRes;
+      setLiked(isLiked);
       
       const subRes = await pb.collection('subscriptions').getFirstListItem(`follower_id="${userId}" && following_id="${short.creator_id}"`).catch(() => null);
-      setIsSubscribed(!!subRes);
+      const isSub = !!subRes;
+      setIsSubscribed(isSub);
       
       const creator = await pb.collection('users').getOne(short.creator_id).catch(() => null);
-      if (creator) setSubscriberCount(creator.subscribers || 0);
+      const subCount = creator ? (creator.subscribers || 0) : 0;
+      setSubscriberCount(subCount);
+
+      // Cacher pour 5 minutes
+      sessionStorage.setItem(cacheKey, JSON.stringify({
+        liked: isLiked,
+        isSubscribed: isSub,
+        subscriberCount: subCount,
+        timestamp: Date.now()
+      }));
     } catch (err) {
       console.error("Error checking interactions:", err);
     }
@@ -502,6 +525,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
             src={short.url}
             loop
             playsInline
+            preload={isActive ? "auto" : "metadata"}
             onTimeUpdate={handleTimeUpdate}
             className={`h-full w-full ${isMobileDevice() ? 'object-cover' : 'object-contain'} cursor-pointer bg-black`}
             onClick={togglePlay}
