@@ -83,23 +83,44 @@ const AppContent: React.FC = () => {
     // Handler pour le bouton retour matériel (Android/Capacitor)
     const setupBackButton = async () => {
       const listener = await CapApp.addListener('backButton', ({ canGoBack }) => {
-        // Obtenir le chemin actuel via location
+        // 1. Envoyer un événement global pour que les composants (Chat, Recherche) 
+        // puissent intercepter le retour s'ils ont un menu ouvert.
+        const backEvent = new CustomEvent('app-back-button', { cancelable: true });
+        const cancelled = !window.dispatchEvent(backEvent);
+        
+        if (cancelled) {
+          // Si un composant a appelé preventDefault(), on ne fait rien de plus ici
+          return;
+        }
+
+        // 2. Comportement par défaut si rien n'intercepte
         const path = location.pathname;
         const search = location.search;
 
+        if (showCamera) {
+          setShowCamera(false);
+          return;
+        }
+
+        if (incomingCall) {
+          setIncomingCall(null);
+          return;
+        }
+
         if (path === '/' || path === '/accueil') {
-          // Sur l'accueil : on laisse le système quitter l'app
-          CapApp.exitApp();
+          // Sur l'accueil : on laisse le système quitter l'app (on ne peut plus revenir en arrière)
+          if (!canGoBack) {
+            CapApp.exitApp();
+          } else {
+            window.history.back();
+          }
         } else if (path === '/message') {
           if (search.includes('chat=')) {
-            // Dans une discussion : on revient à la liste des messages
             navigate('/message', { replace: true });
           } else {
-            // Sur la liste des messages : on revient à l'accueil
             navigate('/', { replace: true });
           }
         } else {
-          // N'importe quel autre onglet (Shorts, Workspace, etc) -> accueil
           navigate('/', { replace: true });
         }
       });
@@ -109,12 +130,26 @@ const AppContent: React.FC = () => {
 
     const backButtonPromise = setupBackButton();
 
+    // Listener de changement d'état (Premier plan / Arrière plan)
+    const setupAppState = async () => {
+      return await CapApp.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) {
+          console.log('App revenue au premier plan, rafraîchissement des connexions...');
+          // On force une reconnexion PocketBase si besoin
+          testPocketBaseConnection();
+          // On déclenche un check des notifications en attente
+          window.dispatchEvent(new CustomEvent('app-resume'));
+        } else {
+          console.log('App en arrière-plan...');
+        }
+      });
+    };
+    
+    const appStatePromise = setupAppState();
+
     // Fallback pour le bouton retour du navigateur (popstate)
     const handlePopState = (e: any) => {
-      // Si on est déjà sur l'accueil, on laisse faire
       if (location.pathname === '/') return;
-
-      // On intercepte et redirige intelligemment
       if (location.pathname === '/message') {
         if (location.search.includes('chat=')) {
           navigate('/message', { replace: true });
@@ -131,8 +166,9 @@ const AppContent: React.FC = () => {
     return () => {
       window.removeEventListener('popstate', handlePopState);
       backButtonPromise.then(l => l.remove());
+      appStatePromise.then(l => l.remove());
     };
-  }, [location.pathname, location.search, navigate]);
+  }, [location.pathname, location.search, navigate, showCamera, incomingCall]);
 
   const [notification, setNotification] = useState<{message: string, show: boolean, type?: 'error' | 'success'}>({
     message: '',

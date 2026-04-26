@@ -40,31 +40,26 @@ const CallsTab: React.FC<CallsTabProps> = ({
   const [activeCall, setActiveCall] = useState<any>(null);
   const [callTimer, setCallTimer] = useState(0);
 
-  // Sync with props if provided
+  // Gestion du bouton retour
   useEffect(() => {
-    if (propActiveCall !== undefined) setActiveCall(propActiveCall);
-  }, [propActiveCall]);
+    const handleBackButton = (e: Event) => {
+      if (activeCall) {
+        // En appel, on demande confirmation ou on ne fait rien pour éviter de couper par erreur
+        // Ici on choisit de ne rien faire pour protéger l'appel
+        e.preventDefault();
+      } else if (view === 'new-call') {
+        setView('history');
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('app-back-button', handleBackButton);
+    return () => window.removeEventListener('app-back-button', handleBackButton);
+  }, [activeCall, view]);
 
+  // Synchronisation au réveil
   useEffect(() => {
-    if (propCallTimer !== undefined) setCallTimer(propCallTimer);
-  }, [propCallTimer]);
-
-  useEffect(() => {
-    let interval: any;
-    if (activeCall && propCallTimer === undefined) {
-      interval = setInterval(() => {
-        setCallTimer(prev => prev + 1);
-      }, 1000);
-    } else {
-      setCallTimer(0);
-    }
-    return () => clearInterval(interval);
-  }, [activeCall]);
-
-  useEffect(() => {
-    if (!user?.uid) return;
-
     const fetchCalls = async () => {
+      if (!user?.uid) return;
       setLoading(true);
       try {
         const userId = user.uid || user.id;
@@ -102,13 +97,20 @@ const CallsTab: React.FC<CallsTabProps> = ({
 
     fetchCalls();
 
-    // Realtime subscription for history updates
+    const handleResume = () => {
+      console.log('CallsTab resume detected, refreshing history...');
+      fetchCalls();
+    };
+    window.addEventListener('app-resume', handleResume);
+
+    // Realtime subscription
     pb.collection('calls').subscribe('*', () => {
       fetchCalls();
     });
 
     return () => {
       pb.collection('calls').unsubscribe('*');
+      window.removeEventListener('app-resume', handleResume);
     };
   }, [user?.uid]);
 
@@ -134,11 +136,7 @@ const CallsTab: React.FC<CallsTabProps> = ({
   const startCall = async (receiver: any) => {
     if (!user?.uid) return;
     
-    if (isMobileDevice()) {
-      setError("Les appels ne sont pas disponibles sur la version web mobile.");
-      return;
-    }
-
+    // On autorise les appels sur mobile maintenant
     setIsCalling(true);
     setError(null);
     try {
