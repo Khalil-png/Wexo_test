@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, LogOut, X, Circle, Menu, UserPlus, Check, Trash2, MessageCircle, User, Camera, Home } from 'lucide-react';
+import { Search, Bell, LogOut, X, Circle, Menu, UserPlus, Check, Trash2, MessageCircle, User, Camera, Home, Heart } from 'lucide-react';
 import { DEFAULT_AVATAR } from '../constants';
 import Username from './Username';
 import { Copy } from 'lucide-react';
@@ -12,7 +12,7 @@ import { pb } from '../services/pocketbaseService';
 
 interface Notification {
   id: string;
-  type: 'friend_request' | 'friend_accepted' | 'message';
+  type: 'friend_request' | 'friend_accepted' | 'message' | 'like';
   sender_id: string;
   sender_name?: string;
   sender_avatar?: string;
@@ -233,7 +233,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
           await pb.collection('notifications').create({
             user_id: senderId,
             sender_id: user.uid,
-            type: 'friend_accept',
+            type: 'friend_accepted',
             title: 'Demande acceptée',
             content: `${profile?.display_name || user.displayName || 'Un utilisateur'} a accepté votre demande d'ami.`,
             status: 'pending',
@@ -271,7 +271,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
       }
     }
 
-    if (notif.type === 'message' || notif.type === 'friend_request' || notif.type === 'friend_accept') {
+    if (notif.type === 'message' || notif.type === 'friend_request' || notif.type === 'friend_accepted') {
       onTabChange('message');
       if (notif.type === 'message') {
         const url = new URL(window.location.href);

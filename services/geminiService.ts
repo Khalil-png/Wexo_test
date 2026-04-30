@@ -42,10 +42,10 @@ export const generatePostIdea = async (topic: string) => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-1.5-flash',
       contents: `Génère une idée de post engageante pour un réseau social sur le thème suivant : ${topic}. Réponds en français.`,
     });
-    return response.text;
+    return response.candidates?.[0]?.content?.parts?.[0]?.text || "";
   } catch (error: any) {
     if (error?.message?.includes('429') || error?.status === 429) {
       throw new Error("QUOTA_EXCEEDED");
@@ -58,10 +58,10 @@ export const summarizeWorkspaceNote = async (content: string) => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-1.5-flash',
       contents: `Résume ces notes de travail de manière concise et professionnelle : ${content}`,
     });
-    return response.text;
+    return response.candidates?.[0]?.content?.parts?.[0]?.text || "";
   } catch (error: any) {
     if (error?.message?.includes('429') || error?.status === 429) {
       throw new Error("QUOTA_EXCEEDED");
@@ -271,7 +271,7 @@ export const analyzePost = async (content: string): Promise<{ is_appropriate: bo
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-1.5-flash',
       contents: `Analyse ce post et dis-moi s'il est approprié (pas de haine, violence, etc.), quelle est sa langue, son type (ex: jeux vidéos, documentaire, vlog) et le nom spécifique associé (ex: The Legend of Zelda, Les lions l'hiver, etc.). Réponds au format JSON: {"is_appropriate": boolean, "language": string, "type": string, "name_of_type": string | null}. Contenu: ${content}`,
       config: {
         responseMimeType: "application/json",
@@ -287,7 +287,8 @@ export const analyzePost = async (content: string): Promise<{ is_appropriate: bo
         }
       }
     });
-    return JSON.parse(response.text);
+    const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    return JSON.parse(text);
   } catch (error: any) {
     console.error("Post Analysis Error:", error);
     if (error.message?.includes('429') || error?.status === 429 || error?.code === 429) {
@@ -310,7 +311,7 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
     try {
         const ai = getAI();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash-exp',
+            model: 'gemini-1.5-flash',
             contents: history,
             config: {
                 systemInstruction: "Tu es Gemini, l'IA intégrée à Wexo. Ton créateur est Khalil BenRomdhanne. Ton style : simple, gentil et poli. Explique les choses simplement sans faire de longs discours. Sois un peu fun mais reste naturel, pas de 'cringe'. Encourage l'utilisateur dans ce qu'il fait. Utilise quelques emojis légers de temps en temps 🙂. Réponds toujours en français. Si l'utilisateur te demande de générer une image ou un dessin, utilise l'outil 'generate_image'. S'il te demande de générer une vidéo ou une animation, utilise l'outil 'generate_video'. Si l'utilisateur t'envoie une image ou une vidéo, analyse-la et réponds à ses questions à son sujet.",
@@ -349,9 +350,13 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
             }
         });
 
-        const functionCalls = response.functionCalls;
-        if (functionCalls && functionCalls.length > 0) {
-          const call = functionCalls[0];
+        const candidates = response.candidates || [];
+        const content = candidates[0]?.content;
+        const parts = content?.parts || [];
+        const text = parts.find(p => p.text)?.text || "";
+        const call = parts.find(p => p.functionCall)?.functionCall;
+
+        if (call) {
           if (call.name === 'generate_image') {
             return { 
               text: "Bien sûr ! Je m'occupe de générer cette image pour toi... 🙂", 
@@ -366,7 +371,7 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
           }
         }
 
-        return { text: response.text || "" };
+        return { text };
     } catch (error: any) {
         if (error?.message?.includes('429') || error?.status === 429 || error?.code === 429) {
             return { text: "Une erreur est survenu, réessayer plus tard. code erreur : quota dépassé" };

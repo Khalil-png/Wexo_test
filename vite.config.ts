@@ -26,8 +26,8 @@ export default defineConfig(({ mode }) => {
       define: {
         // Safely define process.env to prevent crashes in libraries that expect it
         'process.env': {},
-        'process.env.GEMINI_KEY': JSON.stringify(env.GEMINI_KEY || env.VITE_GEMINI_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_KEY || env.VITE_GEMINI_KEY)
+        'process.env.GEMINI_KEY': JSON.stringify(env.GEMINI_API_KEY || env.GEMINI_KEY || env.VITE_GEMINI_KEY),
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.GEMINI_KEY || env.VITE_GEMINI_KEY)
       },
       resolve: {
         alias: {
