@@ -2,9 +2,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 const getApiKey = () => {
-  // Use VITE_GEMINI_KEY or GEMINI_API_KEY from Vite's built-in env handling
+  // Use process.env.GEMINI_API_KEY as per instructions
   // @ts-ignore
-  return import.meta.env.VITE_GEMINI_KEY || 
+  return (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || 
+         // @ts-ignore
+         import.meta.env.VITE_GEMINI_KEY || 
          // @ts-ignore
          import.meta.env.VITE_GEMINI_API_KEY || 
          // Fallback to the hardcoded test key if absolutely necessary
@@ -40,7 +42,7 @@ export const generatePostIdea = async (topic: string) => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash-exp',
       contents: `Génère une idée de post engageante pour un réseau social sur le thème suivant : ${topic}. Réponds en français.`,
     });
     return response.text;
@@ -56,7 +58,7 @@ export const summarizeWorkspaceNote = async (content: string) => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash-exp',
       contents: `Résume ces notes de travail de manière concise et professionnelle : ${content}`,
     });
     return response.text;
@@ -185,7 +187,7 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
     while (attempts < maxAttempts) {
       try {
         const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
+          model: 'gemini-2.0-flash-exp',
           contents: [
             {
               inlineData: {
@@ -269,7 +271,7 @@ export const analyzePost = async (content: string): Promise<{ is_appropriate: bo
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash-exp',
       contents: `Analyse ce post et dis-moi s'il est approprié (pas de haine, violence, etc.), quelle est sa langue, son type (ex: jeux vidéos, documentaire, vlog) et le nom spécifique associé (ex: The Legend of Zelda, Les lions l'hiver, etc.). Réponds au format JSON: {"is_appropriate": boolean, "language": string, "type": string, "name_of_type": string | null}. Contenu: ${content}`,
       config: {
         responseMimeType: "application/json",
@@ -308,7 +310,7 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
     try {
         const ai = getAI();
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.0-flash-exp',
             contents: history,
             config: {
                 systemInstruction: "Tu es Gemini, l'IA intégrée à Wexo. Ton créateur est Khalil BenRomdhanne. Ton style : simple, gentil et poli. Explique les choses simplement sans faire de longs discours. Sois un peu fun mais reste naturel, pas de 'cringe'. Encourage l'utilisateur dans ce qu'il fait. Utilise quelques emojis légers de temps en temps 🙂. Réponds toujours en français. Si l'utilisateur te demande de générer une image ou un dessin, utilise l'outil 'generate_image'. S'il te demande de générer une vidéo ou une animation, utilise l'outil 'generate_video'. Si l'utilisateur t'envoie une image ou une vidéo, analyse-la et réponds à ses questions à son sujet.",

@@ -907,25 +907,6 @@ const AppContent: React.FC = () => {
 
       {authModal && <AuthModal type={authModal} onClose={() => setAuthModal(null)} onTriggerVerifyWarning={showVerifyWarning} />}
       {showLogoutModal && <LogoutModal onClose={() => setShowLogoutModal(false)} />}
-      {/* Global AI Floating Action Button (FAB) pour MOBILE */}
-      {isMobileDevice() && !isKeyboardActive && activeTab !== 'message' && activeTab !== 'appel' && (
-        <button
-          onClick={() => handleTabChange('message')}
-          className="fixed bottom-[108px] right-6 w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-blue-600/40 border border-white/20 z-[150] active:scale-90 transition-transform animate-in fade-in zoom-in slide-in-from-bottom-10 duration-700 hover:bg-blue-500"
-          aria-label="Google AI Studio"
-        >
-          <img 
-            src="https://static.vecteezy.com/system/resources/thumbnails/055/687/065/small_2x/gemini-google-icon-symbol-logo-free-png.png" 
-            className="w-8 h-8 object-contain" 
-            alt="Gemini Icon" 
-            referrerPolicy="no-referrer"
-          />
-          <div className="absolute -top-1 -right-1 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm">
-            <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" />
-          </div>
-        </button>
-      )}
-
       {isMobileDevice() && !isKeyboardActive && !(activeTab === 'message' && location.search.includes('chat=')) && <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />}
       
       <AnimatePresence>
