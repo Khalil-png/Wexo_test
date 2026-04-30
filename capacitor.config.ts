@@ -5,7 +5,9 @@ const config: CapacitorConfig = {
   appName: 'Wexo',
   webDir: 'dist',
   server: {
-    androidScheme: 'https'
+    androidScheme: 'https',
+    url: 'https://wexo-test.vercel.app',
+    cleartext: true
   },
   plugins: {
     BackgroundRunner: {

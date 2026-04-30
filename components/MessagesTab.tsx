@@ -1160,43 +1160,31 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       
       {/* Sidebar Discussion */}
       <div className={`w-full lg:w-[380px] border-r border-white/10 flex-col bg-[#0f0f0f] lg:flex h-full overflow-hidden ${mobileView === 'chat' ? 'hidden' : 'flex'}`}>
-        <div className="p-6 space-y-5 flex-shrink-0">
+        <div className="p-6 pb-2 space-y-4 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-black text-white tracking-tighter">Messages</h2>
-            <div className="flex items-center gap-2 relative">
-              <button 
-                onClick={() => handleSelectChat('gemini')} 
-                className="w-8 h-8 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all overflow-hidden"
-                title="Assistant IA"
-              >
-                <GeminiAvatarIcon size={16} />
-              </button>
-              <button onClick={() => setShowPlusMenu(!showPlusMenu)} className="w-8 h-8 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all flex items-center justify-center"><Plus size={20} /></button>
-              
-              {showPlusMenu && (
-                <div ref={plusMenuRef} className="absolute top-10 right-0 w-64 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl p-2 z-[100] animate-in zoom-in-95 duration-200">
-                  <button onClick={() => {setIsSearchingUsers(true); setShowPlusMenu(false); handleSearchUsers('', 'tout');}} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-2xl transition-all group text-left">
-                    <div className="w-9 h-9 bg-white/10 text-white rounded-2xl flex items-center justify-center group-hover:bg-white group-hover:text-black transition-all"><MessageSquarePlus size={18} /></div>
-                    <span className="block text-[11px] font-black uppercase text-white tracking-widest">Démarrer une discussion</span>
-                  </button>
-                </div>
-              )}
-            </div>
+            <h2 className="text-3xl font-bold text-white tracking-tight">Messages</h2>
           </div>
-          <div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} /><input type="text" placeholder="Rechercher..." className="w-full bg-white/5 border border-white/10 rounded-2xl py-2.5 pl-11 pr-4 text-xs text-white outline-none" /></div>
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+            <input 
+              type="text" 
+              placeholder="Rechercher..." 
+              className="w-full bg-[#1a1a1a] border-none rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white outline-none placeholder:text-slate-500" 
+            />
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto no-scrollbar relative">
+        <div className="flex-1 overflow-y-auto no-scrollbar relative pt-4">
           {/* Gemini List Item */}
-          <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-4 p-4 cursor-pointer border-l-4 transition-all ${selectedId === 'gemini' ? 'bg-white/10 border-white' : 'border-transparent hover:bg-white/5'}`}>
-            <div className="w-10 h-10 rounded-full overflow-hidden relative flex-shrink-0">
-              <GeminiAvatarIcon size={20} />
+          <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-4 px-6 py-4 cursor-pointer transition-all ${selectedId === 'gemini' ? 'bg-white/5' : 'hover:bg-white/5'}`}>
+            <div className="w-12 h-12 rounded-full overflow-hidden relative flex-shrink-0 flex items-center justify-center">
+              <GeminiAvatarIcon size={28} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-center mb-0.5">
-                <h4 className="text-sm font-bold text-white truncate">Gemini</h4>
+                <h4 className="text-[17px] font-bold text-white truncate">Gemini</h4>
               </div>
-              <p className="text-xs truncate font-medium text-slate-400">Assistant IA</p>
+              <p className="text-[13px] truncate font-medium text-slate-500">Assistant IA</p>
             </div>
           </div>
 
@@ -1223,20 +1211,23 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         </div>
 
         {/* FABs sur Mobile - Visibles uniquement sur la liste */}
-        <div className="fixed bottom-24 right-5 lg:hidden flex flex-col gap-5 z-[100]">
-          {/* Bouton Gemini - 1.5x plus grand (environ 84px) */}
+        <div className="fixed bottom-28 right-6 lg:hidden flex flex-col gap-4 z-[100] items-center">
+          {/* Bouton Gemini - Style sombre avec bordure - Taille standard FAB */}
           <button 
             onClick={() => handleSelectChat('gemini')}
-            className="w-[84px] h-[84px] bg-[#272727] text-white rounded-full shadow-2xl flex items-center justify-center active:scale-95 transition-all border border-white/10"
+            className="w-14 h-14 bg-[#1a1a1a] text-white rounded-full shadow-2xl flex items-center justify-center active:scale-95 transition-all border border-white/10"
           >
-            <GeminiAvatarIcon size={42} />
+            <div className="w-8 h-8">
+              <GeminiAvatarIcon size={32} />
+            </div>
           </button>
-          {/* Bouton + - 2x plus grand (environ 112px) */}
+          
+          {/* Bouton + - Gros bouton bleu vif "Wexo" */}
           <button 
             onClick={() => setIsSearchingUsers(true)}
-            className="w-[112px] h-[112px] bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-95 transition-all border border-white/20"
+            className="w-16 h-16 bg-[#0066ff] text-white rounded-2xl shadow-[0_8px_30px_rgb(0,102,255,0.3)] flex items-center justify-center active:scale-90 transition-all border border-white/10"
           >
-            <Plus size={56} />
+            <Plus size={36} strokeWidth={3} />
           </button>
         </div>
       </div>
