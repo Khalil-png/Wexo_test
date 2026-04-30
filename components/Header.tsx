@@ -129,7 +129,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
             hour: '2-digit', 
             minute: '2-digit' 
           }),
-          read: record.status === 'delivered' || record.read === true,
+          read: record.read === true,
           group_id: record.group_id
         }));
         
@@ -146,7 +146,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
     // S'abonner aux notifications en temps réel pour mettre à jour la liste
     try {
       pb.collection('notifications').subscribe('*', (e) => {
-        if (e.action === 'create' && e.record.user_id === user.uid) {
+        if (e.record.user_id === user.uid) {
            fetchNotifications();
         }
       });
@@ -215,19 +215,73 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
   };
 
   const handleFriendAction = async (notifId: string, senderId: string, action: 'accept' | 'refuse') => {
-    // Désactivé (Migration NAS requise pour les amitiés)
-    console.log("Friend action non supportée sans Firebase pour le moment");
+    if (!user?.uid) return;
+    
+    try {
+      if (action === 'accept') {
+        // Find the friendship record
+        const result = await pb.collection('friendships').getList(1, 1, {
+          filter: `requester_id="${senderId}" && receiver_id="${user.uid}" && status="pending"`
+        });
+
+        if (result.items.length > 0) {
+          await pb.collection('friendships').update(result.items[0].id, {
+            status: 'accepted'
+          });
+
+          // Notify the requester
+          await pb.collection('notifications').create({
+            user_id: senderId,
+            sender_id: user.uid,
+            type: 'friend_accept',
+            title: 'Demande acceptée',
+            content: `${profile?.display_name || user.displayName || 'Un utilisateur'} a accepté votre demande d'ami.`,
+            status: 'pending',
+            read: false
+          });
+        }
+      } else {
+        // Refuse logic
+        const result = await pb.collection('friendships').getList(1, 1, {
+          filter: `requester_id="${senderId}" && receiver_id="${user.uid}" && status="pending"`
+        });
+        if (result.items.length > 0) {
+          await pb.collection('friendships').delete(result.items[0].id);
+        }
+      }
+
+      // Mark the notification as read and delivered
+      await pb.collection('notifications').update(notifId, { read: true, status: 'delivered' });
+      setNotifications(prev => prev.filter(n => n.id !== notifId));
+    } catch (err) {
+      console.error("Erreur action ami:", err);
+    }
   };
 
   const handleNotificationClick = async (notif: Notification) => {
     if (!user?.uid) return;
 
-    if (notif.type === 'message') {
+    // Mark as read in PocketBase
+    if (!notif.read) {
+      try {
+        await pb.collection('notifications').update(notif.id, { read: true });
+        setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
+      } catch (err) {
+        console.warn("Erreur marquage notification lue:", err);
+      }
+    }
+
+    if (notif.type === 'message' || notif.type === 'friend_request' || notif.type === 'friend_accept') {
       onTabChange('message');
-      const url = new URL(window.location.href);
-      url.searchParams.set('chat', notif.sender_id);
-      window.history.pushState({}, '', url);
-      window.dispatchEvent(new CustomEvent('select-chat', { detail: notif.sender_id }));
+      if (notif.type === 'message') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('chat', notif.sender_id);
+        window.history.pushState({}, '', url.toString());
+        window.dispatchEvent(new CustomEvent('select-chat', { detail: notif.sender_id }));
+      }
+      setShowNotifications(false);
+    } else if (notif.type === 'like') {
+      onTabChange('posts');
       setShowNotifications(false);
     }
   };
@@ -301,16 +355,35 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
               </button>
               {showNotifications && (
                 <div className="absolute top-full right-0 mt-4 w-72 sm:w-80 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
-                  <div className="px-5 py-3 border-b border-white/5 bg-white/5 flex justify-between items-center">
-                    <h3 className="text-xs font-bold text-slate-400">Notifications</h3>
-                    {notifications.length > 0 && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeleteAllNotifications(); }}
-                        className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        Tout supprimer
-                      </button>
-                    )}
+                  <div className="px-5 py-3 border-b border-white/5 bg-white/5 flex justify-between items-center bg-gradient-to-r from-white/5 to-transparent">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Alerte</h3>
+                    <div className="flex items-center gap-3">
+                      {notifications.some(n => !n.read) && (
+                        <button 
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const unread = notifications.filter(n => !n.read);
+                              await Promise.all(unread.map(n => pb.collection('notifications').update(n.id, { read: true })));
+                              setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+                            } catch (err) {
+                              console.warn(err);
+                            }
+                          }}
+                          className="text-[9px] font-black text-blue-400 hover:text-blue-300 transition-colors uppercase"
+                        >
+                          Tout lire
+                        </button>
+                      )}
+                      {notifications.length > 0 && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeleteAllNotifications(); }}
+                          className="text-[9px] font-black text-red-500/70 hover:text-red-400 transition-colors uppercase"
+                        >
+                          Vider
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="max-h-[60vh] overflow-y-auto no-scrollbar">
                     {notifications.length > 0 ? notifications.map(n => (
@@ -348,18 +421,39 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                               <div className="w-11 h-11 rounded-full overflow-hidden border border-white/10">
                                 <img src={n.sender_avatar || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                               </div>
-                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#1a1a1a] rounded-full flex items-center justify-center border border-white/10 text-indigo-400">
+                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#1a1a1a] rounded-full flex items-center justify-center border border-white/10 text-blue-400">
                                 <MessageCircle size={10} fill="currentColor" />
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 mb-0.5">
-                                <span className="text-[11px] font-bold text-indigo-400 truncate">{n.sender_name}</span>
+                                <span className="text-[11px] font-bold text-blue-400 truncate">{n.sender_name}</span>
                                 <span className="text-slate-500 text-[10px]">•</span>
                                 <span className="text-slate-400 text-[10px] font-medium">message</span>
                               </div>
-                              <p className="text-[11px] text-white/90 line-clamp-1 leading-tight">
-                                {n.content || "Vous a envoyé un message !"}
+                              <p className="text-[11px] text-white/90 line-clamp-1 leading-tight italic">
+                                "{n.content || "Nouveau message"}"
+                              </p>
+                            </div>
+                          </div>
+                        ) : n.type === 'like' ? (
+                          <div className="flex gap-4 items-start">
+                            <div className="relative flex-shrink-0">
+                              <div className="w-11 h-11 rounded-full overflow-hidden border border-white/10">
+                                <img src={n.sender_avatar || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                              </div>
+                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#1a1a1a] rounded-full flex items-center justify-center border border-white/10 text-red-500">
+                                <Heart size={10} fill="currentColor" />
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="text-[11px] font-bold text-red-400 truncate">{n.sender_name}</span>
+                                <span className="text-slate-500 text-[10px]">•</span>
+                                <span className="text-slate-400 text-[10px] font-medium">like</span>
+                              </div>
+                              <p className="text-[11px] text-white/90 leading-tight">
+                                {n.content || "A aimé votre post !"}
                               </p>
                             </div>
                           </div>

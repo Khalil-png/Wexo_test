@@ -61,6 +61,17 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
         expand: 'user_id'
       });
 
+      // Get user likes
+      let userLikes: string[] = [];
+      if (user?.uid) {
+        try {
+          const likesList = await pb.collection('post_likes').getList(1, 200, {
+            filter: `user_id="${user.uid}"`
+          });
+          userLikes = likesList.items.map(l => l.post_id);
+        } catch (e) {}
+      }
+
       const formattedPosts = resultList.items.map(p => {
         const author = p.expand?.user_id;
         const fallbackName = p.user_id || 'Utilisateur';
@@ -73,7 +84,7 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
           media_type: p.media_type || (p.media_url ? 'image' : null),
           created_at: p.created,
           likes_count: p.likes_count || 0,
-          user_has_liked: false,
+          user_has_liked: userLikes.includes(p.id),
           profiles: {
             username: author?.username || fallbackName,
             avatar_url: author?.avatar_url || DEFAULT_AVATAR,
@@ -97,8 +108,75 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
     if (e) e.stopPropagation();
     if (!user?.uid) return;
     
-    // Migration NAS : Les likes seront implémentés sur PocketBase
-    console.log("Like non supporté sans Firebase pour le moment");
+    try {
+      if (hasLiked) {
+        // Unlike: Find the like record and delete it
+        const result = await pb.collection('post_likes').getList(1, 1, {
+          filter: `post_id="${postId}" && user_id="${user.uid}"`
+        });
+        if (result.items.length > 0) {
+          await pb.collection('post_likes').delete(result.items[0].id);
+        }
+        
+        // Update post likes_count
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+          await pb.collection('posts').update(postId, {
+            'likes_count+': -1
+          });
+        }
+      } else {
+        // Like: Create like record
+        await pb.collection('post_likes').create({
+          post_id: postId,
+          user_id: user.uid
+        });
+
+        // Update post likes_count
+        const post = posts.find(p => p.id === postId);
+        if (post) {
+          await pb.collection('posts').update(postId, {
+            'likes_count+': 1
+          });
+
+          // NOTIFICATION for author
+          if (post.user_id !== user.uid) {
+            try {
+              await pb.collection('notifications').create({
+                user_id: post.user_id,
+                sender_id: user.uid,
+                type: 'like',
+                title: 'Nouveau like',
+                content: `${profile?.display_name || user.displayName || 'Un utilisateur'} a aimé votre post.`,
+                status: 'pending',
+                read: false
+              });
+            } catch (nErr) {}
+          }
+        }
+      }
+
+      // Update local state
+      setPosts(prev => prev.map(p => {
+        if (p.id === postId) {
+          return {
+            ...p,
+            user_has_liked: !hasLiked,
+            likes_count: p.likes_count + (hasLiked ? -1 : 1)
+          };
+        }
+        return p;
+      }));
+      if (selectedPost && selectedPost.id === postId) {
+        setSelectedPost(prev => prev ? {
+          ...prev,
+          user_has_liked: !hasLiked,
+          likes_count: prev.likes_count + (hasLiked ? -1 : 1)
+        } : null);
+      }
+    } catch (err) {
+      console.error("Erreur interaction like:", err);
+    }
   };
 
   const formatRelativeDate = (dateString: any) => {

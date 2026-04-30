@@ -704,6 +704,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     }
   }, [messages, isTypingAI]);
 
+  useEffect(() => {
+    if (user?.uid) {
+      fetchFriendships();
+    }
+  }, [user?.uid]);
+
+  const fetchFriendships = async () => {
+    if (!user?.uid) return;
+    try {
+      const result = await pb.collection('friendships').getList(1, 100, {
+        filter: `requester_id="${user.uid}" || receiver_id="${user.uid}"`
+      });
+      setFriendships(result.items);
+    } catch (err: any) {
+      if (err.status !== 404) console.warn("Erreur fetchFriendships:", err);
+    }
+  };
+
   const handleSearchUsers = async (queryStr: string, tab: 'tout' | 'ami' = searchTab) => {
     setSearchQuery(queryStr);
     setShowDeleteFriend(null);
@@ -736,7 +754,20 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   };
 
   const handleRemoveFriend = async (friendId: string) => {
-    // Migration NAS
+    if (!user?.uid) return;
+    try {
+      const friendship = friendships.find(f => 
+        (f.requester_id === user.uid && f.receiver_id === friendId) || 
+        (f.requester_id === friendId && f.receiver_id === user.uid)
+      );
+      
+      if (friendship) {
+        await pb.collection('friendships').delete(friendship.id);
+        setFriendships(prev => prev.filter(f => f.id !== friendship.id));
+      }
+    } catch (err) {
+      console.error("Erreur suppression ami:", err);
+    }
     setShowDeleteFriend(null);
   };
 
@@ -807,8 +838,36 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const handleMigrationPlaceholder = () => {};
 
   const handleAddFriend = async (targetId: string) => {
-    // Migration NAS
-    console.log("Add friend non supporté sur NAS pour le moment");
+    if (!user?.uid) return;
+    try {
+      // Check if already exists
+      const exists = friendships.find(f => 
+        (f.requester_id === user.uid && f.receiver_id === targetId) || 
+        (f.requester_id === targetId && f.receiver_id === user.uid)
+      );
+      if (exists) return;
+
+      const newFriendship = await pb.collection('friendships').create({
+        requester_id: user.uid,
+        receiver_id: targetId,
+        status: 'pending'
+      });
+
+      setFriendships(prev => [...prev, newFriendship]);
+
+      // CRÉATION DE LA NOTIFICATION POUR LE DESTINATAIRE
+      await pb.collection('notifications').create({
+        user_id: targetId,
+        sender_id: user.uid,
+        type: 'friend_request',
+        title: 'Demande d\'ami',
+        content: `${profile?.display_name || user.displayName || 'Un utilisateur'} souhaite vous ajouter en ami.`,
+        status: 'pending',
+        read: false
+      });
+    } catch (err) {
+      console.error("Erreur demande ami:", err);
+    }
   };
 
   const sendMessage = async (text: string, fileData?: { url: string, name: string, type: string, size: number }) => {
@@ -864,7 +923,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             type: 'message',
             title: profile?.display_name || user.displayName || 'Wexo',
             content: text || (finalFileData ? 'Pièce jointe reçue' : 'Nouveau message'),
-            status: 'pending'
+            status: 'pending',
+            read: false
           });
         } catch (notifErr: any) {
           if (notifErr.status !== 404) {
