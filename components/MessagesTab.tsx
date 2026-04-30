@@ -1276,6 +1276,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
         {/* FABs sur Mobile - Visibles uniquement sur la liste */}
         <div className="fixed bottom-32 right-6 lg:hidden flex flex-col gap-4 z-[100] items-center">
+          {/* Bouton Gemini - Carré arrondi sombre */}
+          <button 
+            onClick={() => handleSelectChat('gemini')}
+            className="w-14 h-14 bg-[#1a1a1a] text-white rounded-xl shadow-2xl flex items-center justify-center active:scale-95 transition-all border border-white/10"
+          >
+            <div className="w-8 h-8">
+              <GeminiAvatarIcon size={32} />
+            </div>
+          </button>
+          
           {/* Bouton + - Gros bouton bleu vif "Wexo" sans effet de lumière */}
           <button 
             onClick={() => setIsSearchingUsers(true)}
