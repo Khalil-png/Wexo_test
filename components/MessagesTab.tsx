@@ -1314,12 +1314,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       {/* Zone de Chat */}
       <div 
         className={`flex-1 flex flex-col bg-[#0f0f0f] relative lg:flex overflow-hidden ${mobileView === 'list' ? 'hidden' : 'flex'}`}
-        style={{ height: isMobileDevice() ? '100dvh' : '100%' }}
+        style={{ height: isMobileDevice() ? '100%' : '100%' }}
       >
         {selectedId ? (
-          <div className="flex-1 flex flex-col relative overflow-hidden bg-[#0f0f0f] h-full">
-            {/* Header du Chat - Sticky pour rester visible en haut même avec clavier */}
-            <div className="sticky top-0 p-4 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40">
+          <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden">
+            {/* Header du Chat - Flex fixed height */}
+            <div className="p-4 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40">
               <div className="flex items-center gap-3">
                 <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
                 <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
@@ -1695,10 +1695,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
-            {/* Pied de page Messagerie (Barre + Zone Noire) - Sticky bottom for WhatsApp feel */}
-            <div className={`sticky bottom-0 flex flex-col bg-[#0f0f0f] flex-shrink-0 z-[110] transition-transform duration-200`}>
+            {/* Pied de page Messagerie (Barre + Zone Noire) */}
+            <div className={`flex flex-col bg-[#0f0f0f] flex-shrink-0 z-[110]`}>
               {/* Barre de Saisie */}
-              <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1' : 'py-6'} bg-[#0f0f0f] border-t border-white/10`}>
+              <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1' : 'py-4'} bg-[#0f0f0f] border-t border-white/10`}>
                 {localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold">
                     <div className="flex items-center gap-2">
@@ -1708,7 +1708,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     <button onClick={() => setLocalUploadError(null)} className="p-1 hover:bg-white/10 rounded-lg transition-colors"><X size={14} /></button>
                   </div>
                 )}
-                <div className={`flex items-center gap-2 max-w-full ${isMobileDevice() ? 'h-[48px]' : 'h-[53px]'}`}>
+                <div className={`flex items-center gap-2 max-w-full ${isMobileDevice() ? 'h-[50px]' : 'h-[53px]'}`}>
                   <div className={`flex-1 h-full flex items-center gap-1 bg-white/5 rounded-full px-4 border border-white/10 shadow-inner overflow-hidden group/input relative`}>
                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
                     
@@ -1778,16 +1778,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   </div>
 
                   {isMobileDevice() && (
-                    <button onClick={() => sendMessage(messageText)} className="bg-blue-600 text-white h-[48px] w-[48px] min-w-[48px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90">
-                      {messageText.trim() ? <Send size={22} /> : <Mic size={24} />}
+                    <button onClick={() => sendMessage(messageText)} className="bg-blue-600 text-white h-[50px] w-[50px] min-w-[50px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90">
+                      {messageText.trim() ? <Send size={24} /> : <Mic size={26} />}
                     </button>
                   )}
                 </div>
               </div>
 
               {/* Zone Noire "Hors App" - Permanente mais masquée quand le clavier est là */}
-              {isMobileDevice() && !isPhysicalKeyboardOpen && (
-                <div className="w-full bg-[#0f0f0f] flex-shrink-0" style={{ height: '23px' }} />
+              {isMobileDevice() && !isKeyboardOpen && (
+                <div className="w-full bg-[#0f0f0f] flex-shrink-0" style={{ height: '70px' }} />
               )}
             </div>
 
@@ -1875,7 +1875,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-[#0f0f0f]">
             <div className="w-20 h-20 bg-white/5 text-slate-700 border border-white/10 rounded-2xl flex items-center justify-center mb-8 shadow-inner animate-in fade-in zoom-in duration-500"><MessageCircle size={40} /></div>
             <h3 className="text-3xl font-bold text-white tracking-tight mb-3">Messagerie Wexo</h3>
-            <p className="text-slate-400 text-sm max-w-xs mx-auto font-medium leading-relaxed">Discutez avec vos amis ou profitez de l'intelligence de Gemini.</p>
+            <p className="text-slate-400 text-sm max-w-xs mx-auto font-medium leading-relaxed">Discutez avec vos amis ou profitez d'une intelligence artificielle avancée.</p>
           </div>
         )}
       </div>

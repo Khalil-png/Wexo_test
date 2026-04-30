@@ -19,11 +19,16 @@ html, body {
   background-color: #0f0f0f !important;
   color: #ffffff !important;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  overflow-x: hidden;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  position: fixed;
+  top: 0;
+  left: 0;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
+  width: 100%;
   background-color: #0f0f0f;
+  overflow: hidden;
 }
