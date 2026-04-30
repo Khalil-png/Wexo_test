@@ -78,6 +78,7 @@ export interface Message {
   is_edited?: boolean;
   is_deleted_for_everyone?: boolean;
   deleted_for_me_by?: string[];
+  is_read?: boolean;
 }
 
 export interface Discussion {
