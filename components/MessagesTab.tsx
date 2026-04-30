@@ -277,6 +277,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const initialHeight = useRef(window.innerHeight);
 
+  const isAndroidDevice = () => {
+    return /Android/i.test(navigator.userAgent);
+  };
+
   const fetchConversations = useCallback(async () => {
     if (!user) return;
     try {
@@ -1211,21 +1215,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         </div>
 
         {/* FABs sur Mobile - Visibles uniquement sur la liste */}
-        <div className="fixed bottom-28 right-6 lg:hidden flex flex-col gap-4 z-[100] items-center">
-          {/* Bouton Gemini - Style sombre avec bordure - Taille standard FAB */}
+        <div className="fixed bottom-32 right-6 lg:hidden flex flex-col gap-4 z-[100] items-center">
+          {/* Bouton Gemini - Carré arrondi sombre */}
           <button 
             onClick={() => handleSelectChat('gemini')}
-            className="w-14 h-14 bg-[#1a1a1a] text-white rounded-full shadow-2xl flex items-center justify-center active:scale-95 transition-all border border-white/10"
+            className="w-14 h-14 bg-[#1a1a1a] text-white rounded-xl shadow-2xl flex items-center justify-center active:scale-95 transition-all border border-white/10"
           >
             <div className="w-8 h-8">
               <GeminiAvatarIcon size={32} />
             </div>
           </button>
           
-          {/* Bouton + - Gros bouton bleu vif "Wexo" */}
+          {/* Bouton + - Gros bouton bleu vif "Wexo" sans effet de lumière */}
           <button 
             onClick={() => setIsSearchingUsers(true)}
-            className="w-16 h-16 bg-[#0066ff] text-white rounded-2xl shadow-[0_8px_30px_rgb(0,102,255,0.3)] flex items-center justify-center active:scale-90 transition-all border border-white/10"
+            className="w-16 h-16 bg-[#0066ff] text-white rounded-2xl shadow-2xl flex items-center justify-center active:scale-90 transition-all border border-white/10"
           >
             <Plus size={36} strokeWidth={3} />
           </button>
@@ -1310,7 +1314,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         {selectedId ? (
           <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden">
             {/* Header du Chat - Flex fixed height */}
-            <div className="p-4 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40">
+            <div className={`p-4 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-12' : ''}`}>
               <div className="flex items-center gap-3">
                 <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
                 <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
@@ -1778,7 +1782,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
                     {/* Zone Noire "Hors App" - Permanente mais masquée quand le clavier est là */}
               {isMobileDevice() && !isKeyboardOpen && (
-                <div className="w-full bg-[#1a1a1a] flex-shrink-0" style={{ height: '35px' }} />
+                <div className="w-full bg-[#0f0f0f] flex-shrink-0" style={{ height: '28px' }} />
               )}
             </div>
 
