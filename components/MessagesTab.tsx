@@ -781,7 +781,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     longPressTimer.current = setTimeout(() => {
       isLongPressing.current = true;
       toggleMessageSelection(id);
-    }, 350); // 350ms for long press
+    }, 250); // 250ms for long press
   };
 
   const handleMessageTouchEnd = (id: string) => {
@@ -1425,9 +1425,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         {selectedId ? (
           <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100%' }}>
             {/* Header du Chat - Flex fixed height */}
-            <div className={`p-4 pt-8 pb-6 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-16 pb-6' : ''}`}>
+            <div className={`p-4 py-6 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-14 pb-4' : ''}`}>
               {selectedMessageIds.size > 0 ? (
-                <div className="flex items-center justify-between w-full animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center justify-between w-full animate-in fade-in slide-in-from-top-1 duration-200 mt-1">
                   <div className="flex items-center gap-4">
                     <button 
                       onClick={() => setSelectedMessageIds(new Set())}
@@ -1467,7 +1467,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 mt-1">
                     <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
                     <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
                       {selectedId === 'gemini' ? (
@@ -1505,7 +1505,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   </div>
 
                   {selectedId !== 'gemini' && (
-                    <div className="flex items-center gap-2 relative">
+                    <div className="flex items-center gap-2 relative mt-1">
                       <div className="flex items-center gap-1.5 mr-2">
                         <button 
                           onClick={() => onStartCall?.({ id: selectedId, username: selectedProfile?.username || 'Utilisateur', avatar_url: selectedProfile?.avatar_url })}
