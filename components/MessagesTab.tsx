@@ -6,23 +6,23 @@ import {
   Search, Plus, Smile, Send, X, Image, Pencil,
   CheckCheck, ArrowLeft, Check, Trash2,
   MessageCircle, Info, UserPlus, Clock, 
-  MessageSquarePlus, Users, User, Mic, Paperclip, AlertCircle, Video, Sparkles, Camera,
+  MessageSquarePlus, Users, User, Mic, Paperclip, AlertCircle, Video, Sparkles, Camera, Phone,
   Dog, Utensils, Trophy, Car, Lightbulb, Heart as HeartIcon, Flag,
   Download, File, FileText, Archive, Ban, Copy
 } from 'lucide-react';
 import VideoPlayer from './VideoPlayer';
 import { DEFAULT_AVATAR } from '../constants';
-import { Message } from '../types';
-import { getSmartResponse, generateImage, generateVideo, checkApiKey, openKeySelector, analyzeVideo } from '../services/geminiService';
-import { pb, uploadToPocketBase } from '../services/pocketbaseService';
+import { Message } from '@/types';
+import { getSmartResponse, generateImage, generateVideo, checkApiKey, openKeySelector, analyzeVideo } from '@/services/geminiService';
+import { pb, uploadToPocketBase } from '@/services/pocketbaseService';
 // Firebase désactivé
-import { isMobileDevice } from '../src/utils/device';
-import { useClickOutside } from '../utils/hooks';
+import { isMobileDevice } from '@/src/utils/device';
+import { useClickOutside } from '@/utils/hooks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import vscDarkPlus from 'react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { generateSnowflake } from '../utils/snowflake';
+import { generateSnowflake } from '@/utils/snowflake';
 import Username from './Username';
 
 // Avatar Gemini parfaitement centré en X et Y
@@ -203,6 +203,7 @@ interface MessagesTabProps {
   user?: any;
   profile?: any;
   isKeyboardActive?: boolean;
+  onStartCall?: (receiver: any) => void;
 }
 
 const formatFileSize = (bytes: number) => {
@@ -246,7 +247,7 @@ const countEmojis = (str: string) => {
   return matches ? matches.length : 0;
 };
 
-const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActive: isKeyboardActiveProp }) => {
+const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActive: isKeyboardActiveProp, onStartCall }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<ExtendedMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('chat'));
@@ -274,6 +275,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const [messageToEdit, setMessageToEdit] = useState<ExtendedMessage | null>(null);
   const [editText, setEditText] = useState('');
   const [copiedId, setCopiedId] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
+  const longPressTimer = useRef<any>(null);
+  const isLongPressing = useRef(false);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const initialHeight = useRef(window.innerHeight);
 
@@ -491,6 +495,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
   const handleSelectChat = (id: string | null) => {
     setSelectedId(id);
+    setSelectedMessageIds(new Set());
     if (id) {
       setSearchParams({ chat: id });
     } else {
@@ -750,6 +755,45 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       setUsersList(data);
     } catch (err) {
       console.error("Erreur recherche NAS:", err);
+    }
+  };
+
+  const toggleMessageSelection = (id: string) => {
+    setSelectedMessageIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleMessageTouchStart = (id: string) => {
+    if (!isMobileDevice()) return;
+    isLongPressing.current = false;
+    longPressTimer.current = setTimeout(() => {
+      isLongPressing.current = true;
+      toggleMessageSelection(id);
+    }, 500); // 500ms for long press
+  };
+
+  const handleMessageTouchEnd = (id: string) => {
+    if (!isMobileDevice()) return;
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
+  const handleMessageClick = (id: string, e: React.MouseEvent) => {
+    if (!isMobileDevice()) return;
+    
+    // If we have selections, any tap toggles selection
+    if (selectedMessageIds.size > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleMessageSelection(id);
     }
   };
 
@@ -1243,14 +1287,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         <div className="flex-1 overflow-y-auto no-scrollbar relative pt-4">
           {/* Gemini List Item */}
           <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-4 px-6 py-4 cursor-pointer transition-all ${selectedId === 'gemini' ? 'bg-white/5' : 'hover:bg-white/5'}`}>
-            <div className="w-10 h-10 rounded-full overflow-hidden relative flex-shrink-0 flex items-center justify-center border border-white/10">
+            <div className="w-10 h-10 rounded-full overflow-hidden relative flex-shrink-0 flex items-center justify-center">
               <GeminiAvatarIcon size={20} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-center mb-0.5">
-                <h4 className="text-[17px] font-bold text-white truncate">Gemini</h4>
+                <h4 className="text-sm font-bold text-white truncate">Gemini</h4>
               </div>
-              <p className="text-[13px] truncate font-medium text-slate-500">Assistant IA</p>
+              <p className="text-xs truncate font-medium text-slate-500">Assistant IA</p>
             </div>
           </div>
 
@@ -1281,19 +1325,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           {/* Bouton Gemini - Carré arrondi sombre */}
           <button 
             onClick={() => handleSelectChat('gemini')}
-            className="w-14 h-14 bg-[#1a1a1a] text-white rounded-xl shadow-2xl flex items-center justify-center active:scale-95 transition-all border border-white/10"
+            className="w-12 h-12 bg-[#1a1a1a] text-white rounded-xl shadow-2xl flex items-center justify-center active:scale-95 transition-all"
           >
-            <div className="w-8 h-8">
-              <GeminiAvatarIcon size={32} />
+            <div className="w-7 h-7">
+              <GeminiAvatarIcon size={26} />
             </div>
           </button>
           
           {/* Bouton + - Gros bouton bleu vif "Wexo" sans effet de lumière */}
           <button 
             onClick={() => setIsSearchingUsers(true)}
-            className="w-16 h-16 bg-[#0066ff] text-white rounded-2xl shadow-2xl flex items-center justify-center active:scale-90 transition-all border border-white/10"
+            className="w-14 h-14 bg-[#0066ff] text-white rounded-2xl shadow-2xl flex items-center justify-center active:scale-90 transition-all border border-white/10"
           >
-            <Plus size={36} strokeWidth={3} />
+            <Plus size={30} strokeWidth={3} />
           </button>
         </div>
       </div>
@@ -1371,15 +1415,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       {/* Discussion Centrale */}
       <div 
         className={`flex-1 flex flex-col bg-[#0f0f0f] relative lg:flex overflow-hidden scroll-none select-none ${mobileView === 'list' ? 'hidden text-slate-100' : 'fixed inset-0 z-[120] lg:relative lg:inset-auto lg:z-0 flex'}`}
-        style={{ height: '100dvh', overscrollBehavior: 'none' }}
+        style={{ height: '100%', overscrollBehavior: 'none' }}
       >
         {selectedId ? (
-          <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100dvh' }}>
+          <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100%' }}>
             {/* Header du Chat - Flex fixed height */}
-            <div className={`p-4 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-12 pb-4' : ''}`}>
+            <div className={`p-4 py-6 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-14 pb-6' : ''}`}>
               <div className="flex items-center gap-3">
                 <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
-                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border border-white/10">
+                <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
                   {selectedId === 'gemini' ? (
                     <GeminiAvatarIcon size={20} />
                   ) : (
@@ -1416,6 +1460,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
               {selectedId !== 'gemini' && (
                 <div className="flex items-center gap-2 relative">
+                  <div className="flex items-center gap-1.5 mr-2">
+                    <button 
+                      onClick={() => onStartCall?.({ id: selectedId, username: selectedProfile?.username || 'Utilisateur', avatar_url: selectedProfile?.avatar_url })}
+                      className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-xl transition-all"
+                    >
+                      <Phone size={20} />
+                    </button>
+                    <button 
+                      className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+                    >
+                      <Video size={20} />
+                    </button>
+                  </div>
                   {(() => {
                     const friendship = friendships.find(f => f.requester_id === selectedId || f.receiver_id === selectedId);
                     const isPending = friendship?.status === 'pending';
@@ -1502,8 +1559,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   borderRadiusClasses += ` ${!hasPrevSameSender ? 'rounded-tl-2xl' : 'rounded-tl-md'} ${hasNextSameSender ? 'rounded-bl-md' : ''}`;
                 }
                 
+                const isSelected = selectedMessageIds.has(msg.id);
+                
                 return (
-                  <div key={msg.id} className={`flex group relative w-full px-4 sm:px-8 hover:bg-white/[0.03] transition-colors py-0.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')}`}>
+                  <div 
+                    key={msg.id} 
+                    onTouchStart={() => handleMessageTouchStart(msg.id)}
+                    onTouchEnd={() => handleMessageTouchEnd(msg.id)}
+                    onClick={(e) => handleMessageClick(msg.id, e)}
+                    className={`flex group relative w-full px-4 sm:px-8 ${!isMobileDevice() ? 'hover:bg-white/[0.03]' : ''} transition-colors py-0.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')}`}
+                  >
                     <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'}`}>
                       <div className={`${(isImage || isVideo) && !isDeleted ? 'max-w-[280px] sm:max-w-[320px]' : 'w-fit'} ${borderRadiusClasses} relative ${largeEmojis ? '' : 'shadow-lg overflow-hidden'} ${
                         largeEmojis ? 'bg-transparent' : (
@@ -1514,6 +1579,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                               : isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-white/10 text-white border border-white/5'
                         )
                       }`}>
+                        
+                        {/* Selection Overlay */}
+                        {isSelected && (
+                          <div className="absolute inset-0 bg-blue-500/40 z-10 pointer-events-none" />
+                        )}
+
                         <div className="flex flex-col">
                           {isDeleted ? (
                             <div className="px-4 py-2.5 flex items-center gap-2">
@@ -1568,12 +1639,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                                           <Download size={14} />
                                         </button>
                                       </div>
-                                      <div className={`relative rounded-2xl overflow-hidden border-2 ${msg.is_own ? 'border-blue-400/30' : 'border-white/10'}`}>
+                                      <div className={`relative rounded-2xl overflow-hidden border-2 cursor-pointer ${msg.is_own ? 'border-blue-400/30' : 'border-white/10'}`}>
                                         <img 
                                           src={msg.file_url} 
                                           alt={msg.file_name} 
                                           className="w-full cursor-pointer hover:opacity-95 transition-opacity max-h-[400px] object-cover" 
-                                          onClick={() => setSelectedMedia({ url: msg.file_url!, name: msg.file_name!, type: msg.file_type!, message: msg.text, transcription: msg.transcription })} 
+                                          onClick={(e) => {
+                                            if (selectedMessageIds.size > 0) return;
+                                            setSelectedMedia({ url: msg.file_url!, name: msg.file_name!, type: msg.file_type!, message: msg.text, transcription: msg.transcription });
+                                          }} 
                                         />
                                       </div>
                                     </div>
@@ -1608,7 +1682,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                                       </div>
                                       <div 
                                         className={`relative rounded-2xl overflow-hidden border-2 cursor-pointer group/vid ${msg.is_own ? 'border-blue-400/30' : 'border-white/10'}`}
-                                        onClick={() => setSelectedMedia({ url: msg.file_url!, name: msg.file_name!, type: msg.file_type!, message: msg.text, transcription: msg.transcription })}
+                                        onClick={(e) => {
+                                          if (selectedMessageIds.size > 0) return;
+                                          setSelectedMedia({ url: msg.file_url!, name: msg.file_name!, type: msg.file_type!, message: msg.text, transcription: msg.transcription });
+                                        }}
                                       >
                                         <video 
                                           src={msg.file_url} 
@@ -1844,7 +1921,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
                     {/* Zone Noire "Hors App" - Permanente mais masquée quand le clavier est là */}
               {isMobileDevice() && !isKeyboardOpen && (
-                <div className="w-full bg-[#0f0f0f] flex-shrink-0" style={{ height: '22px' }} />
+                <div className="w-full bg-[#0f0f0f] flex-shrink-0" style={{ height: '25px' }} />
               )}
             </div>
 

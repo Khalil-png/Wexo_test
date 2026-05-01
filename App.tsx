@@ -18,6 +18,7 @@ import LogoutModal from '@/components/LogoutModal';
 import BottomNav from '@/components/BottomNav';
 import AdminPanel from '@/components/AdminPanel';
 import IncomingCallOverlay from '@/components/IncomingCallOverlay';
+import ActiveCallOverlay from '@/components/ActiveCallOverlay';
 import CameraOverlay from '@/components/CameraOverlay';
 import PocketBaseStatus from '@/components/PocketBaseStatus';
 import { isMobileDevice } from '@/src/utils/device';
@@ -104,6 +105,11 @@ const AppContent: React.FC = () => {
 
         if (incomingCall) {
           setIncomingCall(null);
+          return;
+        }
+
+        if (activeCall) {
+          // Ne rien faire sur le bouton retour en appel pour éviter de couper accidentellement
           return;
         }
 
@@ -423,6 +429,13 @@ const AppContent: React.FC = () => {
           }
           if (activeCall?.id === record.id) setActiveCall(null);
         }
+        
+        // Gérer le passage en "ongoing" pour l'initiateur
+        if (record.status === 'ongoing' && record.caller_id === pbUser.id) {
+           if (activeCall && activeCall.id === record.id && !activeCall.isOngoing) {
+              setActiveCall((prev: any) => ({ ...prev, isOngoing: true }));
+           }
+        }
       }
       
       if (action === 'delete') {
@@ -431,26 +444,32 @@ const AppContent: React.FC = () => {
       }
     }, { expand: 'caller_id' });
 
+    // Souscription aux notifications globales
+    pb.collection('notifications').subscribe('*', async (e) => {
+      const { action, record } = e;
+      if (action === 'create' && record.user_id === pbUser.id) {
+          // On laisse useEffect(checkPendingNotifications) s'en occuper pour être synchrone avec le NAS
+      }
+    });
+
     return () => {
       pb.collection('calls').unsubscribe('*');
+      pb.collection('notifications').unsubscribe('*');
     };
   }, [pbUser?.id, incomingCall?.id, activeCall?.id]);
 
-  // Synchronisation des notifications en attente (quand l'app s'ouvre ou récupère du réseau)
+  // Synchronisation des notifications en attente & Real-time via checkPendingNotifications
   useEffect(() => {
     if (!pbUser?.id) return;
 
     const checkPendingNotifications = async () => {
       try {
-        // Migration NAS : On récupère les notifications "pending" pour l'utilisateur
         const pending = await pb.collection('notifications').getList(1, 50, {
           filter: `user_id="${pbUser.id}" && status="pending"`,
           sort: 'created'
         });
 
         if (pending.items.length > 0) {
-          console.log(`Traitement de ${pending.items.length} notifications en attente...`);
-          
           for (const notif of pending.items) {
             if (isMobileDevice()) {
               await LocalNotifications.schedule({
@@ -459,20 +478,22 @@ const AppContent: React.FC = () => {
                     title: notif.title || 'Wexo',
                     body: notif.content || 'Nouvelle notification',
                     id: Math.floor(Math.random() * 1000000),
-                    schedule: { at: new Date(Date.now() + 500) }, // Petit délai pour laisser le temps à l'OS
+                    schedule: { at: new Date(Date.now() + 500) },
                     sound: 'default',
                     channelId: notif.type === 'message' ? 'messages' : 'default',
-                    extra: {
-                      notifId: notif.id,
-                      type: notif.type,
-                      senderId: notif.sender_id
-                    }
+                    extra: { notifId: notif.id, type: notif.type, senderId: notif.sender_id }
                   }
                 ]
               });
+            } else {
+              setNotification({
+                message: `${notif.title || 'Wexo'}: ${notif.content || 'Nouvelle notification'}`,
+                show: true,
+                type: 'success'
+              });
+              setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 6000);
             }
 
-            // Marquer comme délivrée dans PocketBase
             await pb.collection('notifications').update(notif.id, {
               status: 'delivered',
               delivered_at: new Date().toISOString()
@@ -480,29 +501,20 @@ const AppContent: React.FC = () => {
           }
         }
       } catch (err: any) {
-        // On ne loggue pas d'erreur si la collection n'existe pas encore pour éviter le spam console
-        if (err.status !== 404) {
-          console.warn("Erreur checkPendingNotifications:", err);
-        }
+        if (err.status !== 404) console.warn("Erreur checkPendingNotifications:", err);
       }
     };
 
-    // Check immédiat à l'ouverture
     checkPendingNotifications();
     
-    // S'abonner aux futures notifications (temps réel)
-    try {
-      pb.collection('notifications').subscribe('*', ({ action, record }) => {
-        if (action === 'create' && record.user_id === pbUser.id && record.status === 'pending') {
-          checkPendingNotifications();
-        }
-      });
-    } catch (err) {
-      console.warn("Impossible d'écouter les notifications en direct:", err);
-    }
+    pb.collection('notifications').subscribe('*', ({ action, record }) => {
+      if (action === 'create' && record.user_id === pbUser.id && record.status === 'pending') {
+        checkPendingNotifications();
+      }
+    });
 
     return () => {
-      pb.collection('notifications').unsubscribe('*').catch(() => {});
+      pb.collection('notifications').unsubscribe('*');
     };
   }, [pbUser?.id]);
 
@@ -535,6 +547,14 @@ const AppContent: React.FC = () => {
                   }
                 ]
               });
+            } else {
+              // Notification Interne Desktop pour Message
+              setNotification({
+                message: `Message de ${sender.username}: ${record.text || (record.media ? "Média reçu" : "Nouveau message")}`,
+                show: true,
+                type: 'success'
+              });
+              setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 6000);
             }
           } catch (err) {
             console.error("Error creating message notification:", err);
@@ -569,7 +589,7 @@ const AppContent: React.FC = () => {
 
   const handleAcceptCallFromNotification = async (callId: string) => {
     try {
-      await pb.collection('calls').update(callId, { status: 'completed' });
+      await pb.collection('calls').update(callId, { status: 'ongoing' });
       const record = await pb.collection('calls').getOne(callId, { expand: 'caller_id' });
       const caller = record.expand?.caller_id;
       
@@ -609,7 +629,9 @@ const AppContent: React.FC = () => {
   const handleEndCall = async () => {
     if (activeCall) {
       try {
-        await pb.collection('calls').update(activeCall.id, { status: 'completed' });
+        if (activeCall.id && activeCall.id !== activeCall.receiver_id) {
+          await pb.collection('calls').update(activeCall.id, { status: 'completed' });
+        }
       } catch (err) {
         console.error("Error ending call:", err);
       }
@@ -617,8 +639,42 @@ const AppContent: React.FC = () => {
     setActiveCall(null);
   };
 
-  const handleStartCall = (call: any) => {
-    setActiveCall(call);
+  const handleStartCall = async (receiver: any) => {
+    if (!pbUser?.id) {
+       setNotification({ message: "Vous devez être connecté pour appeler", show: true });
+       return;
+    }
+
+    try {
+      // Si on reçoit déjà un record complet (depuis CallsTab par exemple)
+      if (receiver.caller_id) {
+        setActiveCall(receiver);
+        return;
+      }
+
+      // Sinon, on initie l'appel (depuis MessagesTab par exemple)
+      console.log("Initiation d'un appel vers:", receiver.username);
+      
+      const record = await pb.collection('calls').create({
+        caller_id: pbUser.id,
+        receiver_id: receiver.id,
+        type: 'audio',
+        status: 'incoming'
+      });
+
+      setActiveCall({
+        id: record.id,
+        caller_id: pbUser.id,
+        receiver_id: receiver.id,
+        profiles: {
+          username: receiver.username,
+          avatar_url: receiver.avatar_url
+        }
+      });
+    } catch (err: any) {
+      console.error("Erreur lancement appel:", err);
+      setNotification({ message: `Erreur appel: ${err.message}`, show: true });
+    }
   };
 
   const handleSendQuickMessage = async (text: string) => {
@@ -773,7 +829,7 @@ const AppContent: React.FC = () => {
       case 'ma-chaine':
         return <MyChannelTab user={user} profile={profile} />;
       case 'message':
-        return <MessagesTab user={user} profile={profile} isKeyboardActive={isKeyboardActive} />;
+        return <MessagesTab user={user} profile={profile} isKeyboardActive={isKeyboardActive} onStartCall={handleStartCall} />;
       case 'appel':
         return (
           <CallsTab 
@@ -880,7 +936,7 @@ const AppContent: React.FC = () => {
         
         <main className={`flex-1 w-full lg:ml-72 transition-all duration-500 ${
           (activeTab === 'message' || activeTab === 'shorts' || activeTab === 'appel')
-            ? `p-0 ${isMobileDevice() ? (activeTab === 'message' && location.search.includes('chat=') ? 'pt-0' : 'pt-[140px]') : 'pt-20'} h-screen h-[100dvh] overflow-hidden bg-[#0f0f0f] ${isMobileDevice() && !(activeTab === 'message' && location.search.includes('chat=')) ? 'pb-24' : ''}` 
+            ? `p-0 ${isMobileDevice() ? (activeTab === 'message' && location.search.includes('chat=') ? 'pt-0 h-screen h-[100dvh]' : 'pt-[140px] h-screen h-[100dvh]') : 'mt-20 h-[calc(100vh-80px)]'} overflow-hidden bg-[#0f0f0f] ${isMobileDevice() && !(activeTab === 'message' && location.search.includes('chat=')) ? 'pb-24' : ''}` 
             : `p-4 sm:p-10 md:p-14 ${isMobileDevice() ? 'pt-[145px]' : 'pt-[125px]'} lg:pt-[105px] ${isMobileDevice() ? 'pb-28' : 'pb-10'}`
         }`}>
           <div className={`${
@@ -916,6 +972,13 @@ const AppContent: React.FC = () => {
             onAccept={handleAcceptCall}
             onDecline={handleDeclineCall}
             onSendMessage={handleSendQuickMessage}
+          />
+        )}
+        {activeCall && (
+          <ActiveCallOverlay 
+            activeCall={activeCall}
+            callTimer={callTimer}
+            onEndCall={handleEndCall}
           />
         )}
       </AnimatePresence>
