@@ -1421,7 +1421,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         {selectedId ? (
           <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100dvh' }}>
             {/* Header du Chat - Flex fixed height */}
-            <div className={`px-4 py-3 border-b border-white/10 bg-[#1a1a1a] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-12 pb-3' : ''}`}>
+            <div className={`px-4 py-3 border-b border-white/10 bg-[#1a1a1a] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-14 pb-3' : ''}`}>
               {selectedMessage ? (
                 <div className="flex items-center justify-between w-full animate-in fade-in duration-200">
                   <div className="flex items-center gap-4">
