@@ -30,29 +30,12 @@ import { AnimatePresence } from 'framer-motion';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { App as CapApp } from '@capacitor/app';
-import { SplashScreen } from '@capacitor/splash-screen';
 
 const CURRENT_VERSION = "0.0.1";
 
 const AppContent: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isInitializing, setIsInitializing] = useState(true);
-
-  // Hidden splash screen as soon as hydrated
-  useEffect(() => {
-    const hideSplash = async () => {
-      try {
-        await SplashScreen.hide();
-        console.log('SplashScreen hidden');
-      } catch (e) {
-        console.warn('SplashScreen hide failed (likely not on mobile)', e);
-      } finally {
-        setIsInitializing(false);
-      }
-    };
-    hideSplash();
-  }, []);
   const [activeTab, setActiveTab] = useState<TabId>('accueil');
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
