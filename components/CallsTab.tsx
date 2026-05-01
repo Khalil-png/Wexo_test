@@ -14,7 +14,7 @@ interface Call {
   caller_id: string;
   receiver_id: string;
   type: 'audio' | 'video';
-  status: 'incoming' | 'outgoing' | 'missed' | 'completed' | 'ongoing';
+  status: 'incoming' | 'outgoing' | 'missed' | 'completed';
   created_at: any;
   profiles: {
     username: string;
@@ -37,19 +37,8 @@ const CallsTab: React.FC<CallsTabProps> = ({
   const [users, setUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isCalling, setIsCalling] = useState(false);
-  const [activeCall, setActiveCall] = useState<any>(propActiveCall);
-  const [callTimer, setCallTimer] = useState(propCallTimer || 0);
-
-  // Sync state with props
-  useEffect(() => {
-    setActiveCall(propActiveCall);
-  }, [propActiveCall]);
-
-  useEffect(() => {
-    if (propCallTimer !== undefined) {
-      setCallTimer(propCallTimer);
-    }
-  }, [propCallTimer]);
+  const [activeCall, setActiveCall] = useState<any>(null);
+  const [callTimer, setCallTimer] = useState(0);
 
   // Gestion du bouton retour
   useEffect(() => {
@@ -144,10 +133,53 @@ const CallsTab: React.FC<CallsTabProps> = ({
     }
   };
 
-  const startCall = (receiver: any) => {
+  const startCall = async (receiver: any) => {
     if (!user?.uid) return;
-    if (onStartCall) {
-      onStartCall(receiver);
+    
+    // On autorise les appels sur mobile maintenant
+    setIsCalling(true);
+    setError(null);
+    try {
+      const currentUserId = pb.authStore.model?.id;
+      if (!currentUserId) {
+        throw new Error("Utilisateur non authentifié sur le NAS.");
+      }
+
+      console.log("Tentative de création d'appel:", {
+        caller_id: currentUserId,
+        receiver_id: receiver.id,
+        type: 'audio',
+        status: 'incoming'
+      });
+
+      // Créer l'enregistrement de l'appel
+      const record = await pb.collection('calls').create({
+        caller_id: currentUserId,
+        receiver_id: receiver.id,
+        type: 'audio',
+        status: 'incoming'
+      });
+
+      // Appeler le callback parent pour activer l'overlay d'appel
+      if (onStartCall) {
+        onStartCall({
+          id: record.id,
+          caller_id: currentUserId,
+          receiver_id: receiver.id,
+          profiles: {
+            username: receiver.username,
+            avatar_url: receiver.avatar_url
+          }
+        });
+      }
+    } catch (err: any) {
+      console.error("Erreur détaillée lors du lancement de l'appel:", err);
+      if (err.response) {
+        console.error("Détails de la réponse PocketBase:", err.response);
+      }
+      setError(`Impossible de lancer l'appel: ${err.message || 'Erreur inconnue'}`);
+    } finally {
+      setIsCalling(false);
     }
   };
 
@@ -239,29 +271,31 @@ const CallsTab: React.FC<CallsTabProps> = ({
               className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group cursor-pointer border border-transparent hover:border-white/10"
             >
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full overflow-hidden border border-white/10">
                   {call.caller_id === 'gemini' || call.receiver_id === 'gemini' ? (
+                    <div className="w-full h-full overflow-hidden rounded-full">
                       <img 
                         src="https://static.vecteezy.com/system/resources/thumbnails/055/687/065/small_2x/gemini-google-icon-symbol-logo-free-png.png" 
-                        className="w-8 h-8 object-cover" 
+                        className="w-full h-full object-cover" 
                         alt="Gemini"
                         referrerPolicy="no-referrer"
                       />
+                    </div>
                   ) : (
-                    <img src={call.profiles.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover border border-white/10 rounded-full" alt="" referrerPolicy="no-referrer" />
+                    <img src={call.profiles.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                   )}
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">{call.profiles.username}</h4>
-                  <div className="flex items-center gap-1">
+                  <h4 className="font-bold text-white">{call.profiles.username}</h4>
+                  <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5">
                       {getCallIcon(call.status)}
                       <span className={`text-[10px] font-bold ${call.status === 'missed' ? 'text-red-500' : 'text-slate-500'}`}>
-                        {call.status === 'missed' ? 'Manqué' : (call.status === 'incoming' || call.status === 'ongoing') ? 'Entrant' : 'Sortant'}
+                        {call.status === 'missed' ? 'Manqué' : call.status === 'incoming' ? 'Entrant' : 'Sortant'}
                       </span>
                     </div>
                     <span className="w-1 h-1 bg-slate-700 rounded-full" />
-                    <p className="text-[11px] text-slate-500 font-medium">{formatDate(call.created_at)}</p>
+                    <p className="text-xs text-slate-500 font-medium">{formatDate(call.created_at)}</p>
                   </div>
                 </div>
               </div>
@@ -316,12 +350,12 @@ const CallsTab: React.FC<CallsTabProps> = ({
                   className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all cursor-pointer group"
                 >
                   <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-full overflow-hidden ${u.id === 'gemini' ? '' : 'border border-white/10'}`}>
+                    <div className="w-12 h-12 rounded-full overflow-hidden border border-white/10">
                       {u.id === 'gemini' ? (
-                        <div className="w-full h-full overflow-hidden rounded-full flex items-center justify-center">
+                        <div className="w-full h-full overflow-hidden rounded-full">
                           <img 
                             src="https://static.vecteezy.com/system/resources/thumbnails/055/687/065/small_2x/gemini-google-icon-symbol-logo-free-png.png" 
-                            className="w-10 h-10 object-cover" 
+                            className="w-full h-full object-cover" 
                             alt="Gemini"
                             referrerPolicy="no-referrer"
                           />
@@ -344,6 +378,60 @@ const CallsTab: React.FC<CallsTabProps> = ({
                 <p className="text-sm font-bold">Aucun utilisateur trouvé</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Active Call Overlay */}
+      {activeCall && (
+        <div className="absolute inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-8 animate-in zoom-in-95 duration-300">
+          <div className="flex-1 flex flex-col items-center justify-center text-center">
+            <div className="relative mb-8">
+              <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-emerald-500/30 p-1">
+                {activeCall.caller_id === 'gemini' || activeCall.receiver_id === 'gemini' ? (
+                  <div className="w-full h-full overflow-hidden rounded-full">
+                    <img 
+                      src="https://static.vecteezy.com/system/resources/thumbnails/055/687/065/small_2x/gemini-google-icon-symbol-logo-free-png.png" 
+                      className="w-full h-full object-cover" 
+                      alt="Gemini"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                ) : (
+                  <img 
+                    src={activeCall.profiles.avatar_url || DEFAULT_AVATAR} 
+                    className="w-full h-full rounded-full object-cover"
+                    alt=""
+                  />
+                )}
+              </div>
+              <div className="absolute inset-0 rounded-full border-4 border-emerald-500 animate-ping opacity-20" />
+            </div>
+            
+            <h3 className="text-3xl font-black text-white mb-2 tracking-tighter">
+              {activeCall.profiles.username}
+            </h3>
+            <p className="text-emerald-500 font-bold tracking-widest text-xs uppercase mb-4">
+              Appel en cours...
+            </p>
+            <p className="text-white/40 font-mono text-xl tabular-nums">
+              {formatTime(callTimer)}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-8 mb-12">
+            <button className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center text-white hover:bg-white/10 transition-all">
+              <Search size={24} />
+            </button>
+            <button 
+              onClick={endCall}
+              className="w-20 h-20 rounded-full bg-red-500 flex items-center justify-center text-white hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+            >
+              <Phone size={32} className="rotate-[135deg]" />
+            </button>
+            <button className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center text-white hover:bg-white/10 transition-all">
+              <MoreVertical size={24} />
+            </button>
           </div>
         </div>
       )}

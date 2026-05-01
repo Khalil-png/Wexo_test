@@ -33,7 +33,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) => {
   const visibleTabs = getVisibleTabs();
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[100] bg-[#0f0f0f]/90 backdrop-blur-xl border-t border-white/10 px-4 pb-10 pt-3 flex items-center justify-around lg:hidden animate-in slide-in-from-bottom-4 duration-500">
+    <div className="fixed bottom-0 left-0 right-0 z-[100] bg-[#0f0f0f]/90 backdrop-blur-xl border-t border-white/10 px-4 pb-8 pt-2 flex items-center justify-around lg:hidden animate-in slide-in-from-bottom-4 duration-500">
       {visibleTabs.map((tab) => (
         <button
           key={tab.id}
