@@ -28,26 +28,18 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          distribution: 'temurin'
+          java-version: '21'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Accept Android Licenses
-        run: yes | sdkmanager --licenses || true
 
       - name: Initialize Capacitor
         run: |
           # Capacitor needs the web dir to exist
           mkdir -p dist
-          # Add android platform if not present
-          if [ ! -d "android" ]; then
-            npx cap add android
-          fi
-
-      - name: Sync Capacitor
-        run: npx cap sync android
+          # Ensure Capacitor CLI is available and sync
+          npx cap sync android
 
       - name: Build APK
         run: |
