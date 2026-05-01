@@ -144,53 +144,10 @@ const CallsTab: React.FC<CallsTabProps> = ({
     }
   };
 
-  const startCall = async (receiver: any) => {
+  const startCall = (receiver: any) => {
     if (!user?.uid) return;
-    
-    // On autorise les appels sur mobile maintenant
-    setIsCalling(true);
-    setError(null);
-    try {
-      const currentUserId = pb.authStore.model?.id;
-      if (!currentUserId) {
-        throw new Error("Utilisateur non authentifié sur le NAS.");
-      }
-
-      console.log("Tentative de création d'appel:", {
-        caller_id: currentUserId,
-        receiver_id: receiver.id,
-        type: 'audio',
-        status: 'incoming'
-      });
-
-      // Créer l'enregistrement de l'appel
-      const record = await pb.collection('calls').create({
-        caller_id: currentUserId,
-        receiver_id: receiver.id,
-        type: 'audio',
-        status: 'incoming'
-      });
-
-      // Appeler le callback parent pour activer l'overlay d'appel
-      if (onStartCall) {
-        onStartCall({
-          id: record.id,
-          caller_id: currentUserId,
-          receiver_id: receiver.id,
-          profiles: {
-            username: receiver.username,
-            avatar_url: receiver.avatar_url
-          }
-        });
-      }
-    } catch (err: any) {
-      console.error("Erreur détaillée lors du lancement de l'appel:", err);
-      if (err.response) {
-        console.error("Détails de la réponse PocketBase:", err.response);
-      }
-      setError(`Impossible de lancer l'appel: ${err.message || 'Erreur inconnue'}`);
-    } finally {
-      setIsCalling(false);
+    if (onStartCall) {
+      onStartCall(receiver);
     }
   };
 
@@ -387,60 +344,6 @@ const CallsTab: React.FC<CallsTabProps> = ({
                 <p className="text-sm font-bold">Aucun utilisateur trouvé</p>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Active Call Overlay */}
-      {activeCall && (
-        <div className="absolute inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-8 animate-in zoom-in-95 duration-300">
-          <div className="flex-1 flex flex-col items-center justify-center text-center">
-            <div className="relative mb-8">
-              <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-emerald-500/30 p-1">
-                {activeCall.caller_id === 'gemini' || activeCall.receiver_id === 'gemini' ? (
-                  <div className="w-full h-full overflow-hidden rounded-full">
-                    <img 
-                      src="https://static.vecteezy.com/system/resources/thumbnails/055/687/065/small_2x/gemini-google-icon-symbol-logo-free-png.png" 
-                      className="w-full h-full object-cover" 
-                      alt="Gemini"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                ) : (
-                  <img 
-                    src={activeCall.profiles.avatar_url || DEFAULT_AVATAR} 
-                    className="w-full h-full rounded-full object-cover"
-                    alt=""
-                  />
-                )}
-              </div>
-              <div className="absolute inset-0 rounded-full border-4 border-emerald-500 animate-ping opacity-20" />
-            </div>
-            
-            <h3 className="text-3xl font-black text-white mb-2 tracking-tighter">
-              {activeCall.profiles.username}
-            </h3>
-            <p className="text-emerald-500 font-bold tracking-widest text-xs uppercase mb-4">
-              Appel en cours...
-            </p>
-            <p className="text-white/40 font-mono text-xl tabular-nums">
-              {formatTime(callTimer)}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-8 mb-12">
-            <button className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center text-white hover:bg-white/10 transition-all">
-              <Search size={24} />
-            </button>
-            <button 
-              onClick={endCall}
-              className="w-20 h-20 rounded-full bg-red-500 flex items-center justify-center text-white hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
-            >
-              <Phone size={32} className="rotate-[135deg]" />
-            </button>
-            <button className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center text-white hover:bg-white/10 transition-all">
-              <MoreVertical size={24} />
-            </button>
           </div>
         </div>
       )}

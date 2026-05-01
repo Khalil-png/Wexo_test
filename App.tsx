@@ -18,6 +18,7 @@ import LogoutModal from '@/components/LogoutModal';
 import BottomNav from '@/components/BottomNav';
 import AdminPanel from '@/components/AdminPanel';
 import IncomingCallOverlay from '@/components/IncomingCallOverlay';
+import ActiveCallOverlay from '@/components/ActiveCallOverlay';
 import CameraOverlay from '@/components/CameraOverlay';
 import PocketBaseStatus from '@/components/PocketBaseStatus';
 import { isMobileDevice } from '@/src/utils/device';
@@ -104,6 +105,11 @@ const AppContent: React.FC = () => {
 
         if (incomingCall) {
           setIncomingCall(null);
+          return;
+        }
+
+        if (activeCall) {
+          // Ne rien faire sur le bouton retour en appel pour éviter de couper accidentellement
           return;
         }
 
@@ -623,7 +629,9 @@ const AppContent: React.FC = () => {
   const handleEndCall = async () => {
     if (activeCall) {
       try {
-        await pb.collection('calls').update(activeCall.id, { status: 'completed' });
+        if (activeCall.id && activeCall.id !== activeCall.receiver_id) {
+          await pb.collection('calls').update(activeCall.id, { status: 'completed' });
+        }
       } catch (err) {
         console.error("Error ending call:", err);
       }
@@ -631,8 +639,42 @@ const AppContent: React.FC = () => {
     setActiveCall(null);
   };
 
-  const handleStartCall = (call: any) => {
-    setActiveCall(call);
+  const handleStartCall = async (receiver: any) => {
+    if (!pbUser?.id) {
+       setNotification({ message: "Vous devez être connecté pour appeler", show: true });
+       return;
+    }
+
+    try {
+      // Si on reçoit déjà un record complet (depuis CallsTab par exemple)
+      if (receiver.caller_id) {
+        setActiveCall(receiver);
+        return;
+      }
+
+      // Sinon, on initie l'appel (depuis MessagesTab par exemple)
+      console.log("Initiation d'un appel vers:", receiver.username);
+      
+      const record = await pb.collection('calls').create({
+        caller_id: pbUser.id,
+        receiver_id: receiver.id,
+        type: 'audio',
+        status: 'incoming'
+      });
+
+      setActiveCall({
+        id: record.id,
+        caller_id: pbUser.id,
+        receiver_id: receiver.id,
+        profiles: {
+          username: receiver.username,
+          avatar_url: receiver.avatar_url
+        }
+      });
+    } catch (err: any) {
+      console.error("Erreur lancement appel:", err);
+      setNotification({ message: `Erreur appel: ${err.message}`, show: true });
+    }
   };
 
   const handleSendQuickMessage = async (text: string) => {
@@ -930,6 +972,13 @@ const AppContent: React.FC = () => {
             onAccept={handleAcceptCall}
             onDecline={handleDeclineCall}
             onSendMessage={handleSendQuickMessage}
+          />
+        )}
+        {activeCall && (
+          <ActiveCallOverlay 
+            activeCall={activeCall}
+            callTimer={callTimer}
+            onEndCall={handleEndCall}
           />
         )}
       </AnimatePresence>
