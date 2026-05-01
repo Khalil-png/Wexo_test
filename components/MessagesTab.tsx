@@ -8,7 +8,7 @@ import {
   MessageCircle, Info, UserPlus, Clock, 
   MessageSquarePlus, Users, User, Mic, Paperclip, AlertCircle, Video, Sparkles, Camera,
   Dog, Utensils, Trophy, Car, Lightbulb, Heart as HeartIcon, Flag,
-  Download, File, FileText, Archive, Ban, Copy
+  Download, File, FileText, Archive, Ban, Copy, Phone, MoreVertical, Edit2
 } from 'lucide-react';
 import VideoPlayer from './VideoPlayer';
 import { DEFAULT_AVATAR } from '../constants';
@@ -920,6 +920,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           await pb.collection('notifications').create({
             user_id: selectedId,
             sender_id: user.uid,
+            sender_avatar: profile?.avatar_url || '',
             type: 'message',
             title: profile?.display_name || user.displayName || 'Wexo',
             content: text || (finalFileData ? 'Pièce jointe reçue' : 'Nouveau message'),
@@ -985,7 +986,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         
         const aiResult = await getSmartResponse(history);
         const responseText = aiResult.text;
-        const isQuotaError = responseText.includes("quota dépassé");
+        const isQuotaError = responseText.includes("Une erreur s'est produite");
         
         const aiSnowflakeId = generateSnowflake();
         const aiMsg: any = { 
@@ -1140,28 +1141,74 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     }
   };
 
+  const [selectedMessage, setSelectedMessage] = useState<ExtendedMessage | null>(null);
+  const [longPressTimer, setLongPressTimer] = useState<any>(null);
+
   const deleteMessage = async (type: 'everyone' | 'me') => {
-    if (!messageToDelete || !user) return;
+    const targetMsg = messageToDelete || selectedMessage;
+    if (!targetMsg || !user) return;
     
     try {
-      // Migration NAS : Suppression désactivée
-      console.log("Suppression message non effectuée (Migration NAS)");
+      if (type === 'everyone') {
+        // Supprimer pour tout le monde (soft delete or hard delete)
+        await pb.collection('messages').update(targetMsg.id, {
+          text: 'Ce message a été supprimé',
+          is_deleted_for_everyone: true
+        });
+      } else {
+        // Supprimer pour moi
+        const deletedForMe = [...(targetMsg.deleted_for_me_by || []), user.uid];
+        await pb.collection('messages').update(targetMsg.id, {
+          deleted_for_me_by: deletedForMe
+        });
+      }
+      
+      // Update local state
+      setMessages(prev => prev.filter(m => m.id !== targetMsg.id));
       setMessageToDelete(null);
+      setSelectedMessage(null);
     } catch (err) {
-      console.error(err);
+      console.error("Erreur suppression message:", err);
       setMessageToDelete(null);
+      setSelectedMessage(null);
     }
   };
 
   const handleUpdateMessage = async () => {
-    if (!messageToEdit || !editText.trim() || !user) return;
+    const targetMsg = messageToEdit || selectedMessage;
+    if (!targetMsg || !editText.trim() || !user) return;
     try {
-      // Migration NAS
-      console.log("Edition message non supportée (Migration NAS)");
+      await pb.collection('messages').update(targetMsg.id, {
+        text: editText + '\u200B', // Hidden char to mark as edited if we don't have is_edited field
+        is_edited: true
+      });
+      
+      setMessages(prev => prev.map(m => m.id === targetMsg.id ? { ...m, text: editText, is_edited: true } : m));
       setMessageToEdit(null);
+      setSelectedMessage(null);
       setEditText('');
     } catch (err) {
-      console.error(err);
+      console.error("Erreur édition message:", err);
+    }
+  };
+
+  const handleLongPress = (msg: ExtendedMessage) => {
+    if (isMobileDevice()) {
+      setSelectedMessage(msg);
+    }
+  };
+
+  const touchStart = (msg: ExtendedMessage) => {
+    const timer = setTimeout(() => {
+      handleLongPress(msg);
+    }, 500); // 500ms for long press
+    setLongPressTimer(timer);
+  };
+
+  const touchEnd = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
     }
   };
 
@@ -1220,10 +1267,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   }
 
   return (
-    <div className="flex h-full bg-[#111b21] overflow-hidden relative w-full border-t border-white/10">
+    <div className="flex h-full bg-[#0f0f0f] overflow-hidden relative w-full border-t border-white/10">
       
       {/* Sidebar Discussion */}
-      <div className={`w-full lg:w-[380px] border-r border-white/10 flex-col bg-[#111b21] lg:flex h-full overflow-hidden ${mobileView === 'chat' ? 'hidden' : 'flex'}`}>
+      <div className={`w-full lg:w-[380px] border-r border-white/10 flex-col bg-[#0f0f0f] lg:flex h-full overflow-hidden ${mobileView === 'chat' ? 'hidden' : 'flex'}`}>
         <div className="p-6 pb-2 space-y-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <h2 className="text-3xl font-bold text-white tracking-tight">Messages</h2>
@@ -1238,7 +1285,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto no-scrollbar relative pt-4 bg-[#111b21]">
+        <div className="flex-1 overflow-y-auto no-scrollbar relative pt-4">
           {/* Gemini List Item */}
           <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-3 p-4 cursor-pointer border-l-4 transition-all ${selectedId === 'gemini' ? 'bg-white/10 border-white' : 'border-transparent hover:bg-white/5'}`}>
             <div className="w-10 h-10 rounded-full border border-white/10 overflow-hidden relative flex-shrink-0 flex items-center justify-center">
@@ -1368,14 +1415,44 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
       {/* Discussion Centrale */}
       <div 
-        className={`flex-1 flex flex-col bg-[#0b141a] relative lg:flex overflow-hidden scroll-none select-none ${mobileView === 'list' ? 'hidden text-slate-100' : 'fixed inset-0 z-[120] lg:relative lg:inset-auto lg:z-0 flex'}`}
+        className={`flex-1 flex flex-col bg-[#0f0f0f] relative lg:flex overflow-hidden scroll-none select-none ${mobileView === 'list' ? 'hidden text-slate-100' : 'fixed inset-0 z-[120] lg:relative lg:inset-auto lg:z-0 flex'}`}
         style={{ height: '100dvh', overscrollBehavior: 'none' }}
       >
         {selectedId ? (
-          <div className="flex-1 flex flex-col relative bg-[#0b141a] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100dvh' }}>
+          <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100dvh' }}>
             {/* Header du Chat - Flex fixed height */}
-            <div className={`px-4 py-6 border-b border-white/10 bg-[#202c33] flex items-center justify-between flex-shrink-0 z-40 ${(isMobileDevice() && isKeyboardOpen) ? 'hidden' : ''} ${isAndroidDevice() ? 'pt-16 pb-6' : ''}`}>
-              <div className="flex items-center gap-3">
+            <div className={`px-4 py-3 border-b border-white/10 bg-[#1a1a1a] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-12 pb-3' : ''}`}>
+              {selectedMessage ? (
+                <div className="flex items-center justify-between w-full animate-in fade-in duration-200">
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => setSelectedMessage(null)} className="p-2 text-white hover:bg-white/10 rounded-full transition-colors"><ArrowLeft size={24} /></button>
+                    <span className="text-white font-bold text-lg">1 Sélectionné</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {selectedMessage.is_own && !selectedMessage.is_deleted_for_everyone && (
+                      <button 
+                        onClick={() => {
+                          setEditText(selectedMessage.text || '');
+                          setMessageToEdit(selectedMessage);
+                        }} 
+                        className="p-2 text-white hover:bg-white/10 rounded-full transition-colors"
+                      >
+                        <Edit2 size={20} />
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => {
+                        setMessageToDelete(selectedMessage);
+                      }} 
+                      className="p-2 text-white hover:bg-white/10 rounded-full transition-colors text-red-400"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between w-full">
                 <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
                 <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border border-white/10 flex items-center justify-center">
                   {selectedId === 'gemini' ? (
@@ -1460,6 +1537,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   })()}
                 </div>
               )}
+                </>
+              )}
             </div>
             
             <div ref={scrollRef} className={`flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8 ${isMobileDevice() ? 'pb-1' : ''}`}>
@@ -1501,15 +1580,26 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 }
                 
                 return (
-                  <div key={msg.id} className={`flex group relative w-full px-4 sm:px-8 hover:bg-white/[0.03] transition-colors py-0.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')}`}>
+                  <div 
+                    key={msg.id} 
+                    onContextMenu={(e) => {
+                      if (isMobileDevice()) {
+                        e.preventDefault();
+                        handleLongPress(msg);
+                      }
+                    }}
+                    onTouchStart={() => touchStart(msg)}
+                    onTouchEnd={touchEnd}
+                    className={`flex group relative w-full px-4 sm:px-8 transition-colors py-0.5 ${selectedMessage?.id === msg.id ? 'bg-white/10' : 'hover:bg-white/[0.03]'} ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')}`}
+                  >
                     <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'}`}>
                       <div className={`${(isImage || isVideo) && !isDeleted ? 'max-w-[280px] sm:max-w-[320px]' : 'w-fit'} ${borderRadiusClasses} relative ${largeEmojis ? '' : 'shadow-md'} ${
                         largeEmojis ? 'bg-transparent' : (
                           msg.is_own 
-                            ? isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-[#005c4b] text-slate-100' 
-                            : msg.isError || (msg.text && msg.text.includes("quota dépassé"))
+                            ? isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-blue-600 text-slate-100' 
+                            : msg.isError || (msg.text && msg.text.includes("Une erreur s'est produite"))
                               ? 'bg-red-500/10 border border-red-500/30 text-red-500'
-                              : isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-[#202c33] text-slate-100'
+                              : isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-white/10 text-white'
                         )
                       }`}>
                         <div className="flex flex-col">
@@ -1742,9 +1832,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             </div>
 
             {/* Pied de page Messagerie (Barre + Zone Noire) */}
-            <div className={`flex flex-col bg-[#202c33] flex-shrink-0 z-[110] relative`}>
+            <div className={`flex flex-col bg-[#1a1a1a] flex-shrink-0 z-[110] relative`}>
               {/* Barre de Saisie */}
-              <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1' : 'py-4'} bg-[#202c33] border-t border-white/10`}>
+              <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1' : 'py-4'} bg-[#1a1a1a] border-t border-white/10`}>
                 {localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold">
                     <div className="flex items-center gap-2">
@@ -1755,7 +1845,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   </div>
                 )}
                 <div className={`flex items-end gap-2 max-w-full ${isMobileDevice() ? 'px-1 pb-1' : ''}`}>
-                  <div className={`flex-1 min-h-[48px] flex flex-col bg-[#202c33] rounded-[24px] border border-white/5 shadow-sm overflow-hidden group/input relative`}>
+                  <div className={`flex-1 min-h-[48px] flex flex-col bg-[#0f0f0f] rounded-[24px] border border-white/5 shadow-sm overflow-hidden group/input relative`}>
                     {stagedFile && (
                       <div className="mx-3 mt-2 mb-1 flex items-center gap-2 bg-white/5 px-2 py-1.5 rounded-xl border border-white/10 animate-in zoom-in duration-200">
                         <div className="w-10 h-10 rounded-lg overflow-hidden bg-black flex-shrink-0">
@@ -1778,7 +1868,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     )}
 
                     <div className="flex items-center gap-1 px-2 py-1 min-h-[48px]">
-                      <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className={`p-2 transition-colors flex-shrink-0 ${showEmojiPicker ? 'text-[#00a884]' : 'text-slate-400 hover:text-[#00a884]'}`}>
+                      <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className={`p-2 transition-colors flex-shrink-0 ${showEmojiPicker ? 'text-blue-500' : 'text-slate-400 hover:text-blue-500'}`}>
                         <Smile size={24} />
                       </button>
 
@@ -1811,7 +1901,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
                   <button 
                     onClick={() => sendMessage(messageText)} 
-                    className={`flex-shrink-0 w-[48px] h-[48px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 ${messageText.trim() || stagedFile ? 'bg-[#00a884] text-white' : 'bg-[#00a884] text-white'}`}
+                    className={`flex-shrink-0 w-[48px] h-[48px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 ${messageText.trim() || stagedFile ? 'bg-blue-600 text-white' : 'bg-blue-600 text-white'}`}
                   >
                     {messageText.trim() || stagedFile ? <Send size={20} className="ml-0.5" /> : <Mic size={22} />}
                   </button>
