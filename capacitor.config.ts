@@ -6,8 +6,8 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https',
-    url: 'https://wexo-test.vercel.app',
-    allowNavigation: ['wexo-test.vercel.app']
+    url: 'https://wexo-steel.vercel.app',
+    allowNavigation: ['wexo-steel.vercel.app', '*.vercel.app', 'vercel.app']
   },
   plugins: {
     BackgroundRunner: {
