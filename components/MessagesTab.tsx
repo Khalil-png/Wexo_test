@@ -1282,19 +1282,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           {/* Bouton Gemini - Carré arrondi sombre */}
           <button 
             onClick={() => handleSelectChat('gemini')}
-            className="w-12 h-12 bg-[#1a1a1a] text-white rounded-xl shadow-2xl flex items-center justify-center active:scale-95 transition-all"
+            className="w-14 h-14 bg-[#1a1a1a] text-white rounded-xl shadow-2xl flex items-center justify-center active:scale-95 transition-all"
           >
-            <div className="w-7 h-7">
-              <GeminiAvatarIcon size={26} />
+            <div className="w-8 h-8">
+              <GeminiAvatarIcon size={32} />
             </div>
           </button>
           
           {/* Bouton + - Gros bouton bleu vif "Wexo" sans effet de lumière */}
           <button 
             onClick={() => setIsSearchingUsers(true)}
-            className="w-14 h-14 bg-[#0066ff] text-white rounded-2xl shadow-2xl flex items-center justify-center active:scale-90 transition-all border border-white/10"
+            className="w-16 h-16 bg-[#0066ff] text-white rounded-2xl shadow-2xl flex items-center justify-center active:scale-90 transition-all border border-white/10"
           >
-            <Plus size={30} strokeWidth={3} />
+            <Plus size={36} strokeWidth={3} />
           </button>
         </div>
       </div>
@@ -1858,7 +1858,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
                     {/* Zone Noire "Hors App" - Permanente mais masquée quand le clavier est là */}
               {isMobileDevice() && !isKeyboardOpen && (
-                <div className="w-full bg-[#0f0f0f] flex-shrink-0" style={{ height: '25px' }} />
+                <div className="w-full bg-[#0f0f0f] flex-shrink-0" style={{ height: '22px' }} />
               )}
             </div>
 
