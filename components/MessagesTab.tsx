@@ -207,6 +207,8 @@ interface ExtendedMessage extends Message {
   isError?: boolean;
   isGeneratingImage?: boolean;
   isGeneratingVideo?: boolean;
+  generated_image_url?: string;
+  generated_video_url?: string;
   needsKey?: boolean;
   is_screenshot_alert?: boolean;
   sender_name?: string;
@@ -293,7 +295,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const [copiedId, setCopiedId] = useState(false);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<ExtendedMessage | null>(null);
-  const [viewMedia, setViewMedia] = useState<{ url: string; type: string } | null>(null);
+  const [viewMedia, setViewMedia] = useState<{ url: string; name: string; type: string; message?: string; transcription?: any } | null>(null);
   const [longPressTimer, setLongPressTimer] = useState<any>(null);
   
   const initialHeight = useRef(window.innerHeight);
@@ -1135,6 +1137,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           text: errorMsg,
           isAI: true,
           isError: true,
+          created_at: new Date().toISOString(),
           timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
         };
         setMessages(prev => [...prev, aiErrorMsg as any]);
@@ -1532,10 +1535,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     className={`flex flex-col mb-1.5 px-4 sm:px-8 group transition-all duration-300 relative ${msg.is_own ? 'items-end' : 'items-start'} ${isSelected ? 'bg-white/5 py-2' : ''}`}
                   >
                     {/* Timestamp relative or absolute based on distance */}
-                    {(idx === 0 || new Date(messages[idx].timestamp).getTime() - new Date(messages[idx-1].timestamp).getTime() > 1800000) && (
+                    {(idx === 0 || new Date(messages[idx].created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 1800000) && (
                       <div className="w-full flex justify-center my-6">
                         <span className="bg-white/5 px-4 py-1.5 rounded-2xl text-[10px] font-black text-slate-500 border border-white/5 shadow-sm uppercase tracking-widest">
-                          {formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true, locale: fr })}
+                          {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: fr })}
                         </span>
                       </div>
                     )}
@@ -1564,7 +1567,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                         {(isImage || isVideo || isDoc) && (
                           <div className="mb-3 rounded-xl overflow-hidden border border-white/10 bg-black/20 group/media transition-all">
                             {isImage && (
-                              <div className="relative cursor-pointer aspect-square sm:aspect-video min-w-[200px]" onClick={() => setViewMedia({ url: msg.generated_image_url || msg.file_url || '', type: 'image' })}>
+                              <div className="relative cursor-pointer aspect-square sm:aspect-video min-w-[200px]" onClick={() => setViewMedia({ url: msg.generated_image_url || msg.file_url || '', name: msg.file_name || 'Image IA', type: 'image' })}>
                                 <img 
                                   src={msg.generated_image_url || msg.file_url} 
                                   className={`w-full h-full object-cover transition-all duration-700 ${msg.isGeneratingImage ? 'blur-xl animate-pulse grayscale' : 'hover:scale-110'}`} 
