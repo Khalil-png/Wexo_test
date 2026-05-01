@@ -15,7 +15,7 @@ const config: CapacitorConfig = {
       src: 'background.js',
       event: 'checkStatus',
       repeat: true,
-      interval: 15,
+      interval: 5,
       autoStart: true,
     },
   },

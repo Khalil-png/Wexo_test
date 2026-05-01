@@ -8,6 +8,8 @@ import { TabId } from '../types';
 import { isMobileDevice } from '../src/utils/device';
 import { useClickOutside } from '../utils/hooks';
 import { pb } from '../services/pocketbaseService';
+import { Preferences } from '@capacitor/preferences';
+
 // Firebase désactivé
 
 interface Notification {
@@ -111,6 +113,17 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
     }
 
     const fetchNotifications = async () => {
+      // Sync auth for background runner
+      if (pb.authStore.model) {
+        Preferences.set({
+          key: 'pb_auth',
+          value: JSON.stringify({
+            token: pb.authStore.token,
+            model: pb.authStore.model
+          })
+        }).catch(() => {});
+      }
+
       try {
         // Migration NAS : Récupération des vraies notifications
         const records = await pb.collection('notifications').getList(1, 20, {

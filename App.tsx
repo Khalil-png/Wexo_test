@@ -30,6 +30,31 @@ import { AnimatePresence } from 'framer-motion';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { App as CapApp } from '@capacitor/app';
+import { Preferences } from '@capacitor/preferences';
+
+// Safe wrapper for console in case it's not available in background
+const log = (...args: any[]) => console.log('[App]', ...args);
+
+// Save auth to preferences for background runner
+const saveAuthToPreferences = async (model: any) => {
+  try {
+    if (model) {
+      await Preferences.set({
+        key: 'pb_auth',
+        value: JSON.stringify({
+          token: pb.authStore.token,
+          model: model
+        })
+      });
+      log('Saved auth to preferences for background runner');
+    } else {
+      await Preferences.remove({ key: 'pb_auth' });
+      log('Cleared auth from preferences');
+    }
+  } catch (err) {
+    log('Error saving/clearing auth in preferences:', err);
+  }
+};
 // Firebase désactivé
 
 const CURRENT_VERSION = "0.0.1";
@@ -308,6 +333,7 @@ const AppContent: React.FC = () => {
     const unsub = pb.authStore.onChange((token, model) => {
       console.log("Auth change detected:", model ? model.username : "logged out");
       setPbUser(model);
+      saveAuthToPreferences(model);
       if (model) {
         setProfile({
           id: model.id,
