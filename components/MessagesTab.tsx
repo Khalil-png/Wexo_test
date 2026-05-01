@@ -35,8 +35,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { generateSnowflake } from '../utils/snowflake';
 import Username from './Username';
-import { format, formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { format } from 'date-fns';
 
 // Avatar Gemini parfaitement centré en X et Y
 const GeminiAvatarIcon = ({ size = 16 }: { size?: number }) => (
@@ -1534,11 +1533,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     }}
                     className={`flex flex-col mb-1.5 px-4 sm:px-8 group transition-all duration-300 relative ${msg.is_own ? 'items-end' : 'items-start'} ${isSelected ? 'bg-white/5 py-2' : ''}`}
                   >
-                    {/* Timestamp relative or absolute based on distance */}
-                    {(idx === 0 || new Date(messages[idx].created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 1800000) && (
+                    {/* Date Divider (Simple) */}
+                    {(idx === 0 || new Date(messages[idx].created_at).toDateString() !== new Date(messages[idx-1].created_at).toDateString()) && (
                       <div className="w-full flex justify-center my-6">
                         <span className="bg-white/5 px-4 py-1.5 rounded-2xl text-[10px] font-black text-slate-500 border border-white/5 shadow-sm uppercase tracking-widest">
-                          {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: fr })}
+                          {new Date(msg.created_at).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
                         </span>
                       </div>
                     )}
@@ -1614,46 +1613,46 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                           </div>
                         )}
 
-                        {/* Text Content */}
-                        {msg.text && (
-                          <div className="text-[15px] leading-relaxed break-words font-medium overflow-hidden">
-                            {msg.isAI ? (
-                              <div className="markdown-body">
-                                <ReactMarkdown 
-                                  remarkPlugins={[remarkGfm]}
-                                  components={{
-                                    code({node, inline, className, children, ...props}: any) {
-                                      const match = /language-(\w+)/.exec(className || '');
-                                      return !inline && match ? (
-                                        <CodeBlock code={String(children).replace(/\n$/, '')} lang={match[1]} />
-                                      ) : (
-                                        <code className={`${className} bg-white/10 px-1.5 py-0.5 rounded-md text-sm font-mono`} {...props}>
-                                          {children}
-                                        </code>
-                                      );
-                                    }
-                                  }}
-                                >
-                                  {msg.text}
-                                </ReactMarkdown>
-                              </div>
-                            ) : (
-                              renderTextWithEmojis(msg.text)
+                        {/* Text Content + Status Inside */}
+                        <div className="flex flex-col">
+                          {msg.text && (
+                            <div className="text-[15px] leading-relaxed break-words font-medium overflow-hidden">
+                              {msg.isAI ? (
+                                <div className="markdown-body">
+                                  <ReactMarkdown 
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                      code({node, inline, className, children, ...props}: any) {
+                                        const match = /language-(\w+)/.exec(className || '');
+                                        return !inline && match ? (
+                                          <CodeBlock code={String(children).replace(/\n$/, '')} lang={match[1]} />
+                                        ) : (
+                                          <code className={`${className} bg-white/10 px-1.5 py-0.5 rounded-md text-sm font-mono`} {...props}>
+                                            {children}
+                                          </code>
+                                        );
+                                      }
+                                    }}
+                                  >
+                                    {msg.text}
+                                  </ReactMarkdown>
+                                </div>
+                              ) : (
+                                renderTextWithEmojis(msg.text)
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Message Status Bar Inside Bubble */}
+                          <div className={`mt-1 flex items-center gap-1 justify-end opacity-60`}>
+                            <span className="text-[9px] font-black tracking-tighter">
+                              {msg.timestamp}
+                            </span>
+                            {msg.is_edited && <span className="text-[8px] font-black italic uppercase">Modifié</span>}
+                            {msg.is_own && (
+                              <CheckCheck size={10} strokeWidth={3} className={msg.read ? 'text-white' : 'text-white/40'} />
                             )}
                           </div>
-                        )}
-
-                        {/* Message Status Bar */}
-                        <div className={`mt-1.5 flex items-center gap-1.5 ${msg.is_own ? 'justify-end' : 'justify-start'}`}>
-                          <span className="text-[9px] font-black opacity-50 tracking-tighter">
-                            {msg.timestamp}
-                          </span>
-                          {msg.is_edited && <span className="text-[9px] font-black italic opacity-50 uppercase">Modifié</span>}
-                          {msg.is_own && (
-                            <span className="opacity-70">
-                              <CheckCheck size={10} strokeWidth={3} className={msg.read ? 'text-white' : 'text-white/40'} />
-                            </span>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -1684,7 +1683,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               </div>
             )}
 
-            {/* Barre d'input */}
+            {/* Barre d'input - Style Wexo Original */}
             <div className="px-4 py-3 sm:px-8 sm:py-6 bg-[#0f0f0f] border-t border-white/10 relative z-50 flex-shrink-0">
                {localUploadError && (
                  <div className="absolute bottom-full left-4 right-4 mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
@@ -1694,44 +1693,70 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                  </div>
                )}
 
-              <div className="flex items-end gap-3 max-w-5xl mx-auto">
-                <div className="flex-1 relative transition-all duration-300">
-                  <textarea
-                    ref={textareaRef}
-                    rows={1}
+              <div className="flex items-center gap-4 max-w-5xl mx-auto">
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setShowPlusMenu(!showPlusMenu)}
+                    className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all bg-white/5 border border-white/10 hover:bg-white/10 ${showPlusMenu ? 'rotate-45 text-red-400' : 'text-slate-400'}`}
+                  >
+                    <Plus size={22} strokeWidth={2.5} />
+                  </button>
+
+                  {showPlusMenu && (
+                    <div ref={plusMenuRef} className="absolute bottom-20 left-4 bg-[#1a1a1a] border border-white/10 rounded-3xl p-2 shadow-2xl flex flex-col gap-1 animate-in slide-in-from-bottom-2 duration-300 z-[100] min-w-[200px]">
+                      <button onClick={() => { fileInputRef.current?.click(); setShowPlusMenu(false); }} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-2xl transition-all text-white group">
+                        <div className="w-10 h-10 bg-blue-500/10 text-blue-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform"><Paperclip size={20} /></div>
+                        <span className="text-sm font-bold tracking-tight">Fichier</span>
+                      </button>
+                      <button onClick={() => { window.dispatchEvent(new CustomEvent('open-camera', { detail: { destination: 'message' } })); setShowPlusMenu(false); }} className="flex items-center gap-4 p-4 hover:bg-white/5 rounded-2xl transition-all text-white group">
+                        <div className="w-10 h-10 bg-purple-500/10 text-purple-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform"><Camera size={20} /></div>
+                        <span className="text-sm font-bold tracking-tight">Caméra</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 relative flex items-center">
+                  <input 
+                    type="text"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
+                      if (e.key === 'Enter') {
                         e.preventDefault();
                         sendMessage();
                       }
                     }}
                     placeholder={selectedId === 'gemini' ? "Demandez n'importe quoi..." : "Message..."}
-                    className="w-full bg-[#1a1a1a] text-white text-[15px] rounded-2xl py-3.5 pl-4 pr-12 focus:ring-2 focus:ring-[#0066ff]/30 outline-none border border-white/5 transition-all scroll-none resize-none min-h-[50px] max-h-[160px]"
+                    className="w-full bg-[#1a1a1a] text-white text-[15px] rounded-[24px] py-4 pl-6 pr-14 focus:ring-2 focus:ring-[#0066ff]/30 outline-none border border-white/5 transition-all"
                   />
-                  <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
+                  
+                  <div className="absolute right-2 flex items-center gap-1">
                     <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadingFile || !!stagedFile}
-                      className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all disabled:opacity-30"
+                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                      className="p-2.5 text-slate-500 hover:text-white transition-colors"
                     >
-                      {uploadingFile ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <Paperclip size={18} />}
+                      <Smile size={22} />
                     </button>
-                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
                   </div>
+
+                  <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
                 </div>
 
                 <button 
-                  onClick={() => sendMessage()}
-                  disabled={!inputValue.trim() && !stagedFile || isTypingAI}
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-xl active:scale-90 flex-shrink-0 ${
-                    !inputValue.trim() && !stagedFile || isTypingAI 
-                      ? 'bg-white/5 text-slate-600' 
+                  onClick={() => inputValue.trim() || stagedFile ? sendMessage() : null}
+                  disabled={isTypingAI}
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-xl active:scale-90 flex-shrink-0 ${
+                    !inputValue.trim() && !stagedFile 
+                      ? 'bg-white/5 text-slate-500' 
                       : 'bg-[#0066ff] text-white shadow-[#0066ff]/20'
                   }`}
                 >
-                  <Send size={20} className={inputValue.trim() || stagedFile ? 'animate-in zoom-in duration-300' : ''} />
+                  {inputValue.trim() || stagedFile ? (
+                    <Send size={24} className="animate-in zoom-in duration-300" />
+                  ) : (
+                    <Mic size={24} />
+                  )}
                 </button>
               </div>
             </div>
