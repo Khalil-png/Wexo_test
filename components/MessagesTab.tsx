@@ -1243,8 +1243,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         <div className="flex-1 overflow-y-auto no-scrollbar relative pt-4">
           {/* Gemini List Item */}
           <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-4 px-6 py-4 cursor-pointer transition-all ${selectedId === 'gemini' ? 'bg-white/5' : 'hover:bg-white/5'}`}>
-            <div className="w-10 h-10 rounded-full overflow-hidden relative flex-shrink-0 flex items-center justify-center border border-white/10">
-              <GeminiAvatarIcon size={20} />
+            <div className="w-12 h-12 rounded-full overflow-hidden relative flex-shrink-0 flex items-center justify-center border border-white/10">
+              <GeminiAvatarIcon size={24} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-center mb-0.5">
@@ -1371,10 +1371,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       {/* Discussion Centrale */}
       <div 
         className={`flex-1 flex flex-col bg-[#0f0f0f] relative lg:flex overflow-hidden scroll-none select-none ${mobileView === 'list' ? 'hidden text-slate-100' : 'fixed inset-0 z-[120] lg:relative lg:inset-auto lg:z-0 flex'}`}
-        style={{ height: '100dvh', overscrollBehavior: 'none' }}
+        style={{ height: '100%', overscrollBehavior: 'none' }}
       >
         {selectedId ? (
-          <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100dvh' }}>
+          <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100%' }}>
             {/* Header du Chat - Flex fixed height */}
             <div className={`p-4 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-12 pb-4' : ''}`}>
               <div className="flex items-center gap-3">

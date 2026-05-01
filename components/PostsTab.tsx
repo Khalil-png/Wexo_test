@@ -145,6 +145,7 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
               await pb.collection('notifications').create({
                 user_id: post.user_id,
                 sender_id: user.uid,
+                sender_avatar: profile?.avatar_url || '',
                 type: 'like',
                 title: 'Nouveau like',
                 content: `${profile?.display_name || user.displayName || 'Un utilisateur'} a aimé votre post.`,
