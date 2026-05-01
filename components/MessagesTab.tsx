@@ -1282,7 +1282,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           {/* Bouton Gemini - Carré arrondi sombre */}
           <button 
             onClick={() => handleSelectChat('gemini')}
-            className="w-14 h-14 bg-[#1a1a1a] text-white rounded-xl shadow-2xl flex items-center justify-center active:scale-95 transition-all border border-white/10"
+            className="w-14 h-14 bg-[#1a1a1a] text-white rounded-xl shadow-2xl flex items-center justify-center active:scale-95 transition-all"
           >
             <div className="w-8 h-8">
               <GeminiAvatarIcon size={32} />
