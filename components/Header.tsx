@@ -148,6 +148,24 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
       pb.collection('notifications').subscribe('*', (e) => {
         if (e.record.user_id === user.uid) {
            fetchNotifications();
+           
+           if (e.action === 'create') {
+             const record = e.record;
+             handleNewNotification({
+               id: record.id,
+               type: record.type as any,
+               sender_id: record.sender_id,
+               sender_name: record.title || 'Inconnu',
+               sender_avatar: record.sender_avatar || '',
+               content: record.content || '',
+               timestamp: new Date(record.created).toLocaleTimeString('fr-FR', { 
+                 hour: '2-digit', 
+                 minute: '2-digit' 
+               }),
+               read: record.read === true,
+               group_id: record.group_id
+             });
+           }
         }
       });
     } catch (err) {
@@ -233,6 +251,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
           await pb.collection('notifications').create({
             user_id: senderId,
             sender_id: user.uid,
+            sender_avatar: profile?.avatar_url || '',
             type: 'friend_accepted',
             title: 'Demande acceptée',
             content: `${profile?.display_name || user.displayName || 'Un utilisateur'} a accepté votre demande d'ami.`,
