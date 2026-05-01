@@ -28,6 +28,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "autoprefixer": "^10.4.20",
     "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
     "express": "^5.2.1",
     "framer-motion": "^12.38.0",
     "http-proxy-middleware": "^3.0.5",
