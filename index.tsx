@@ -144,6 +144,14 @@ const initializeApp = () => {
     
     (window as any).__APP_MOUNTED__ = true;
     logToApp('Application montée avec succès.', 'SUCCESS');
+
+    // Auto-hide splash screen after a small delay in case App.tsx fails to do it
+    setTimeout(async () => {
+       try {
+         const { SplashScreen } = await import('@capacitor/splash-screen');
+         await SplashScreen.hide();
+       } catch (e) {}
+    }, 2000);
   } catch (err: any) {
     logToApp('CRASH_INITIAL_RENDER', 'ERROR', {
       message: err.message,
