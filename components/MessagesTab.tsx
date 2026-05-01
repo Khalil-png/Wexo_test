@@ -1220,10 +1220,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   }
 
   return (
-    <div className="flex h-full bg-[#111b21] overflow-hidden relative w-full border-t border-white/10">
+    <div className="flex h-full bg-[#0f0f0f] overflow-hidden relative w-full border-t border-white/10">
       
       {/* Sidebar Discussion */}
-      <div className={`w-full lg:w-[380px] border-r border-white/10 flex-col bg-[#111b21] lg:flex h-full overflow-hidden ${mobileView === 'chat' ? 'hidden' : 'flex'}`}>
+      <div className={`w-full lg:w-[380px] border-r border-white/10 flex-col bg-[#0f0f0f] lg:flex h-full overflow-hidden ${mobileView === 'chat' ? 'hidden' : 'flex'}`}>
         <div className="p-6 pb-2 space-y-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <h2 className="text-3xl font-bold text-white tracking-tight">Messages</h2>
@@ -1238,17 +1238,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto no-scrollbar relative pt-4 bg-[#111b21]">
+        <div className="flex-1 overflow-y-auto no-scrollbar relative pt-4">
           {/* Gemini List Item */}
-          <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-3 p-4 cursor-pointer border-l-4 transition-all ${selectedId === 'gemini' ? 'bg-white/10 border-white' : 'border-transparent hover:bg-white/5'}`}>
-            <div className="w-10 h-10 rounded-full border border-white/10 overflow-hidden relative flex-shrink-0 flex items-center justify-center">
-              <GeminiAvatarIcon size={24} />
+          <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-4 px-6 py-4 cursor-pointer transition-all ${selectedId === 'gemini' ? 'bg-white/5' : 'hover:bg-white/5'}`}>
+            <div className="w-12 h-12 rounded-full overflow-hidden relative flex-shrink-0 flex items-center justify-center">
+              <GeminiAvatarIcon size={28} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-center mb-0.5">
-                <h4 className="text-sm font-bold text-white truncate">Gemini</h4>
+                <h4 className="text-[17px] font-bold text-white truncate">Gemini</h4>
               </div>
-              <p className="text-xs truncate font-medium text-slate-400">Assistant IA</p>
+              <p className="text-[13px] truncate font-medium text-slate-500">Assistant IA</p>
             </div>
           </div>
 
@@ -1368,18 +1368,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
       {/* Discussion Centrale */}
       <div 
-        className={`flex-1 flex flex-col bg-[#0b141a] relative lg:flex overflow-hidden scroll-none select-none ${mobileView === 'list' ? 'hidden text-slate-100' : 'fixed inset-0 z-[120] lg:relative lg:inset-auto lg:z-0 flex'}`}
+        className={`flex-1 flex flex-col bg-[#0f0f0f] relative lg:flex overflow-hidden scroll-none select-none ${mobileView === 'list' ? 'hidden text-slate-100' : 'fixed inset-0 z-[120] lg:relative lg:inset-auto lg:z-0 flex'}`}
         style={{ height: '100dvh', overscrollBehavior: 'none' }}
       >
         {selectedId ? (
-          <div className="flex-1 flex flex-col relative bg-[#0b141a] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100dvh' }}>
+          <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100dvh' }}>
             {/* Header du Chat - Flex fixed height */}
-            <div className={`px-4 py-6 border-b border-white/10 bg-[#202c33] flex items-center justify-between flex-shrink-0 z-40 ${(isMobileDevice() && isKeyboardOpen) ? 'hidden' : ''} ${isAndroidDevice() ? 'pt-16 pb-6' : ''}`}>
+            <div className={`p-4 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-12 pb-4' : ''}`}>
               <div className="flex items-center gap-3">
                 <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
-                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border border-white/10 flex items-center justify-center">
+                <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
                   {selectedId === 'gemini' ? (
-                    <GeminiAvatarIcon size={24} />
+                    <GeminiAvatarIcon size={20} />
                   ) : (
                     <img src={selectedProfile?.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                   )}
@@ -1503,13 +1503,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 return (
                   <div key={msg.id} className={`flex group relative w-full px-4 sm:px-8 hover:bg-white/[0.03] transition-colors py-0.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')}`}>
                     <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <div className={`${(isImage || isVideo) && !isDeleted ? 'max-w-[280px] sm:max-w-[320px]' : 'w-fit'} ${borderRadiusClasses} relative ${largeEmojis ? '' : 'shadow-md'} ${
+                      <div className={`${(isImage || isVideo) && !isDeleted ? 'max-w-[280px] sm:max-w-[320px]' : 'w-fit'} ${borderRadiusClasses} relative ${largeEmojis ? '' : 'shadow-lg overflow-hidden'} ${
                         largeEmojis ? 'bg-transparent' : (
                           msg.is_own 
-                            ? isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-[#005c4b] text-slate-100' 
+                            ? isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-blue-700 text-white' 
                             : msg.isError || (msg.text && msg.text.includes("quota dépassé"))
                               ? 'bg-red-500/10 border border-red-500/30 text-red-500'
-                              : isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-[#202c33] text-slate-100'
+                              : isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-white/10 text-white border border-white/5'
                         )
                       }`}>
                         <div className="flex flex-col">
@@ -1669,28 +1669,37 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                               )}
                               
                               {msg.text && (
-                                <div className={`px-2.5 py-1.5`}>
-                                  <div className="flex flex-col gap-0.5">
-                                    {(msg.isError || (msg.text && msg.text.includes("quota dépassé"))) && (
-                                      <div className="flex items-center gap-1.5 text-red-500 mb-1">
-                                        <AlertCircle size={14} />
-                                        <span className="text-[10px] font-bold uppercase">Erreur de quota</span>
+                                <div className={`${isImage ? 'px-4 pt-1 pb-2.5' : 'px-4 py-2.5'}`}>
+                                  <div className="flex items-end gap-3">
+                                    <div className="flex flex-col gap-1 min-w-0">
+                                      {(msg.isError || (msg.text && msg.text.includes("quota dépassé"))) && <div className="flex items-center gap-1.5 text-red-500 mb-1"><AlertCircle size={14} /><span className="text-[10px] font-bold uppercase">Erreur de quota</span></div>}
+                                      <div className={`${largeEmojis ? 'text-4xl' : 'text-sm'} font-medium leading-relaxed break-words`}>
+                                        {renderMessageText(msg.text || '', largeEmojis)}
                                       </div>
-                                    )}
-                                    <div className={`${largeEmojis ? 'text-4xl' : 'text-[15px]'} font-medium leading-[1.4] break-words px-0.5`}>
-                                      {renderMessageText(msg.text || '', largeEmojis)}
-                                    </div>
-                                    <div className={`flex items-center justify-end gap-1 text-[9px] font-medium h-3 mt-0.5 ${largeEmojis ? 'text-slate-500' : 'text-white/50'}`}>
-                                      {(msg.is_edited || msg.text?.endsWith('\u200B')) && !isDeleted && <span className="text-[8px] opacity-60 italic mr-1">modifié</span>}
-                                      <span>{msg.timestamp}</span>
-                                      {msg.is_own && (
-                                        <div className="flex items-center ml-0.5 opacity-80">
-                                          <div className="relative flex items-center">
-                                            <Check size={12} className={msg.is_read ? 'text-[#53bdeb]' : 'text-white/60'} />
-                                            <Check size={12} className={`absolute left-[3px] ${msg.is_read ? 'text-[#53bdeb]' : 'text-white/60'}`} />
-                                          </div>
+                                      {msg.needsKey && (
+                                        <div className="mt-3">
+                                          <button 
+                                            onClick={async () => {
+                                              await openKeySelector();
+                                              // Optional: trigger a retry or just inform the user
+                                            }}
+                                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-2xl transition-all shadow-lg active:scale-95"
+                                          >
+                                            <Plus size={14} />
+                                            Connecter ma clé API
+                                          </button>
+                                          <p className="mt-2 text-[10px] opacity-60 italic">
+                                            Note : Une clé API payante est requise pour Veo. 
+                                            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-400 hover:underline">
+                                              En savoir plus sur la facturation.
+                                            </a>
+                                          </p>
                                         </div>
                                       )}
+                                    </div>
+                                    <div className={`flex items-center gap-1 text-[9px] font-bold flex-shrink-0 mb-0.5 ${largeEmojis ? 'text-slate-500' : (msg.is_own ? 'text-white/60' : 'text-white/40')}`}>
+                                      {(msg.is_edited || msg.text?.endsWith('\u200B')) && !isDeleted && <span className="text-[8px] opacity-50 uppercase italic mr-1">(modifié)</span>}
+                                      <span>{msg.timestamp}</span>
                                     </div>
                                   </div>
                                 </div>
@@ -1742,9 +1751,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             </div>
 
             {/* Pied de page Messagerie (Barre + Zone Noire) */}
-            <div className={`flex flex-col bg-[#202c33] flex-shrink-0 z-[110] relative`}>
+            <div className={`flex flex-col bg-[#0f0f0f] flex-shrink-0 z-[110] relative`}>
               {/* Barre de Saisie */}
-              <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1' : 'py-4'} bg-[#202c33] border-t border-white/10`}>
+              <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1' : 'py-4'} bg-[#0f0f0f] border-t border-white/10`}>
                 {localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold">
                     <div className="flex items-center gap-2">
@@ -1754,67 +1763,80 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     <button onClick={() => setLocalUploadError(null)} className="p-1 hover:bg-white/10 rounded-lg transition-colors"><X size={14} /></button>
                   </div>
                 )}
-                <div className={`flex items-end gap-2 max-w-full ${isMobileDevice() ? 'px-1 pb-1' : ''}`}>
-                  <div className={`flex-1 min-h-[48px] flex flex-col bg-[#202c33] rounded-[24px] border border-white/5 shadow-sm overflow-hidden group/input relative`}>
+                <div className={`flex items-center gap-2 max-w-full ${isMobileDevice() ? 'h-[50px]' : 'h-[53px]'}`}>
+                  <div className={`flex-1 h-full flex items-center gap-1 bg-white/5 rounded-full px-4 border border-white/10 shadow-inner overflow-hidden group/input relative`}>
+                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                    
+                    <div className="relative flex items-center flex-shrink-0">
+                      <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className={`p-1.5 transition-colors ${showEmojiPicker ? 'text-amber-400' : 'text-slate-400 hover:text-amber-400'}`}>
+                        <Smile size={24} />
+                      </button>
+                    </div>
+
                     {stagedFile && (
-                      <div className="mx-3 mt-2 mb-1 flex items-center gap-2 bg-white/5 px-2 py-1.5 rounded-xl border border-white/10 animate-in zoom-in duration-200">
-                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-black flex-shrink-0">
+                      <div className="flex items-center gap-2 bg-white/10 px-2 py-1 rounded-xl border border-white/10 animate-in zoom-in duration-200 flex-shrink-0">
+                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#0f0f0f] flex-shrink-0">
                           {stagedFile.type.startsWith('image/') ? (
                             <img src={stagedFile.url} className="w-full h-full object-cover" alt="" />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[#00a884]">
-                              <Video size={18} />
+                            <div className="w-full h-full flex items-center justify-center text-blue-400">
+                              <Video size={16} />
                             </div>
                           )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-bold text-white truncate leading-tight">{stagedFile.name}</p>
-                          <p className="text-[8px] text-slate-400 font-bold uppercase">{stagedFile.type.split('/')[1]}</p>
-                        </div>
-                        <button onClick={() => setStagedFile(null)} className="p-1.5 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors">
-                          <X size={16} />
+                        <span className="text-[10px] font-bold text-white max-w-[80px] truncate">{stagedFile.name}</span>
+                        <button onClick={() => setStagedFile(null)} className="p-1 hover:bg-white/20 rounded-full text-slate-400 hover:text-white">
+                          <X size={14} />
                         </button>
                       </div>
                     )}
 
-                    <div className="flex items-center gap-1 px-2 py-1 min-h-[48px]">
-                      <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className={`p-2 transition-colors flex-shrink-0 ${showEmojiPicker ? 'text-[#00a884]' : 'text-slate-400 hover:text-[#00a884]'}`}>
-                        <Smile size={24} />
-                      </button>
+                    {!isMobileDevice() && (
+                      <button onClick={() => fileInputRef.current?.click()} className="p-1.5 text-slate-400 hover:text-white transition-colors flex-shrink-0"><Paperclip size={22} /></button>
+                    )}
 
-                      <input 
-                        type="text" 
-                        value={messageText} 
-                        onChange={(e) => setMessageText(e.target.value)} 
-                        onKeyDown={(e) => e.key === 'Enter' && sendMessage(messageText)} 
-                        placeholder="Message" 
-                        className="flex-1 bg-transparent border-none text-[15px] text-white outline-none focus:ring-0 placeholder:text-slate-400 py-2.5 min-w-0" 
-                      />
+                    <input 
+                      type="text" 
+                      value={messageText} 
+                      onChange={(e) => setMessageText(e.target.value)} 
+                      onKeyDown={(e) => e.key === 'Enter' && sendMessage(messageText)} 
+                      placeholder="Message" 
+                      className="flex-1 bg-transparent border-none text-base text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1 h-full pl-0 min-w-0" 
+                    />
 
-                      <div className="flex items-center gap-0.5 flex-shrink-0">
-                        <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                        <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-white transition-colors">
-                          <Paperclip size={22} className="-rotate-45" />
-                        </button>
-                        
-                        {isMobileDevice() && (
+                    <div className="flex items-center gap-0.5 flex-shrink-0 pr-1">
+                      {isMobileDevice() && (
+                        <div className="flex items-center gap-0 flex-shrink-0">
                           <button 
-                            onClick={() => window.dispatchEvent(new CustomEvent('open-camera', { detail: { destination: 'message' } }))} 
-                            className="p-2 text-slate-400 hover:text-white transition-colors"
+                            onClick={() => fileInputRef.current?.click()} 
+                            className="p-1 px-1.5 text-slate-400 hover:text-white transition-colors"
+                          >
+                            <Paperclip size={22} />
+                          </button>
+                          <button 
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent('open-camera', { detail: { destination: 'message' } }));
+                            }} 
+                            className="p-1 px-1.5 text-slate-400 hover:text-white transition-colors"
                           >
                             <Camera size={22} />
                           </button>
-                        )}
-                      </div>
+                        </div>
+                      )}
+
+                      {!isMobileDevice() && (
+                        <button onClick={() => sendMessage(messageText)} className="h-10 w-10 bg-blue-600 text-white rounded-full flex items-center justify-center transition-all active:scale-95">
+                          {messageText.trim() ? <Send size={18} /> : <Mic size={20} />}
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <button 
-                    onClick={() => sendMessage(messageText)} 
-                    className={`flex-shrink-0 w-[48px] h-[48px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90 ${messageText.trim() || stagedFile ? 'bg-[#00a884] text-white' : 'bg-[#00a884] text-white'}`}
-                  >
-                    {messageText.trim() || stagedFile ? <Send size={20} className="ml-0.5" /> : <Mic size={22} />}
-                  </button>
+                  {isMobileDevice() && (
+                    <button onClick={() => sendMessage(messageText)} className="bg-blue-600 text-white h-[50px] w-[50px] min-w-[50px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90">
+                      {messageText.trim() ? <Send size={24} /> : <Mic size={26} />}
+                    </button>
+                  )}
                 </div>
               </div>
 

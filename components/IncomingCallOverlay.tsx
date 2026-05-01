@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Phone, PhoneOff, MessageSquare, ChevronUp, X, User } from 'lucide-react';
 import { DEFAULT_AVATAR } from '../constants';
 

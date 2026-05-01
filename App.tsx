@@ -25,7 +25,7 @@ import { TabId, Workspace as WorkspaceType } from '@/types';
 import { DEFAULT_AVATAR, NAV_ITEMS } from '@/constants';
 import { HelpCircle, TriangleAlert, X, Construction, CheckCircle } from 'lucide-react';
 import { generateSnowflake } from '@/utils/snowflake';
-import { AnimatePresence } from 'motion/react';
+import { AnimatePresence } from 'framer-motion';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { App as CapApp } from '@capacitor/app';
