@@ -781,7 +781,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     longPressTimer.current = setTimeout(() => {
       isLongPressing.current = true;
       toggleMessageSelection(id);
-    }, 500); // 500ms for long press
+    }, 350); // 350ms for long press
   };
 
   const handleMessageTouchEnd = (id: string) => {
@@ -1425,7 +1425,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         {selectedId ? (
           <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100%' }}>
             {/* Header du Chat - Flex fixed height */}
-            <div className={`p-4 py-6 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-14 pb-6' : ''}`}>
+            <div className={`p-4 pt-8 pb-6 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-16 pb-6' : ''}`}>
               {selectedMessageIds.size > 0 ? (
                 <div className="flex items-center justify-between w-full animate-in fade-in slide-in-from-top-1 duration-200">
                   <div className="flex items-center gap-4">
@@ -1831,7 +1831,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                         </div>
                       </div>
 
-                      {!isDeleted && (
+                      {!isDeleted && !isMobileDevice() && (
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
                             onClick={() => {
