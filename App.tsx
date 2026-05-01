@@ -431,8 +431,38 @@ const AppContent: React.FC = () => {
       }
     }, { expand: 'caller_id' });
 
+    // Souscription aux notifications globales
+    pb.collection('notifications').subscribe('*', async (e) => {
+      const { action, record } = e;
+      if (action === 'create' && record.user_id === pbUser.id) {
+        if (isMobileDevice()) {
+          const { LocalNotifications } = await import('@capacitor/local-notifications');
+          await LocalNotifications.schedule({
+            notifications: [
+              {
+                title: record.title || 'Wexo',
+                body: record.content || 'Nouvelle notification',
+                id: Math.floor(Math.random() * 1000000),
+                schedule: { at: new Date(Date.now() + 100) },
+                sound: 'default',
+                channelId: 'default'
+              }
+            ]
+          });
+        } else {
+          setNotification({
+            message: `${record.title || 'Wexo'}: ${record.content || 'Nouvelle notification'}`,
+            show: true,
+            type: 'success'
+          });
+          setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 6000);
+        }
+      }
+    });
+
     return () => {
       pb.collection('calls').unsubscribe('*');
+      pb.collection('notifications').unsubscribe('*');
     };
   }, [pbUser?.id, incomingCall?.id, activeCall?.id]);
 
@@ -789,7 +819,7 @@ const AppContent: React.FC = () => {
       case 'ma-chaine':
         return <MyChannelTab user={user} profile={profile} />;
       case 'message':
-        return <MessagesTab user={user} profile={profile} isKeyboardActive={isKeyboardActive} />;
+        return <MessagesTab user={user} profile={profile} isKeyboardActive={isKeyboardActive} onStartCall={handleStartCall} />;
       case 'appel':
         return (
           <CallsTab 

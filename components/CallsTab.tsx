@@ -271,12 +271,12 @@ const CallsTab: React.FC<CallsTabProps> = ({
               className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group cursor-pointer border border-transparent hover:border-white/10"
             >
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full overflow-hidden border border-white/10">
+                <div className={`w-12 h-12 rounded-full overflow-hidden ${call.caller_id === 'gemini' || call.receiver_id === 'gemini' ? '' : 'border border-white/10'}`}>
                   {call.caller_id === 'gemini' || call.receiver_id === 'gemini' ? (
-                    <div className="w-full h-full overflow-hidden rounded-full">
+                    <div className="w-full h-full overflow-hidden rounded-full flex items-center justify-center">
                       <img 
                         src="https://static.vecteezy.com/system/resources/thumbnails/055/687/065/small_2x/gemini-google-icon-symbol-logo-free-png.png" 
-                        className="w-full h-full object-cover" 
+                        className="w-10 h-10 object-cover" 
                         alt="Gemini"
                         referrerPolicy="no-referrer"
                       />
@@ -350,12 +350,12 @@ const CallsTab: React.FC<CallsTabProps> = ({
                   className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all cursor-pointer group"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full overflow-hidden border border-white/10">
+                    <div className={`w-12 h-12 rounded-full overflow-hidden ${u.id === 'gemini' ? '' : 'border border-white/10'}`}>
                       {u.id === 'gemini' ? (
-                        <div className="w-full h-full overflow-hidden rounded-full">
+                        <div className="w-full h-full overflow-hidden rounded-full flex items-center justify-center">
                           <img 
                             src="https://static.vecteezy.com/system/resources/thumbnails/055/687/065/small_2x/gemini-google-icon-symbol-logo-free-png.png" 
-                            className="w-full h-full object-cover" 
+                            className="w-10 h-10 object-cover" 
                             alt="Gemini"
                             referrerPolicy="no-referrer"
                           />

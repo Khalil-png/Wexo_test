@@ -6,7 +6,7 @@ import {
   Search, Plus, Smile, Send, X, Image, Pencil,
   CheckCheck, ArrowLeft, Check, Trash2,
   MessageCircle, Info, UserPlus, Clock, 
-  MessageSquarePlus, Users, User, Mic, Paperclip, AlertCircle, Video, Sparkles, Camera,
+  MessageSquarePlus, Users, User, Mic, Paperclip, AlertCircle, Video, Sparkles, Camera, Phone,
   Dog, Utensils, Trophy, Car, Lightbulb, Heart as HeartIcon, Flag,
   Download, File, FileText, Archive, Ban, Copy
 } from 'lucide-react';
@@ -203,6 +203,7 @@ interface MessagesTabProps {
   user?: any;
   profile?: any;
   isKeyboardActive?: boolean;
+  onStartCall?: (receiver: any) => void;
 }
 
 const formatFileSize = (bytes: number) => {
@@ -246,7 +247,7 @@ const countEmojis = (str: string) => {
   return matches ? matches.length : 0;
 };
 
-const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActive: isKeyboardActiveProp }) => {
+const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActive: isKeyboardActiveProp, onStartCall }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<ExtendedMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('chat'));
@@ -1243,14 +1244,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         <div className="flex-1 overflow-y-auto no-scrollbar relative pt-4">
           {/* Gemini List Item */}
           <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-4 px-6 py-4 cursor-pointer transition-all ${selectedId === 'gemini' ? 'bg-white/5' : 'hover:bg-white/5'}`}>
-            <div className="w-12 h-12 rounded-full overflow-hidden relative flex-shrink-0 flex items-center justify-center border border-white/10">
-              <GeminiAvatarIcon size={24} />
+            <div className="w-10 h-10 rounded-full overflow-hidden relative flex-shrink-0 flex items-center justify-center">
+              <GeminiAvatarIcon size={20} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-center mb-0.5">
-                <h4 className="text-[17px] font-bold text-white truncate">Gemini</h4>
+                <h4 className="text-sm font-bold text-white truncate">Gemini</h4>
               </div>
-              <p className="text-[13px] truncate font-medium text-slate-500">Assistant IA</p>
+              <p className="text-xs truncate font-medium text-slate-500">Assistant IA</p>
             </div>
           </div>
 
@@ -1379,7 +1380,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             <div className={`p-4 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-12 pb-4' : ''}`}>
               <div className="flex items-center gap-3">
                 <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
-                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border border-white/10">
+                <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
                   {selectedId === 'gemini' ? (
                     <GeminiAvatarIcon size={20} />
                   ) : (
@@ -1416,6 +1417,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
               {selectedId !== 'gemini' && (
                 <div className="flex items-center gap-2 relative">
+                  <div className="flex items-center gap-1.5 mr-2">
+                    <button 
+                      onClick={() => onStartCall?.({ id: selectedId, username: selectedProfile?.username || 'Utilisateur', avatar_url: selectedProfile?.avatar_url })}
+                      className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-xl transition-all"
+                    >
+                      <Phone size={20} />
+                    </button>
+                    <button 
+                      className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+                    >
+                      <Video size={20} />
+                    </button>
+                  </div>
                   {(() => {
                     const friendship = friendships.find(f => f.requester_id === selectedId || f.receiver_id === selectedId);
                     const isPending = friendship?.status === 'pending';
