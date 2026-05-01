@@ -148,23 +148,6 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
       pb.collection('notifications').subscribe('*', (e) => {
         if (e.record.user_id === user.uid) {
            fetchNotifications();
-           if (e.action === 'create') {
-              const newNotif: Notification = {
-                id: e.record.id,
-                type: e.record.type as any,
-                sender_id: e.record.sender_id,
-                sender_name: e.record.title || 'Inconnu',
-                sender_avatar: e.record.sender_avatar || '',
-                content: e.record.content || '',
-                timestamp: new Date(e.record.created).toLocaleTimeString('fr-FR', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                }),
-                read: e.record.read === true,
-                group_id: e.record.group_id
-              };
-              handleNewNotification(newNotif);
-           }
         }
       });
     } catch (err) {

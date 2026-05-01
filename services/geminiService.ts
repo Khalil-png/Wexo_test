@@ -263,9 +263,9 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
         return { text };
     } catch (error: any) {
         if (error?.message?.includes('429') || error?.status === 429 || error?.code === 429) {
-            return { text: "Une erreur s'est produite, veuillez réessayer dans un instant." };
+            return { text: "Une erreur est survenu, réessayer plus tard. code erreur : quota dépassé" };
         }
         console.error("Gemini API Error:", error);
-        return { text: "Une erreur s'est produite, veuillez réessayer dans un instant." };
+        return { text: "Désolé, j'ai rencontré un petit problème technique. Peux-tu réessayer dans un instant ? 🙂" };
     }
 };
