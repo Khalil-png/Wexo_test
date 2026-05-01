@@ -759,9 +759,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   };
 
   const toggleMessageSelection = (id: string) => {
-    // Shorter, sharper double vibration for haptic feedback
+    // Vibrate when selecting/deselecting (if supported)
     if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
-      window.navigator.vibrate([10, 30, 10]);
+      window.navigator.vibrate(10);
     }
 
     setSelectedMessageIds(prev => {
