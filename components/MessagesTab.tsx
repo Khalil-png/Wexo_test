@@ -759,6 +759,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   };
 
   const toggleMessageSelection = (id: string) => {
+    // Vibrate when selecting/deselecting (if supported)
+    if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(10);
+    }
+
     setSelectedMessageIds(prev => {
       const newSet = new Set(prev);
       if (newSet.has(id)) {
@@ -1421,103 +1426,146 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100%' }}>
             {/* Header du Chat - Flex fixed height */}
             <div className={`p-4 py-6 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-14 pb-6' : ''}`}>
-              <div className="flex items-center gap-3">
-                <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
-                <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
-                  {selectedId === 'gemini' ? (
-                    <GeminiAvatarIcon size={20} />
-                  ) : (
-                    <img src={selectedProfile?.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
-                  )}
-                </div>
-                <div>
+              {selectedMessageIds.size > 0 ? (
+                <div className="flex items-center justify-between w-full animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => setSelectedMessageIds(new Set())}
+                      className="p-2 text-slate-400 hover:text-white transition-colors"
+                    >
+                      <X size={24} />
+                    </button>
+                    <span className="text-lg font-bold text-white">{selectedMessageIds.size} sélectionné{selectedMessageIds.size > 1 ? 's' : ''}</span>
+                  </div>
                   <div className="flex items-center gap-2">
-                    {selectedId === 'gemini' ? (
-                      <span className="text-sm font-bold text-white">Gemini</span>
-                    ) : (
-                      <Username 
-                        username={selectedProfile?.username || 'Chargement...'} 
-                        displayName={selectedProfile?.display_name}
-                        isVerified={selectedProfile?.is_verified} 
-                        isAdmin={selectedProfile?.role === 'admin'}
-                        email={selectedProfile?.email}
-                        className="text-sm font-black tracking-tight text-white" 
-                      />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {selectedId === 'gemini' ? (
-                      <p className="text-[9px] text-slate-500 font-bold">Par Google</p>
-                    ) : (
-                      <>
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                        <p className="text-[9px] text-slate-500 font-bold">En ligne</p>
-                      </>
+                    <button 
+                      onClick={() => {
+                        const selectedMsgs = messages.filter(m => selectedMessageIds.has(m.id));
+                        const textToCopy = selectedMsgs.map(m => m.text).filter(Boolean).join('\n');
+                        navigator.clipboard.writeText(textToCopy);
+                        setSelectedMessageIds(new Set());
+                      }}
+                      className="p-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-2xl transition-all"
+                      title="Copier"
+                    >
+                      <Copy size={22} />
+                    </button>
+                    {Array.from(selectedMessageIds).every(id => messages.find(m => m.id === id)?.is_own) && (
+                      <button 
+                        onClick={() => {
+                          const firstId = Array.from(selectedMessageIds)[0];
+                          const msg = messages.find(m => m.id === firstId);
+                          if (msg) setMessageToDelete(msg);
+                        }}
+                        className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-2xl transition-all"
+                        title="Supprimer"
+                      >
+                        <Trash2 size={22} />
+                      </button>
                     )}
                   </div>
                 </div>
-              </div>
-
-              {selectedId !== 'gemini' && (
-                <div className="flex items-center gap-2 relative">
-                  <div className="flex items-center gap-1.5 mr-2">
-                    <button 
-                      onClick={() => onStartCall?.({ id: selectedId, username: selectedProfile?.username || 'Utilisateur', avatar_url: selectedProfile?.avatar_url })}
-                      className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-xl transition-all"
-                    >
-                      <Phone size={20} />
-                    </button>
-                    <button 
-                      className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
-                    >
-                      <Video size={20} />
-                    </button>
-                  </div>
-                  {(() => {
-                    const friendship = friendships.find(f => f.requester_id === selectedId || f.receiver_id === selectedId);
-                    const isPending = friendship?.status === 'pending';
-                    const isFriend = friendship?.status === 'accepted';
-
-                    if (isFriend) return (
-                      <div className="relative">
-                        <button 
-                          onClick={() => setShowDeleteFriend(showDeleteFriend === selectedId ? null : selectedId)}
-                          className="p-2.5 bg-white text-black rounded-2xl hover:bg-slate-200 transition-all active:scale-95 shadow-sm"
-                        >
-                          <Check size={18} />
-                        </button>
-                        
-                        {showDeleteFriend === selectedId && (
-                          <div ref={deleteFriendRef} className="absolute top-full mt-2 right-0 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
-                            <button 
-                              onClick={() => handleRemoveFriend(selectedId)}
-                              className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white text-[10px] font-black rounded-2xl shadow-xl hover:bg-red-600 transition-all whitespace-nowrap"
-                            >
-                              <Trash2 size={14} />
-                              Supprimer l'ami
-                            </button>
-                          </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => handleSelectChat(null)} className="lg:hidden p-2 text-slate-400 -ml-1 transition-colors hover:text-white"><ArrowLeft size={24} /></button>
+                    <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ${selectedId === 'gemini' ? '' : 'border border-white/10'}`}>
+                      {selectedId === 'gemini' ? (
+                        <GeminiAvatarIcon size={20} />
+                      ) : (
+                        <img src={selectedProfile?.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        {selectedId === 'gemini' ? (
+                          <span className="text-sm font-bold text-white">Gemini</span>
+                        ) : (
+                          <Username 
+                            username={selectedProfile?.username || 'Chargement...'} 
+                            displayName={selectedProfile?.display_name}
+                            isVerified={selectedProfile?.is_verified} 
+                            isAdmin={selectedProfile?.role === 'admin'}
+                            email={selectedProfile?.email}
+                            className="text-sm font-black tracking-tight text-white" 
+                          />
                         )}
                       </div>
-                    );
-
-                    if (isPending) return (
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 text-slate-500 rounded-2xl border border-white/10 opacity-50">
-                        <Clock size={14} />
-                        <span className="text-[10px] font-black text-white/40">En attente</span>
+                      <div className="flex items-center gap-1.5">
+                        {selectedId === 'gemini' ? (
+                          <p className="text-[9px] text-slate-500 font-bold">Par Google</p>
+                        ) : (
+                          <>
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                            <p className="text-[9px] text-slate-500 font-bold">En ligne</p>
+                          </>
+                        )}
                       </div>
-                    );
+                    </div>
+                  </div>
 
-                    return (
-                      <button 
-                        onClick={() => handleAddFriend(selectedId)} 
-                        className="p-2.5 bg-white text-black rounded-2xl hover:bg-slate-200 transition-all active:scale-95 shadow-sm"
-                      >
-                        <UserPlus size={18} />
-                      </button>
-                    );
-                  })()}
-                </div>
+                  {selectedId !== 'gemini' && (
+                    <div className="flex items-center gap-2 relative">
+                      <div className="flex items-center gap-1.5 mr-2">
+                        <button 
+                          onClick={() => onStartCall?.({ id: selectedId, username: selectedProfile?.username || 'Utilisateur', avatar_url: selectedProfile?.avatar_url })}
+                          className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-xl transition-all"
+                        >
+                          <Phone size={20} />
+                        </button>
+                        <button 
+                          className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+                        >
+                          <Video size={20} />
+                        </button>
+                      </div>
+                      {(() => {
+                        const friendship = friendships.find(f => f.requester_id === selectedId || f.receiver_id === selectedId);
+                        const isPending = friendship?.status === 'pending';
+                        const isFriend = friendship?.status === 'accepted';
+
+                        if (isFriend) return (
+                          <div className="relative">
+                            <button 
+                              onClick={() => setShowDeleteFriend(showDeleteFriend === selectedId ? null : selectedId)}
+                              className="p-2.5 bg-white text-black rounded-2xl hover:bg-slate-200 transition-all active:scale-95 shadow-sm"
+                            >
+                              <Check size={18} />
+                            </button>
+                            
+                            {showDeleteFriend === selectedId && (
+                              <div ref={deleteFriendRef} className="absolute top-full mt-2 right-0 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
+                                <button 
+                                  onClick={() => handleRemoveFriend(selectedId)}
+                                  className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white text-[10px] font-black rounded-2xl shadow-xl hover:bg-red-600 transition-all whitespace-nowrap"
+                                >
+                                  <Trash2 size={14} />
+                                  Supprimer l'ami
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+
+                        if (isPending) return (
+                          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 text-slate-500 rounded-2xl border border-white/10 opacity-50">
+                            <Clock size={14} />
+                            <span className="text-[10px] font-black text-white/40">En attente</span>
+                          </div>
+                        );
+
+                        return (
+                          <button 
+                            onClick={() => handleAddFriend(selectedId)} 
+                            className="p-2.5 bg-white text-black rounded-2xl hover:bg-slate-200 transition-all active:scale-95 shadow-sm"
+                          >
+                            <UserPlus size={18} />
+                          </button>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </>
               )}
             </div>
             
@@ -1567,7 +1615,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     onTouchStart={() => handleMessageTouchStart(msg.id)}
                     onTouchEnd={() => handleMessageTouchEnd(msg.id)}
                     onClick={(e) => handleMessageClick(msg.id, e)}
-                    className={`flex group relative w-full px-4 sm:px-8 ${!isMobileDevice() ? 'hover:bg-white/[0.03]' : ''} transition-colors py-0.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')}`}
+                    className={`flex group relative w-full px-4 sm:px-8 transition-all py-0.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')} ${isSelected ? 'bg-blue-600/20' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
                   >
                     <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'}`}>
                       <div className={`${(isImage || isVideo) && !isDeleted ? 'max-w-[280px] sm:max-w-[320px]' : 'w-fit'} ${borderRadiusClasses} relative ${largeEmojis ? '' : 'shadow-lg overflow-hidden'} ${
@@ -1580,11 +1628,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                         )
                       }`}>
                         
-                        {/* Selection Overlay */}
-                        {isSelected && (
-                          <div className="absolute inset-0 bg-blue-500/40 z-10 pointer-events-none" />
-                        )}
-
                         <div className="flex flex-col">
                           {isDeleted ? (
                             <div className="px-4 py-2.5 flex items-center gap-2">
