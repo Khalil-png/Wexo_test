@@ -30,6 +30,7 @@ import { AnimatePresence } from 'framer-motion';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { App as CapApp } from '@capacitor/app';
+// Firebase désactivé
 
 const CURRENT_VERSION = "0.0.1";
 
@@ -193,67 +194,62 @@ const AppContent: React.FC = () => {
 
         // Create specialized notification channels for Android
         try {
-          // Check if createChannel exists (avoid crashes on old versions or browsers)
-          if (LocalNotifications.createChannel) {
-            // General messages channel
-            await LocalNotifications.createChannel({
-              id: 'messages',
-              name: 'Messages',
-              description: 'Notifications pour les nouveaux messages',
-              importance: 5, 
-              visibility: 1, 
-              sound: 'default',
-              vibration: true
-            });
+          // General messages channel
+          await LocalNotifications.createChannel({
+            id: 'messages',
+            name: 'Messages',
+            description: 'Notifications pour les nouveaux messages',
+            importance: 5, 
+            visibility: 1, 
+            sound: 'default',
+            vibration: true
+          });
 
-            // High priority calls channel
-            await LocalNotifications.createChannel({
-              id: 'calls',
-              name: 'Appels entrants',
-              description: 'Alertes lors d\'un appel entrant',
-              importance: 5, // High importance
-              visibility: 1, // Public/Lockscreen
-              sound: 'ringtone.mp3', // Note: Needs to be in res/raw to work, otherwise default
-              vibration: true,
-              lights: true,
-              lightColor: '#10b981'
-            });
-            
-            // Default channel for backward compatibility
-            await LocalNotifications.createChannel({
-              id: 'default',
-              name: 'Général',
-              description: 'Autres notifications',
-              importance: 3,
-              visibility: 1
-            });
+          // High priority calls channel
+          await LocalNotifications.createChannel({
+            id: 'calls',
+            name: 'Appels entrants',
+            description: 'Alertes lors d\'un appel entrant',
+            importance: 5, // High importance
+            visibility: 1, // Public/Lockscreen
+            sound: 'ringtone.mp3', // Note: Needs to be in res/raw to work, otherwise default
+            vibration: true,
+            lights: true,
+            lightColor: '#10b981'
+          });
+          
+          // Default channel for backward compatibility
+          await LocalNotifications.createChannel({
+            id: 'default',
+            name: 'Général',
+            description: 'Autres notifications',
+            importance: 3,
+            visibility: 1
+          });
 
-            console.log('Notification channels created');
-          }
+          console.log('Notification channels created');
 
           // Register Action Types (Buttons in notifications)
-          if (LocalNotifications.registerActionTypes) {
-            await LocalNotifications.registerActionTypes({
-              types: [
-                {
-                  id: 'INCOMING_CALL',
-                  actions: [
-                    {
-                      id: 'accept',
-                      title: 'Répondre',
-                      foreground: true
-                    },
-                    {
-                      id: 'decline',
-                      title: 'Décliner',
-                      destructive: true,
-                      foreground: false
-                    }
-                  ]
-                }
-              ]
-            });
-          }
+          await LocalNotifications.registerActionTypes({
+            types: [
+              {
+                id: 'INCOMING_CALL',
+                actions: [
+                  {
+                    id: 'accept',
+                    title: 'Répondre',
+                    foreground: true
+                  },
+                  {
+                    id: 'decline',
+                    title: 'Décliner',
+                    destructive: true,
+                    foreground: false
+                  }
+                ]
+              }
+            ]
+          });
         } catch (err) {
           console.error('Failed to create notification channels:', err);
         }
