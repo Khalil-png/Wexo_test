@@ -19,33 +19,31 @@ jobs:
           node-version: 22
           cache: 'npm'
 
-      - name: Install Dependencies
-        run: npm install
-
-      - name: Build Web Project
-        run: npm run build
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '17'
+          cache: 'gradle'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Initialize Capacitor
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Web Project
+        run: npm run build
+
+      - name: Sync Capacitor
         run: |
-          # Capacitor needs the web dir to exist
-          mkdir -p dist
-          # Ensure Capacitor CLI is available and sync
-          npx cap sync android
+          npx cap sync android --no-update
 
       - name: Build APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
