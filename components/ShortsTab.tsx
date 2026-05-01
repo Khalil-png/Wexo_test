@@ -224,15 +224,11 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
 
     try {
       const userId = user.id || user.uid;
-      // Création optimiste
-      pb.collection('views').create({ user_id: userId, video_id: short.id, count: 1 }).catch(() => {});
+      // Création de l'entrée dans la collection views
+      await pb.collection('views').create({ user_id: userId, video_id: short.id, count: 1 }).catch(() => {});
       
-      const res = await pb.collection('shorts').getOne(short.id).catch(() => null);
-      if (res) {
-        await pb.collection('shorts').update(short.id, { "views+": 1 }).catch(async () => {
-          await pb.collection('shorts').update(short.id, { views: (res.views || 0) + 1 });
-        });
-      }
+      // On rafraîchit les compteurs
+      checkInteractions();
     } catch (err) {
       console.error("Erreur incrementView shorts:", err);
     }
@@ -270,15 +266,33 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
     if (cached) {
       const data = JSON.parse(cached);
       setLiked(data.liked);
+      if (data.likeCount !== undefined) setLikeCount(data.likeCount);
       setIsSubscribed(data.isSubscribed);
       setSubscriberCount(data.subscriberCount);
       return;
     }
 
     try {
+      // 1. Vérifier si l'utilisateur a liké
       const likeRes = await pb.collection('likes').getFirstListItem(`user_id="${userId}" && video_id="${short.id}"`).catch(() => null);
       const isLiked = !!likeRes;
       setLiked(isLiked);
+      
+      // 2. Compter le nombre total de likes (Directement depuis la collection 'likes')
+      const likesCountRes = await pb.collection('likes').getList(1, 1, {
+        filter: `video_id="${short.id}"`,
+        fields: 'id'
+      }).catch(() => ({ totalItems: 0 }));
+      const realLikeCount = likesCountRes.totalItems;
+      setLikeCount(realLikeCount);
+      
+      // 3. Compter le nombre total de vues
+      const viewsCountRes = await pb.collection('views').getList(1, 1, {
+        filter: `video_id="${short.id}"`,
+        fields: 'id'
+      }).catch(() => ({ totalItems: 0 }));
+      const realViewCount = viewsCountRes.totalItems;
+      // Note: On pourrait aussi afficher realViewCount si besoin
       
       const subRes = await pb.collection('subscriptions').getFirstListItem(`follower_id="${userId}" && following_id="${short.creator_id}"`).catch(() => null);
       const isSub = !!subRes;
@@ -291,6 +305,8 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
       // Cacher pour 5 minutes
       sessionStorage.setItem(cacheKey, JSON.stringify({
         liked: isLiked,
+        likeCount: realLikeCount,
+        viewCount: realViewCount,
         isSubscribed: isSub,
         subscriberCount: subCount,
         timestamp: Date.now()
@@ -309,27 +325,54 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
     
     isLikeProcessing.current = true;
     const userId = user.id || user.uid;
+    const cacheKey = `interactions_${short.id}_${userId}`;
+    
     try {
-      // Optimistic Update
+      // 1. Vérification réelle sur le serveur pour éviter les doublons (demande utilisateur)
+      const existingLike = await pb.collection('likes').getFirstListItem(`user_id="${userId}" && video_id="${short.id}"`).catch(() => null);
+      const isActuallyLiked = !!existingLike;
+      
       const prevLiked = liked;
-      setLiked(!prevLiked);
-      setLikeCount(prev => prevLiked ? Math.max(0, prev - 1) : prev + 1);
-
-      if (prevLiked) {
-        // Dé-liker
-        try {
-          const existingLike = await pb.collection('likes').getFirstListItem(`user_id="${userId}" && video_id="${short.id}"`).catch(() => null);
-          if (existingLike) await pb.collection('likes').delete(existingLike.id);
-          await pb.collection('shorts').update(short.id, { "likes-": 1 });
-        } catch (e) {}
-      } else {
-        // Liker
-        await pb.collection('likes').create({ user_id: userId, video_id: short.id });
-        await pb.collection('shorts').update(short.id, { "likes+": 1 });
+      
+      // Si on veut liker
+      if (!prevLiked) {
+        if (isActuallyLiked) {
+          // Déjà liké sur le serveur, on synchronise juste l'UI
+          setLiked(true);
+        } else {
+          // Création propre
+          await pb.collection('likes').create({ user_id: userId, video_id: short.id });
+          // PLUS DE MISE À JOUR DU CHAMP 'likes' SUR LE SHORT
+          setLiked(true);
+          setLikeCount(prev => prev + 1);
+        }
+      } 
+      // Si on veut retirer le like
+      else {
+        if (isActuallyLiked) {
+          await pb.collection('likes').delete(existingLike.id);
+          // PLUS DE MISE À JOUR DU CHAMP 'likes' SUR LE SHORT
+          setLiked(false);
+          setLikeCount(prev => Math.max(0, prev - 1));
+        } else {
+          // Déjà retiré sur le serveur
+          setLiked(false);
+        }
       }
+
+      // Mise à jour du cache session pour que le scroll-back fonctionne
+      const cached = sessionStorage.getItem(cacheKey);
+      const cachedData = cached ? JSON.parse(cached) : {};
+      sessionStorage.setItem(cacheKey, JSON.stringify({
+        ...cachedData,
+        liked: !prevLiked,
+        likeCount: !prevLiked ? likeCount + 1 : Math.max(0, likeCount - 1),
+        timestamp: Date.now()
+      }));
     } catch (err) {
       console.error("Error handling short like:", err);
-      // Revert in case of error
+      // Nettoyer le cache en cas d'erreur pour forcer un refresh propre au prochain scroll
+      sessionStorage.removeItem(cacheKey);
       checkInteractions();
     } finally {
       isLikeProcessing.current = false;

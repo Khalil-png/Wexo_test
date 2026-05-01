@@ -238,10 +238,21 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, onTabChange, user,
     setLoadingComments(true);
 
     try {
-      // Charger le nombre de likes et si l'utilisateur a liké
       const collection = selectedVideo.is_short ? 'shorts' : 'videos';
-      const videoRecord = await pb.collection(collection).getOne(selectedVideo.id);
-      setLikeCount(videoRecord.likes || 0);
+      
+      // 1. Compter le nombre réel de likes
+      const likesCountRes = await pb.collection('likes').getList(1, 1, {
+        filter: `video_id="${selectedVideo.id}"`,
+        fields: 'id'
+      }).catch(() => ({ totalItems: 0 }));
+      setLikeCount(likesCountRes.totalItems);
+
+      // 2. Compter le nombre réel de vues
+      const viewsCountRes = await pb.collection('views').getList(1, 1, {
+        filter: `video_id="${selectedVideo.id}"`,
+        fields: 'id'
+      }).catch(() => ({ totalItems: 0 }));
+      const currentViewsCount = viewsCountRes.totalItems;
 
       if (userId) {
         const likeRecord = await pb.collection('likes').getFirstListItem(`user_id="${userId}" && video_id="${selectedVideo.id}"`).catch(() => null);
@@ -289,19 +300,17 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, onTabChange, user,
     viewedVideos.current.add(videoId);
 
     try {
-      // On tente d'incrémenter directement via l'opérateur PocketBase
-      const collection = videos.find(v => v.id === videoId)?.is_short ? 'shorts' : 'videos';
+      // On crée l'enregistrement de vue
+      await pb.collection('views').create({ 
+        user_id: user?.id || user?.uid || "anonymous", 
+        video_id: videoId, 
+        count: 1 
+      }).catch(() => {});
       
-      await pb.collection(collection).update(videoId, {
-        "views+": 1
-      }).catch(async (e) => {
-         // Fallback si l'opérateur + n'est pas dispo (ancienne version PB)
-         console.warn("Détail increment views fallback", e);
-         const record = await pb.collection(collection).getOne(videoId);
-         await pb.collection(collection).update(videoId, {
-           views: (Number(record.views) || 0) + 1
-         });
-      });
+      // On rafraîchit les données si c'est la vidéo sélectionnée
+      if (selectedVideo?.id === videoId) {
+        fetchVideoData();
+      }
     } catch (err) {
       console.warn('Error incrementing views:', err);
     }
@@ -320,29 +329,36 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, onTabChange, user,
     const collection = isShort ? 'shorts' : 'videos';
 
     try {
-      // Optimistic Update
+      // 1. Vérification réelle sur le serveur pour éviter les doublons (demande utilisateur)
+      const existingLike = await pb.collection('likes').getFirstListItem(`user_id="${userId}" && video_id="${selectedVideo.id}"`).catch(() => null);
+      const isActuallyLiked = !!existingLike;
+      
       const prevHasLiked = hasLiked;
       
-      setHasLiked(!prevHasLiked);
-      setLikeCount(prev => prevHasLiked ? Math.max(0, prev - 1) : prev + 1);
-
-      if (prevHasLiked) {
-        // Dé-liker
-        try {
-          const existingLike = await pb.collection('likes').getFirstListItem(`user_id="${userId}" && video_id="${selectedVideo.id}"`);
-          await pb.collection('likes').delete(existingLike.id);
-          await pb.collection(collection).update(selectedVideo.id, {
-            "likes-": 1
-          });
-        } catch (e) {
-          // Si le like n'existait pas vraiment, on ignore l'erreur
+      // Si on veut liker
+      if (!prevHasLiked) {
+        if (isActuallyLiked) {
+          // Déjà liké sur le serveur, on synchronise juste l'UI
+          setHasLiked(true);
+        } else {
+          // Création propre
+          await pb.collection('likes').create({ user_id: userId, video_id: selectedVideo.id });
+          // PLUS DE MISE À JOUR DU CHAMP LIKES
+          setHasLiked(true);
+          setLikeCount(prev => prev + 1);
         }
-      } else {
-        // Liker
-        await pb.collection('likes').create({ user_id: userId, video_id: selectedVideo.id });
-        await pb.collection(collection).update(selectedVideo.id, {
-          "likes+": 1
-        });
+      } 
+      // Si on veut retirer le like
+      else {
+        if (isActuallyLiked) {
+          await pb.collection('likes').delete(existingLike.id);
+          // PLUS DE MISE À JOUR DU CHAMP LIKES
+          setHasLiked(false);
+          setLikeCount(prev => Math.max(0, prev - 1));
+        } else {
+          // Déjà retiré sur le serveur
+          setHasLiked(false);
+        }
       }
     } catch (err) {
       console.error('Error handling like:', err);
