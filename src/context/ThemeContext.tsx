@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { pb } from '@/services/pocketbaseService';
 
 type ThemeMode = 'dark' | 'light';
@@ -25,26 +25,76 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return saved || '#0b57ff';
   });
 
-  // Load from DB on init if logged in
+  const modeRef = useRef(mode);
+  const colorRef = useRef(primaryColor);
+
   useEffect(() => {
-    const syncFromDB = async () => {
-      if (pb.authStore.model?.id) {
-        try {
-          const user = await pb.collection('users').getOne(pb.authStore.model.id);
-          if (user.theme_mode) {
-             setModeState(user.theme_mode);
-             localStorage.setItem('wexo-theme-mode', user.theme_mode);
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    colorRef.current = primaryColor;
+  }, [primaryColor]);
+
+  // Sync from DB and subscribe to changes
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
+    const syncAndSubscribe = async (userId: string) => {
+      try {
+        // Initial sync
+        const user = await pb.collection('users').getOne(userId);
+        if (user.theme_mode && user.theme_mode !== modeRef.current) {
+          setModeState(user.theme_mode as ThemeMode);
+          localStorage.setItem('wexo-theme-mode', user.theme_mode);
+        }
+        if (user.primary_color && user.primary_color !== colorRef.current) {
+          setPrimaryColorState(user.primary_color);
+          localStorage.setItem('wexo-primary-color', user.primary_color);
+        }
+
+        // Real-time subscription
+        unsubscribe = await pb.collection('users').subscribe(userId, (e) => {
+          if (e.action === 'update') {
+            const data = e.record;
+            if (data.theme_mode && data.theme_mode !== modeRef.current) {
+              setModeState(data.theme_mode as ThemeMode);
+              localStorage.setItem('wexo-theme-mode', data.theme_mode);
+            }
+            if (data.primary_color && data.primary_color !== colorRef.current) {
+              setPrimaryColorState(data.primary_color);
+              localStorage.setItem('wexo-primary-color', data.primary_color);
+            }
           }
-          if (user.primary_color) {
-             setPrimaryColorState(user.primary_color);
-             localStorage.setItem('wexo-primary-color', user.primary_color);
-          }
-        } catch (err) {
-          console.error('[ThemeSync] Init error:', err);
+        });
+      } catch (err) {
+        console.error('[ThemeSync] Sync error:', err);
+      }
+    };
+
+    // Watch auth changes
+    const handleAuthChange = (token: string, model: any) => {
+      if (model?.id) {
+        syncAndSubscribe(model.id);
+      } else {
+        if (unsubscribe) {
+          unsubscribe();
+          unsubscribe = undefined;
         }
       }
     };
-    syncFromDB();
+
+    // Initial check
+    if (pb.authStore.model?.id) {
+      syncAndSubscribe(pb.authStore.model.id);
+    }
+
+    const unbindAuth = pb.authStore.onChange(handleAuthChange);
+
+    return () => {
+      unbindAuth();
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const setMode = async (newMode: ThemeMode, sync: boolean = true) => {

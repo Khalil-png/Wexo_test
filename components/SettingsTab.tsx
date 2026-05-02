@@ -33,13 +33,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const presetColors = [
-    { name: 'Bleu', value: '#0b57ff' },
-    { name: 'Rouge', value: '#fc0944' },
-    { name: 'Rose', value: '#ec4899' },
-    { name: 'Vert', value: '#03bf54' },
-    { name: 'Vert Foncé', value: '#0da300' },
-    { name: 'Orange', value: '#bc5617' },
-    { name: 'Violet', value: '#8b5cf6' },
+    { name: 'bleu', value: '#0b57ff' },
+    { name: 'rouge', value: '#fc0944' },
+    { name: 'rose', value: '#ec4899' },
+    { name: 'vert', value: '#03bf54' },
+    { name: 'vert foncé', value: '#0da300' },
+    { name: 'orange', value: '#bc5617' },
+    { name: 'violet', value: '#8b5cf6' },
   ];
 
   const handleUpdateProfile = async () => {
@@ -145,7 +145,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
             <div className="relative">
               <img 
                 src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.username}&background=0040ff&color=fff`} 
-                className="w-40 h-40 rounded-full border-4 border-white/10 shadow-2xl object-cover"
+                className="w-40 h-40 rounded-full object-cover ring-8 ring-white/5 shadow-2xl transition-all duration-500 group-hover:scale-105"
                 alt="Avatar"
               />
               <button 
@@ -161,14 +161,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
 
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-white/40 mb-3 px-1">Pseudo d'affichage</label>
+              <label className="block text-sm font-bold text-white mb-2 px-1">Pseudo D'affichage</label>
               <input 
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl outline-none transition-all font-bold text-lg text-white"
+                className="w-full py-4 bg-transparent border-none outline-none transition-all font-bold text-3xl text-white placeholder:text-white/20"
                 placeholder="Ex: Mon Pseudo..."
-                style={{ focusRing: primaryColor } as any}
               />
             </div>
             
@@ -256,23 +255,22 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
 
           <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
             <h3 className="text-sm font-bold text-white/40 mb-6">Couleur d'accentuation</h3>
-            <div className="grid grid-cols-4 sm:grid-cols-6 gap-4">
-              {presetColors.map((color) => (
-                <button 
-                  key={color.value}
-                  onClick={() => setPrimaryColor(color.value)}
-                  className={`aspect-square rounded-2xl transition-all relative ${primaryColor === color.value ? 'scale-110 shadow-lg' : 'hover:scale-105 opacity-80 hover:opacity-100'}`}
-                  style={{ backgroundColor: color.value }}
-                  title={color.name}
-                >
-                  {primaryColor === color.value && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-2.5 h-2.5 bg-white rounded-full shadow-sm" />
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-4">
+                {presetColors.map((color) => (
+                  <button 
+                    key={color.value}
+                    onClick={() => setPrimaryColor(color.value)}
+                    className={`aspect-square rounded-md transition-all relative ${primaryColor === color.value ? 'scale-110 shadow-lg' : 'hover:scale-105 opacity-80 hover:opacity-100'}`}
+                    style={{ backgroundColor: color.value }}
+                  >
+                    {primaryColor === color.value && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-2.5 h-2.5 bg-white rounded-full shadow-sm" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
           </div>
         </div>
       </div>
@@ -333,15 +331,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
         <div className="pt-12">
           <button 
             onClick={onLogout}
-            className="w-full flex items-center justify-between p-5 bg-white/5 hover:bg-white/10 text-white rounded-2xl transition-all group"
+            className="w-full flex items-center justify-between p-5 bg-white/5 hover:bg-white/10 text-white/60 rounded-2xl transition-all group"
           >
             <div className="flex items-center gap-4">
               <div className="p-3 rounded-xl bg-white/5">
-                <LogOut size={24} className="text-white" />
+                <LogOut size={20} className="text-white/40" />
               </div>
-              <span className="font-bold">Déconnexion</span>
+              <span className="font-bold text-sm">Déconnexion</span>
             </div>
-            <ChevronRight size={20} className="text-white/20" />
+            <ChevronRight size={18} className="text-white/10" />
           </button>
         </div>
       </div>

@@ -393,7 +393,7 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
                 )}
                 {post.media_type === 'video' && (
                   <>
-                    <video src={post.media_url} className="w-full h-full object-cover" />
+                    <video src={post.media_url} className="w-full h-full object-contain" />
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-all">
                       <Play size={32} className="text-white opacity-80" fill="white" />
                     </div>

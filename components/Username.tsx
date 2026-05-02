@@ -39,9 +39,8 @@ const Username: React.FC<UsernameProps> = ({
       )}
       {isVerified && (
         <div 
-          className="bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0"
+          className="bg-primary rounded-full flex items-center justify-center flex-shrink-0"
           style={{ width: badgeSize, height: badgeSize }}
-          title="Vérifié"
         >
           <Check size={badgeSize * 0.7} className="text-white" strokeWidth={4} />
         </div>

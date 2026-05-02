@@ -93,48 +93,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
           {personalItems.map(item => <NavButton key={item.id} item={item} />)}
         </div>
 
-        {/* Debug Section for Notifications */}
-        <div className="mt-8 px-5 space-y-1">
-          <h3 className="px-4 text-xs font-bold text-slate-400 mb-4">Debug APK</h3>
-          <button
-            onClick={async () => {
-              const { LocalNotifications } = await import('@capacitor/local-notifications');
-              await LocalNotifications.schedule({
-                notifications: [
-                  {
-                    title: "Test de Notification Wexo",
-                    body: "Si vous voyez ceci, les notifications fonctionnent !",
-                    id: 12345,
-                    schedule: { at: new Date(Date.now() + 1000) },
-                    sound: 'default',
-                    channelId: 'messages'
-                  }
-                ]
-              });
-              alert("Test envoyé ! Si rien n'apparaît, vérifiez les paramètres de notification du téléphone.");
-            }}
-            className="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-slate-400 hover:bg-white/10 hover:text-white transition-all"
-          >
-            <Bell size={18} />
-            <span className="font-bold text-[15px]">Tester Notif</span>
-          </button>
-        </div>
-
         {adminItems.length > 0 && (
           <div className="mt-8 px-5 space-y-1">
             <h3 className="px-4 text-xs font-bold text-slate-400 mb-4">Administration</h3>
             {adminItems.map(item => <NavButton key={item.id} item={item} />)}
           </div>
         )}
-
-        <div className="mt-auto px-8 pt-12">
-          <div className="p-5 bg-white/5 rounded-2xl border border-white/5 text-center">
-            <p className="text-[10px] font-bold text-slate-500 mb-3">Wexo Cloud</p>
-            <div className="w-full bg-white/10 h-1.5 rounded-2xl overflow-hidden">
-              <div className="bg-white h-full w-1/2"></div>
-            </div>
-          </div>
-        </div>
       </aside>
     </>
   );

@@ -58,8 +58,6 @@ const saveAuthToPreferences = async (model: any) => {
 };
 // Firebase désactivé
 
-const CURRENT_VERSION = "0.0.1";
-
 const AppContent: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -71,7 +69,6 @@ const AppContent: React.FC = () => {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceType | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [latestVersion, setLatestVersion] = useState(CURRENT_VERSION);
   const [incomingCall, setIncomingCall] = useState<any>(null);
   const [activeCall, setActiveCall] = useState<any>(null);
   const [callTimer, setCallTimer] = useState(0);

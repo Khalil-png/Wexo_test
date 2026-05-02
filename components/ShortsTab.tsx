@@ -632,7 +632,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
               playsInline
               preload={isActive ? "auto" : "metadata"}
               onTimeUpdate={handleTimeUpdate}
-              className={`h-full w-full ${isMobileDevice() ? 'object-cover' : 'object-contain'} cursor-pointer bg-black`}
+              className="h-full w-full object-contain cursor-pointer bg-black"
               onClick={togglePlay}
             />
           )}

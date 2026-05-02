@@ -25,9 +25,9 @@ import remarkGfm from 'remark-gfm';
 import { generateSnowflake } from '@/utils/snowflake';
 import Username from './Username';
 
-// Avatar Gemini parfaitement centré en X et Y
+// Avatar Gemini avec coins moins arrondis
 const GeminiAvatarIcon = ({ size = 16 }: { size?: number }) => (
-  <div className="w-full h-full flex items-center justify-center overflow-hidden rounded-full">
+  <div className="w-full h-full flex items-center justify-center overflow-hidden rounded-md">
     <img 
       src="https://static.vecteezy.com/system/resources/thumbnails/055/687/065/small_2x/gemini-google-icon-symbol-logo-free-png.png" 
       className="w-full h-full object-cover" 
@@ -1281,14 +1281,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => setIsSearchingUsers(true)}
-                className="p-2.5 bg-white/5 text-white hover:bg-white/10 rounded-2xl transition-all border border-white/10 group"
+                className="p-2.5 bg-white/5 text-white hover:bg-white/10 rounded-lg transition-all border border-white/10 group"
                 title="Wexo AI"
               >
-                <Sparkles size={18} className="group-hover:scale-110 transition-transform" />
+                <div className="w-[18px] h-[18px] group-hover:scale-110 transition-transform">
+                  <GeminiAvatarIcon size={18} />
+                </div>
               </button>
               <button 
                 onClick={() => setIsSearchingUsers(true)}
-                className="p-2.5 bg-white/5 text-white hover:bg-white/10 rounded-2xl transition-all border border-white/10 group"
+                className="p-2.5 bg-white/5 text-white hover:bg-white/10 rounded-lg transition-all border border-white/10 group"
                 title="Nouveau message"
               >
                 <Plus size={18} className="group-hover:scale-110 transition-transform" />
@@ -1367,7 +1369,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       {isSearchingUsers && (
         <div className="absolute inset-0 z-[110] bg-[#0f0f0f] flex flex-col animate-in slide-in-from-right duration-300">
           <div className="p-6 border-b border-white/10 flex items-center gap-4 bg-[#0f0f0f]/80 backdrop-blur-xl">
-            <button onClick={() => setIsSearchingUsers(false)} className="p-2.5 text-slate-400 hover:text-white bg-white/5 rounded-2xl"><ArrowLeft size={20} /></button>
+            <button 
+              onClick={() => setIsSearchingUsers(false)} 
+              className="p-2.5 bg-primary text-white rounded-full transition-all active:scale-95 shadow-lg shadow-primary/20"
+            >
+              <X size={18} strokeWidth={3} />
+            </button>
             <h3 className="text-xl font-black text-white tracking-tighter">Nouveau message</h3>
           </div>
           
@@ -1441,17 +1448,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         {selectedId ? (
           <div className="flex-1 flex flex-col relative bg-[#0f0f0f] h-full overflow-hidden" style={{ overscrollBehavior: 'none', height: '100%' }}>
             {/* Header du Chat - Flex fixed height */}
-            <div className={`p-4 py-6 border-b border-white/10 bg-[#0f0f0f] flex items-center justify-between flex-shrink-0 z-40 ${isAndroidDevice() ? 'pt-14 pb-4' : ''}`}>
+            <div className={`p-4 py-6 border-b border-white/10 flex items-center justify-between flex-shrink-0 z-40 transition-colors duration-300 ${isAndroidDevice() ? 'pt-14 pb-4' : ''} ${selectedMessageIds.size > 0 ? 'bg-primary/10' : 'bg-[#0f0f0f]'}`}>
               {selectedMessageIds.size > 0 ? (
-                <div className="flex items-center justify-between w-full animate-in fade-in slide-in-from-top-1 duration-200 mt-2">
+                <div className="flex items-center justify-between w-full animate-in fade-in slide-in-from-top-1 duration-200">
                   <div className="flex items-center gap-4">
                     <button 
                       onClick={() => setSelectedMessageIds(new Set())}
-                      className="p-2 text-slate-400 hover:text-white transition-colors"
+                      className="p-2.5 bg-primary text-white rounded-full transition-all active:scale-95 shadow-lg shadow-primary/20"
                     >
-                      <X size={24} />
+                      <X size={18} strokeWidth={3} />
                     </button>
-                    <span className="text-lg font-bold text-white">{selectedMessageIds.size} sélectionné{selectedMessageIds.size > 1 ? 's' : ''}</span>
+                    <span className="text-xl font-black text-white tracking-tight">{selectedMessageIds.size} sélectionné{selectedMessageIds.size > 1 ? 's' : ''}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button 
@@ -1631,9 +1638,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     onTouchStart={() => handleMessageTouchStart(msg.id)}
                     onTouchEnd={() => handleMessageTouchEnd(msg.id)}
                     onClick={(e) => handleMessageClick(msg.id, e)}
-                    className={`flex group relative w-full px-4 sm:px-8 transition-all py-0.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')} ${isSelected ? 'bg-primary/20' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
+                    className={`flex group relative w-full px-4 sm:px-8 transition-all py-1.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')} ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
                   >
-                    <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'}`}>
+                    {selectedMessageIds.size > 0 && (
+                      <div className="flex items-center justify-center mr-3 sm:mr-4 shrink-0 transition-all animate-in zoom-in-50 duration-200">
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-primary border-primary text-white shadow-lg shadow-primary/20' : 'border-white/20 bg-white/5 hover:border-white/40'}`}>
+                          {isSelected && <Check size={14} strokeWidth={4} />}
+                        </div>
+                      </div>
+                    )}
+                    <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'} ${isSelected ? 'scale-[0.98]' : ''} transition-transform duration-200`}>
                       <div className={`${(isImage || isVideo) && !isDeleted ? 'max-w-[280px] sm:max-w-[320px]' : 'w-fit'} ${borderRadiusClasses} relative ${largeEmojis ? '' : 'shadow-lg overflow-hidden'} ${
                         largeEmojis ? 'bg-transparent' : (
                           msg.is_own 
