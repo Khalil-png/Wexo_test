@@ -35,6 +35,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
   const presetColors = [
     { name: 'Bleu', value: '#0b57ff' },
     { name: 'Rouge', value: '#fc0944' },
+    { name: 'Rose', value: '#ec4899' },
     { name: 'Vert', value: '#03bf54' },
     { name: 'Vert Foncé', value: '#0da300' },
     { name: 'Orange', value: '#bc5617' },

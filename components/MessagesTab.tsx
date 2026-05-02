@@ -1278,6 +1278,22 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         <div className="p-6 pb-2 space-y-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <h2 className="text-3xl font-bold text-white tracking-tight">Messages</h2>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setIsSearchingUsers(true)}
+                className="p-2.5 bg-white/5 text-white hover:bg-white/10 rounded-2xl transition-all border border-white/10 group"
+                title="Wexo AI"
+              >
+                <Sparkles size={18} className="group-hover:scale-110 transition-transform" />
+              </button>
+              <button 
+                onClick={() => setIsSearchingUsers(true)}
+                className="p-2.5 bg-white/5 text-white hover:bg-white/10 rounded-2xl transition-all border border-white/10 group"
+                title="Nouveau message"
+              >
+                <Plus size={18} className="group-hover:scale-110 transition-transform" />
+              </button>
+            </div>
           </div>
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
