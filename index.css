@@ -4,8 +4,8 @@
 
 :root {
   color-scheme: dark;
-  --primary-color: #0040ff;
-  --primary-color-dark: rgba(0, 64, 255, 0.2);
+  --primary-color: #0b57ff;
+  --primary-color-dark: rgba(11, 87, 255, 0.2);
 }
 
 .light {

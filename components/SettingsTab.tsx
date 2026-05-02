@@ -33,7 +33,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const presetColors = [
-    { name: 'Wexo Blue', value: '#0040ff' },
+    { name: 'Wexo Blue', value: '#0b57ff' },
     { name: 'Rouge', value: '#ef4444' },
     { name: 'Vert', value: '#10b981' },
     { name: 'Violet', value: '#8b5cf6' },
