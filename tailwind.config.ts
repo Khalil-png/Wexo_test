@@ -18,7 +18,8 @@ export default {
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         primary: {
-          DEFAULT: 'hsl(var(--primary))',
+          DEFAULT: 'var(--primary-color)',
+          dark: 'var(--primary-color-dark)',
           foreground: 'hsl(var(--primary-foreground))',
         },
         secondary: {

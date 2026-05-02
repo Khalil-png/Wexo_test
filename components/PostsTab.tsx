@@ -230,16 +230,16 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
           <div className="absolute top-0 right-0 flex items-center gap-2 z-20">
             <button 
               onClick={() => handleLike(selectedPost.id, selectedPost.user_has_liked)}
-              className={`w-12 h-10 flex items-center justify-center rounded-lg transition-all active:scale-90 ${selectedPost.user_has_liked ? 'bg-blue-500 text-white' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'}`}
+              className={`w-12 h-10 flex items-center justify-center rounded-lg transition-all active:scale-90 ${selectedPost.user_has_liked ? 'bg-primary text-white shadow-lg' : 'bg-primary/20 text-primary hover:bg-primary/30'}`}
             >
               <Heart size={20} fill={selectedPost.user_has_liked ? "currentColor" : "none"} />
             </button>
-            <button className="w-12 h-10 flex items-center justify-center bg-blue-900/40 text-blue-300 hover:bg-blue-800/60 rounded-lg transition-all">
+            <button className="w-12 h-10 flex items-center justify-center bg-primary/20 text-primary hover:bg-primary/30 rounded-lg transition-all">
               <MessageCircle size={20} />
             </button>
             <button 
               onClick={copyToClipboard}
-              className={`w-12 h-10 flex items-center justify-center rounded-lg transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/60'}`}
+              className={`w-12 h-10 flex items-center justify-center rounded-lg transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-primary/20 text-primary hover:bg-primary/30'}`}
             >
               {copied ? <CheckCircle size={20} /> : <Share2 size={20} />}
             </button>

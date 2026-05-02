@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+import { ThemeProvider } from './src/context/ThemeContext';
 
 // Diagnostic logger for production debugging
 const logToApp = (message: string, level: string = 'INFO', details?: any) => {
@@ -136,9 +137,11 @@ const initializeApp = () => {
     logToApp('Lancement du render...', 'BOOT');
     root.render(
       <React.StrictMode>
-        <ErrorBoundary>
-          <App />
-        </ErrorBoundary>
+        <ThemeProvider>
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
+        </ThemeProvider>
       </React.StrictMode>
     );
     

@@ -1,0 +1,23 @@
+{
+  "name": "Wexo Social",
+  "short_name": "Wexo",
+  "description": "Le réseau social nouvelle génération",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f0f",
+  "theme_color": "#0f0f0f",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Waxo_logo.png/640px-Waxo_logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Waxo_logo.png/640px-Waxo_logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

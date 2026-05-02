@@ -708,13 +708,9 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     {isYoutube ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-black text-white tracking-tight drop-shadow-md">
-                          {short.youtube_channel || 'YouTube Creator'}
-                        </span>
-                        <div className="bg-red-600 text-[10px] font-black px-2 py-0.5 rounded text-white shadow-lg border border-red-500/50">
-                          YOUTUBE
-                        </div>
+                      <div className="bg-red-600 text-[12px] font-black px-3 py-1 rounded-md text-white shadow-lg border border-red-500/50 flex items-center gap-2 tracking-widest">
+                        <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                        YOUTUBE
                       </div>
                     ) : (
                       <Username 
@@ -728,7 +724,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
                       />
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
+                  <div className="flex items-center gap-1.5 mt-1.5">
                     {isYoutube ? (
                       <a 
                         href={`https://www.youtube.com/watch?v=${short.youtube_id}`}

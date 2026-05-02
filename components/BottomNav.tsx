@@ -43,7 +43,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) => {
           <div className="p-1 rounded-xl text-slate-400">
             {getIcon(tab.icon, false)}
           </div>
-          <span className="text-[12px] font-bold tracking-tight text-white">
+          <span className="text-[12px] font-bold tracking-tight text-white hover:text-primary transition-colors" style={{ '--tw-text-opacity': '1', color: 'inherit' } as any}>
             {tab.label}
           </span>
         </button>

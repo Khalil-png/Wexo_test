@@ -11,6 +11,7 @@ import GamesTab from '@/components/GamesTab';
 import VideoTab from '@/components/VideoTab';
 import ShortsTab from '@/components/ShortsTab';
 import MyChannelTab from '@/components/MyChannelTab';
+import SettingsTab from '@/components/SettingsTab';
 import CallsTab from '@/components/CallsTab';
 import DownloadTab from '@/components/DownloadTab';
 import AuthModal from '@/components/AuthModal';
@@ -869,6 +870,8 @@ const AppContent: React.FC = () => {
         );
       case 'telecharger':
         return <DownloadTab user={user} profile={profile} />;
+      case 'parametres':
+        return <SettingsTab user={user} profile={profile} onLogout={() => setShowLogoutModal(true)} />;
       case 'aide':
         return (
           <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-in fade-in duration-700">
@@ -961,18 +964,18 @@ const AppContent: React.FC = () => {
         />
         
         <main className={`flex-1 w-full lg:ml-72 transition-all duration-500 ${
-          (activeTab === 'message' || activeTab === 'shorts' || activeTab === 'appel')
+          (activeTab === 'message' || activeTab === 'shorts' || activeTab === 'appel' || activeTab === 'parametres')
             ? `p-0 ${isMobileDevice() ? (activeTab === 'message' && location.search.includes('chat=') ? 'pt-0 h-screen h-[100dvh]' : 'pt-[140px] h-screen h-[100dvh]') : 'mt-20 h-[calc(100vh-80px)]'} overflow-hidden bg-[#0f0f0f] ${isMobileDevice() && !(activeTab === 'message' && location.search.includes('chat=')) ? 'pb-24' : ''}` 
             : `p-4 sm:p-10 md:p-14 ${isMobileDevice() ? 'pt-[145px]' : 'pt-[125px]'} lg:pt-[105px] ${isMobileDevice() ? 'pb-28' : 'pb-10'}`
         }`}>
           <div className={`${
-            (activeTab === 'message' || activeTab === 'shorts' || activeTab === 'appel')
+            (activeTab === 'message' || activeTab === 'shorts' || activeTab === 'appel' || activeTab === 'parametres')
               ? 'w-full h-full' 
               : activeTab === 'video'
                 ? 'max-w-[1800px] mx-auto w-full'
                 : 'max-w-[1400px] mx-auto w-full'
           }`}>
-            {(!activeWorkspace && activeTab !== 'message' && activeTab !== 'video' && activeTab !== 'shorts' && activeTab !== 'appel') && (
+            {(!activeWorkspace && activeTab !== 'message' && activeTab !== 'video' && activeTab !== 'shorts' && activeTab !== 'appel' && activeTab !== 'parametres') && (
               <div className="mb-4 sm:mb-5 animate-in slide-in-from-left duration-700">
                 <h1 className="text-3xl sm:text-5xl font-black capitalize text-white tracking-tighter leading-none mb-3">
                   {getTabTitle(activeTab)}

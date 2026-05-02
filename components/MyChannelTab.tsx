@@ -989,7 +989,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="text-white font-bold text-lg truncate">{renderTextWithEmojis(video.title)}</h4>
                       {video.analysis_status === 'pending' && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/10 text-blue-400 text-[9px] font-bold rounded-full animate-pulse border border-blue-500/20">
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-[9px] font-bold rounded-full animate-pulse border border-primary/20">
                           <Loader2 size={10} className="animate-spin" /> IA en cours
                         </span>
                       )}
@@ -1064,7 +1064,7 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="text-white font-bold text-lg truncate">{renderTextWithEmojis(video.title)}</h4>
                       {video.analysis_status === 'pending' && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/10 text-blue-400 text-[9px] font-bold rounded-full animate-pulse border border-blue-500/20">
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-[9px] font-bold rounded-full animate-pulse border border-primary/20">
                           <Loader2 size={10} className="animate-spin" /> IA en cours
                         </span>
                       )}

@@ -873,7 +873,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             h2: ({ children }) => <h2 className="text-xl font-bold mb-2">{processChildren(children)}</h2>,
             h3: ({ children }) => <h3 className="text-lg font-bold mb-2">{processChildren(children)}</h3>,
             blockquote: ({ children }) => <blockquote className="border-l-4 border-white/20 pl-4 italic mb-2">{processChildren(children)}</blockquote>,
-            a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{processChildren(children)}</a>,
+            a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{processChildren(children)}</a>,
             strong: ({ children }) => <strong className="font-bold">{processChildren(children)}</strong>,
             em: ({ children }) => <em className="italic">{processChildren(children)}</em>,
           }}
@@ -1615,13 +1615,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     onTouchStart={() => handleMessageTouchStart(msg.id)}
                     onTouchEnd={() => handleMessageTouchEnd(msg.id)}
                     onClick={(e) => handleMessageClick(msg.id, e)}
-                    className={`flex group relative w-full px-4 sm:px-8 transition-all py-0.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')} ${isSelected ? 'bg-blue-600/20' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
+                    className={`flex group relative w-full px-4 sm:px-8 transition-all py-0.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')} ${isSelected ? 'bg-primary/20' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
                   >
                     <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'}`}>
                       <div className={`${(isImage || isVideo) && !isDeleted ? 'max-w-[280px] sm:max-w-[320px]' : 'w-fit'} ${borderRadiusClasses} relative ${largeEmojis ? '' : 'shadow-lg overflow-hidden'} ${
                         largeEmojis ? 'bg-transparent' : (
                           msg.is_own 
-                            ? isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-blue-700 text-white' 
+                            ? isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-primary text-white shadow-lg' 
                             : msg.isError || (msg.text && msg.text.includes("quota dépassé"))
                               ? 'bg-red-500/10 border border-red-500/30 text-red-500'
                               : isDeleted ? 'bg-white/5 text-white/40 italic' : 'bg-white/10 text-white border border-white/5'
@@ -1682,7 +1682,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                                           <Download size={14} />
                                         </button>
                                       </div>
-                                      <div className={`relative rounded-2xl overflow-hidden border-2 cursor-pointer ${msg.is_own ? 'border-blue-400/30' : 'border-white/10'}`}>
+                                      <div className={`relative rounded-2xl overflow-hidden border-2 cursor-pointer ${msg.is_own ? 'border-primary/30' : 'border-white/10'}`}>
                                         <img 
                                           src={msg.file_url} 
                                           alt={msg.file_name} 
@@ -1724,7 +1724,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                                         </button>
                                       </div>
                                       <div 
-                                        className={`relative rounded-2xl overflow-hidden border-2 cursor-pointer group/vid ${msg.is_own ? 'border-blue-400/30' : 'border-white/10'}`}
+                                        className={`relative rounded-2xl overflow-hidden border-2 cursor-pointer group/vid ${msg.is_own ? 'border-primary/30' : 'border-white/10'}`}
                                         onClick={(e) => {
                                           if (selectedMessageIds.size > 0) return;
                                           setSelectedMedia({ url: msg.file_url!, name: msg.file_name!, type: msg.file_type!, message: msg.text, transcription: msg.transcription });
@@ -1805,14 +1805,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                                               await openKeySelector();
                                               // Optional: trigger a retry or just inform the user
                                             }}
-                                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-2xl transition-all shadow-lg active:scale-95"
+                                            className="flex items-center gap-2 px-4 py-2 bg-primary hover:opacity-90 text-white text-xs font-bold rounded-2xl transition-all shadow-lg active:scale-95"
                                           >
                                             <Plus size={14} />
                                             Connecter ma clé API
                                           </button>
                                           <p className="mt-2 text-[10px] opacity-60 italic">
                                             Note : Une clé API payante est requise pour Veo. 
-                                            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-400 hover:underline">
+                                            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="ml-1 text-primary hover:underline">
                                               En savoir plus sur la facturation.
                                             </a>
                                           </p>
@@ -1901,7 +1901,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                           {stagedFile.type.startsWith('image/') ? (
                             <img src={stagedFile.url} className="w-full h-full object-cover" alt="" />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-blue-400">
+                            <div className="w-full h-full flex items-center justify-center text-primary">
                               <Video size={16} />
                             </div>
                           )}
@@ -1947,7 +1947,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                       )}
 
                       {!isMobileDevice() && (
-                        <button onClick={() => sendMessage(messageText)} className="h-10 w-10 bg-blue-600 text-white rounded-full flex items-center justify-center transition-all active:scale-95">
+                        <button onClick={() => sendMessage(messageText)} className="h-10 w-10 bg-primary text-white rounded-full flex items-center justify-center transition-all active:scale-95 shadow-md">
                           {messageText.trim() ? <Send size={18} /> : <Mic size={20} />}
                         </button>
                       )}
@@ -1955,7 +1955,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   </div>
 
                   {isMobileDevice() && (
-                    <button onClick={() => sendMessage(messageText)} className="bg-blue-600 text-white h-[50px] w-[50px] min-w-[50px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90">
+                    <button onClick={() => sendMessage(messageText)} className="bg-primary text-white h-[50px] w-[50px] min-w-[50px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90">
                       {messageText.trim() ? <Send size={24} /> : <Mic size={26} />}
                     </button>
                   )}
@@ -2016,7 +2016,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     <textarea 
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500/50 transition-all min-h-[120px] resize-none mb-6"
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-primary/50 transition-all min-h-[120px] resize-none mb-6"
                       placeholder="Modifier votre message..."
                       autoFocus
                     />
@@ -2030,7 +2030,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                       </button>
                       <button 
                         onClick={handleUpdateMessage}
-                        className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-2xl transition-all shadow-lg shadow-blue-600/20"
+                        className="flex-1 py-3 bg-primary hover:opacity-90 text-white text-sm font-bold rounded-2xl transition-all shadow-lg shadow-primary/20"
                       >
                         Enregistrer
                       </button>
