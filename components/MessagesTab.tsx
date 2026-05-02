@@ -1454,9 +1454,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   <div className="flex items-center gap-4">
                     <button 
                       onClick={() => setSelectedMessageIds(new Set())}
-                      className="p-2.5 bg-primary text-white rounded-full transition-all active:scale-95 shadow-lg shadow-primary/20"
+                      className="p-2 text-slate-400 hover:text-white transition-all active:scale-95"
                     >
-                      <X size={18} strokeWidth={3} />
+                      <X size={24} />
                     </button>
                     <span className="text-xl font-black text-white tracking-tight">{selectedMessageIds.size} sélectionné{selectedMessageIds.size > 1 ? 's' : ''}</span>
                   </div>
@@ -1640,13 +1640,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     onClick={(e) => handleMessageClick(msg.id, e)}
                     className={`flex group relative w-full px-4 sm:px-8 transition-all py-1.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')} ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
                   >
-                    {selectedMessageIds.size > 0 && (
-                      <div className="flex items-center justify-center mr-3 sm:mr-4 shrink-0 transition-all animate-in zoom-in-50 duration-200">
-                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-primary border-primary text-white shadow-lg shadow-primary/20' : 'border-white/20 bg-white/5 hover:border-white/40'}`}>
-                          {isSelected && <Check size={14} strokeWidth={4} />}
-                        </div>
-                      </div>
-                    )}
+                    {/* Sélection visuelle par background uniquement, comme demandé */}
                     <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'} ${isSelected ? 'scale-[0.98]' : ''} transition-transform duration-200`}>
                       <div className={`${(isImage || isVideo) && !isDeleted ? 'max-w-[280px] sm:max-w-[320px]' : 'w-fit'} ${borderRadiusClasses} relative ${largeEmojis ? '' : 'shadow-lg overflow-hidden'} ${
                         largeEmojis ? 'bg-transparent' : (
