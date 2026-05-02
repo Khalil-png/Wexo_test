@@ -48,10 +48,64 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
   const sharePopupRef = useRef<HTMLDivElement>(null);
   useClickOutside(sharePopupRef, () => setShowSharePopup(false));
   const [copied, setCopied] = useState(false);
+  const [comments, setComments] = useState<any[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
   useEffect(() => {
     fetchPosts();
   }, []);
+
+  useEffect(() => {
+    if (selectedPost) {
+      fetchComments(selectedPost.id);
+    }
+  }, [selectedPost]);
+
+  const fetchComments = async (postId: string) => {
+    setLoadingComments(true);
+    try {
+      const result = await pb.collection('comments').getList(1, 50, {
+        filter: `video_id="${postId}"`,
+        sort: '-created',
+        expand: 'user_id'
+      });
+      
+      const formatted = result.items.map(c => ({
+        id: c.id,
+        user_id: c.user_id,
+        content: c.content,
+        created_at: c.created,
+        username: c.expand?.user_id?.username || 'Utilisateur',
+        display_name: c.expand?.user_id?.name || c.expand?.user_id?.username,
+        avatar_url: c.expand?.user_id?.avatar_url || DEFAULT_AVATAR
+      }));
+      setComments(formatted);
+    } catch (err) {
+      console.error('Error fetching comments:', err);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !selectedPost || !user?.uid) return;
+    setIsSubmittingComment(true);
+    try {
+      await pb.collection('comments').create({
+        video_id: selectedPost.id, // Using video_id as requested to be same as videos
+        user_id: user.uid,
+        content: newComment.trim()
+      });
+      setNewComment('');
+      fetchComments(selectedPost.id);
+    } catch (err) {
+      console.error('Error adding comment:', err);
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
 
   const fetchPosts = async () => {
     setLoading(true);
@@ -61,14 +115,14 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
         expand: 'user_id'
       });
 
-      // Get user likes
+      // Get user likes from 'likes' collection (same as videos)
       let userLikes: string[] = [];
       if (user?.uid) {
         try {
-          const likesList = await pb.collection('post_likes').getList(1, 200, {
+          const likesList = await pb.collection('likes').getList(1, 200, {
             filter: `user_id="${user.uid}"`
           });
-          userLikes = likesList.items.map(l => l.post_id);
+          userLikes = likesList.items.map(l => l.video_id);
         } catch (e) {}
       }
 
@@ -110,50 +164,45 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
     
     try {
       if (hasLiked) {
-        // Unlike: Find the like record and delete it
-        const result = await pb.collection('post_likes').getList(1, 1, {
-          filter: `post_id="${postId}" && user_id="${user.uid}"`
+        // Unlike from 'likes' collection
+        const result = await pb.collection('likes').getList(1, 1, {
+          filter: `video_id="${postId}" && user_id="${user.uid}"`
         });
         if (result.items.length > 0) {
-          await pb.collection('post_likes').delete(result.items[0].id);
+          await pb.collection('likes').delete(result.items[0].id);
         }
         
         // Update post likes_count
-        const post = posts.find(p => p.id === postId);
-        if (post) {
-          await pb.collection('posts').update(postId, {
-            'likes_count+': -1
-          });
-        }
+        await pb.collection('posts').update(postId, {
+          'likes_count-': 1
+        });
       } else {
-        // Like: Create like record
-        await pb.collection('post_likes').create({
-          post_id: postId,
+        // Like in 'likes' collection
+        await pb.collection('likes').create({
+          video_id: postId,
           user_id: user.uid
         });
 
         // Update post likes_count
-        const post = posts.find(p => p.id === postId);
-        if (post) {
-          await pb.collection('posts').update(postId, {
-            'likes_count+': 1
-          });
+        await pb.collection('posts').update(postId, {
+          'likes_count+': 1
+        });
 
-          // NOTIFICATION for author
-          if (post.user_id !== user.uid) {
-            try {
-              await pb.collection('notifications').create({
-                user_id: post.user_id,
-                sender_id: user.uid,
-                sender_avatar: profile?.avatar_url || '',
-                type: 'like',
-                title: 'Nouveau like',
-                content: `${profile?.display_name || user.displayName || 'Un utilisateur'} a aimé votre post.`,
-                status: 'pending',
-                read: false
-              });
-            } catch (nErr) {}
-          }
+        // NOTIFICATION for author
+        const post = posts.find(p => p.id === postId);
+        if (post && post.user_id !== user.uid) {
+          try {
+            await pb.collection('notifications').create({
+              user_id: post.user_id,
+              sender_id: user.uid,
+              sender_avatar: profile?.avatar_url || '',
+              type: 'like',
+              title: 'Nouveau like',
+              content: `${profile?.display_name || user.displayName || 'Un utilisateur'} a aimé votre post.`,
+              status: 'pending',
+              read: false
+            });
+          } catch (nErr) {}
         }
       }
 
@@ -280,7 +329,7 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
 
           {/* Media Section */}
           {selectedPost.media_url && (
-            <div className="rounded-3xl overflow-hidden border border-white/5 bg-black/40 shadow-2xl max-w-2xl">
+            <div className="rounded-3xl overflow-hidden border border-white/5 bg-black/40 shadow-2xl max-w-2xl mb-12">
               {selectedPost.media_type === 'image' && (
                 <img 
                   src={selectedPost.media_url} 
@@ -300,6 +349,72 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
               )}
             </div>
           )}
+
+          {/* Comments Section */}
+          <div className="max-w-4xl border-t border-white/10 pt-10 pb-20">
+            <h3 className="text-2xl font-bold text-white mb-8 flex items-center gap-3">
+              <MessageCircle size={24} />
+              Commentaires
+            </h3>
+
+            {/* Add Comment */}
+            {user ? (
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-10 flex gap-4">
+                <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10 flex-shrink-0">
+                  <img src={profile?.avatar_url || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                </div>
+                <div className="flex-1 flex gap-2">
+                  <input 
+                    type="text" 
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
+                    placeholder="Ajouter un commentaire..."
+                    className="bg-transparent text-white outline-none flex-1 text-sm"
+                  />
+                  <button 
+                    onClick={handleAddComment}
+                    disabled={!newComment.trim() || isSubmittingComment}
+                    className="p-2 bg-primary text-white rounded-xl active:scale-95 transition-all disabled:opacity-50"
+                  >
+                    {isSubmittingComment ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-10 text-center">
+                <p className="text-slate-400 text-sm font-medium">Connectez-vous pour laisser un commentaire.</p>
+              </div>
+            )}
+
+            {/* Comments List */}
+            <div className="space-y-6">
+              {loadingComments ? (
+                <div className="flex justify-center py-10">
+                  <Loader2 className="text-white/20 animate-spin" size={24} />
+                </div>
+              ) : comments.length > 0 ? (
+                comments.map(comment => (
+                  <div key={comment.id} className="flex gap-4 group">
+                    <div className="w-10 h-10 rounded-full overflow-hidden bg-white/5 border border-white/10 flex-shrink-0">
+                      <img src={comment.avatar_url} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-bold text-white leading-none">{comment.display_name || comment.username}</span>
+                        <span className="text-[10px] text-slate-500 font-medium">{formatRelativeDate(comment.created_at)}</span>
+                      </div>
+                      <p className="text-sm text-slate-300 leading-relaxed">{renderTextWithEmojis(comment.content)}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-10 opacity-40">
+                  <p className="text-sm font-bold">Aucun commentaire pour le moment.</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Share Modal (Relative to the container) */}

@@ -781,7 +781,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     longPressTimer.current = setTimeout(() => {
       isLongPressing.current = true;
       toggleMessageSelection(id);
-    }, 250); // 250ms for long press
+    }, 500); // 500ms for long press as requested
   };
 
   const handleMessageTouchEnd = (id: string) => {
@@ -1648,7 +1648,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     onTouchStart={() => handleMessageTouchStart(msg.id)}
                     onTouchEnd={() => handleMessageTouchEnd(msg.id)}
                     onClick={(e) => handleMessageClick(msg.id, e)}
-                    className={`flex group relative w-full px-4 sm:px-8 transition-all ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-[2px] py-[2px]' : (idx === 0 ? 'mt-0 py-1.5' : 'mt-4 py-1.5')} ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
+                    className={`flex group relative w-full px-4 sm:px-8 transition-all ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-[1px] py-[1px]' : (idx === 0 ? 'mt-0 py-1' : 'mt-2 py-1')} ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
                   >
                     {/* Sélection visuelle par background uniquement, comme demandé */}
                     <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'} ${isSelected ? 'scale-[0.98]' : ''} transition-transform duration-200`}>
