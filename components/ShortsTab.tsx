@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { renderTextWithEmojis } from '../utils/emoji';
-import { Heart, MessageCircle, Share2, Music, Loader2, UserPlus, UserCheck, Play, Zap, Tv, Plus, TrendingUp, ThumbsUp, ThumbsDown, MessageSquare, Repeat, Pause, Volume2, VolumeX, Copy, Check, X, ChevronUp, ChevronDown, Captions, User, Send } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Music, Loader2, UserPlus, UserCheck, Play, Zap, Tv, Plus, TrendingUp, ThumbsUp, ThumbsDown, MessageSquare, Repeat, Pause, Volume2, VolumeX, Copy, Check, X, ChevronUp, ChevronDown, Captions, User, Send, ExternalLink } from 'lucide-react';
 import { DEFAULT_AVATAR } from '../constants';
 import { pb } from '../services/pocketbaseService';
 // Firebase désactivé
@@ -62,6 +62,9 @@ const ShortsTab: React.FC<ShortsTabProps> = ({ user, profile }) => {
           views: Number(v.views) || 0,
           likes: Number(v.likes) || 0,
           is_short: v.collectionName === 'shorts' ? true : v.is_short,
+          source: v.source || 'wexo',
+          youtube_id: v.youtube_id,
+          youtube_channel: v.youtube_channel,
           created_at: v.created
         };
       });
@@ -239,16 +242,18 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
     // Migration NAS
   };
 
+  const isYoutube = short.source === 'youtube';
+
   useEffect(() => {
-    if (isActive && videoRef.current) {
+    if (isActive && videoRef.current && !isYoutube) {
       videoRef.current.play().catch(() => {});
       setIsPaused(false);
-    } else if (videoRef.current) {
+    } else if (videoRef.current && !isYoutube) {
       videoRef.current.pause();
       videoRef.current.currentTime = 0;
       setIsPaused(true);
     }
-  }, [isActive]);
+  }, [isActive, isYoutube]);
 
   useEffect(() => {
     if (isActive) {
@@ -257,7 +262,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
   }, [user?.uid, isActive]);
 
   const checkInteractions = async () => {
-    if (!user?.uid || !short.id) return;
+    if (!user?.uid || !short.id || isYoutube) return;
     const userId = user.id || user.uid;
     
     // Cache local pour les interactions pour éviter de matraquer le serveur au scroll
@@ -321,7 +326,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
       e.preventDefault();
       e.stopPropagation();
     }
-    if (!user?.uid || isLikeProcessing.current) return;
+    if (!user?.uid || isLikeProcessing.current || isYoutube) return;
     
     isLikeProcessing.current = true;
     const userId = user.id || user.uid;
@@ -381,7 +386,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
 
   const handleSubscribe = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!user?.uid || user.uid === short.creator_id) return;
+    if (!user?.uid || user.uid === short.creator_id || isYoutube) return;
     // Migration NAS
   };
 
@@ -563,16 +568,27 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
         
         {/* Video Container (Wrapper for everything that must stay in the video area) */}
         <div className={`relative h-full bg-black overflow-hidden flex items-center justify-center group ${isMobileDevice() ? 'w-full rounded-0' : 'max-h-[calc(100vh-120px)] aspect-[9/16] rounded-2xl shadow-2xl border border-white/10'}`}>
-          <video 
-            ref={videoRef}
-            src={short.url}
-            loop
-            playsInline
-            preload={isActive ? "auto" : "metadata"}
-            onTimeUpdate={handleTimeUpdate}
-            className={`h-full w-full ${isMobileDevice() ? 'object-cover' : 'object-contain'} cursor-pointer bg-black`}
-            onClick={togglePlay}
-          />
+          {isYoutube ? (
+            <div className="absolute inset-0 w-full h-full pb-[150%] sm:pb-0">
+               <iframe 
+                src={`https://www.youtube.com/embed/${short.youtube_id}?autoplay=${isActive ? 1 : 0}&mute=${isMuted ? 1 : 0}&loop=1&playlist=${short.youtube_id}&controls=0&modestbranding=1&rel=0`}
+                className="absolute inset-0 w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          ) : (
+            <video 
+              ref={videoRef}
+              src={short.url}
+              loop
+              playsInline
+              preload={isActive ? "auto" : "metadata"}
+              onTimeUpdate={handleTimeUpdate}
+              className={`h-full w-full ${isMobileDevice() ? 'object-cover' : 'object-contain'} cursor-pointer bg-black`}
+              onClick={togglePlay}
+            />
+          )}
 
           {/* Subtitles Overlay */}
           {currentSubtitle && (
@@ -642,21 +658,39 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
                   alt=""
                   referrerPolicy="no-referrer"
                 />
-                <div className="flex flex-col">
-                  <Username 
-                    username={short.creator_name || 'Utilisateur'} 
-                    displayName={short.creator_display_name}
-                    isVerified={short.creator_is_verified} 
-                    isAdmin={short.creator_role === 'admin'}
-                    email={short.creator_email}
-                    className="text-sm font-bold text-white tracking-tight" 
-                    badgeSize={14} 
-                  />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Username 
+                      username={short.creator_name || 'Utilisateur'} 
+                      displayName={short.creator_display_name}
+                      isVerified={short.creator_is_verified} 
+                      isAdmin={short.creator_role === 'admin'}
+                      email={short.creator_email}
+                      className="text-sm font-bold text-white tracking-tight" 
+                      badgeSize={14} 
+                    />
+                    {isYoutube && (
+                      <div className="bg-red-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-sm uppercase tracking-tighter">
+                        YouTube
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-[10px] font-bold text-white/60">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</span>
+                    {isYoutube ? (
+                      <a 
+                        href={`https://www.youtube.com/watch?v=${short.youtube_id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 text-[10px] font-bold text-white/80 hover:text-white transition-colors"
+                      >
+                        <ExternalLink size={10} /> www.youtube.com
+                      </a>
+                    ) : (
+                      <span className="text-[10px] font-bold text-white/60">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</span>
+                    )}
                   </div>
                 </div>
-                {user && user.uid !== short.creator_id && (
+                {user && user.uid !== short.creator_id && !isYoutube && (
                   <button 
                     onClick={handleSubscribe}
                     className={`px-4 py-1.5 rounded-2xl text-xs font-bold transition-all active:scale-95 ${isSubscribed ? 'bg-white/20 text-white' : 'bg-white text-black hover:bg-white/20 hover:text-white'}`}
@@ -691,25 +725,29 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
 
         {/* Right Side Actions - Moved OUTSIDE video container wrapper for PC, absolute on mobile */}
         <div className={`flex flex-col gap-6 items-center justify-end ${isMobileDevice() ? 'absolute right-4 bottom-12 z-40' : 'flex-shrink-0 pb-20'}`}>
-          <div className="flex flex-col items-center gap-2">
-            <button 
-              onClick={handleLike}
-              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20 shadow-sm border border-white/10'}`}
-            >
-              <Heart size={isMobileDevice() ? 24 : 28} fill={liked ? "currentColor" : "none"} />
-            </button>
-            <span className="text-[12px] sm:text-[13px] font-bold text-white drop-shadow-md">{likeCount}</span>
-          </div>
+          {!isYoutube && (
+            <>
+              <div className="flex flex-col items-center gap-2">
+                <button 
+                  onClick={handleLike}
+                  className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center backdrop-blur-md transition-all active:scale-90 ${liked ? 'bg-white text-red-500 shadow-xl' : 'bg-white/10 text-white hover:bg-white/20 shadow-sm border border-white/10'}`}
+                >
+                  <Heart size={isMobileDevice() ? 24 : 28} fill={liked ? "currentColor" : "none"} />
+                </button>
+                <span className="text-[12px] sm:text-[13px] font-bold text-white drop-shadow-md">{likeCount}</span>
+              </div>
 
-          <div className="flex flex-col items-center gap-2">
-            <button 
-              onClick={() => setShowComments(true)}
-              className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
-            >
-              <MessageSquare size={isMobileDevice() ? 24 : 28} />
-            </button>
-            <span className="text-[10px] sm:text-[11px] font-bold text-white drop-shadow-md">Commentaire</span>
-          </div>
+              <div className="flex flex-col items-center gap-2">
+                <button 
+                  onClick={() => setShowComments(true)}
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center bg-white/10 text-white backdrop-blur-md hover:bg-white/20 shadow-sm border border-white/10 transition-all"
+                >
+                  <MessageSquare size={isMobileDevice() ? 24 : 28} />
+                </button>
+                <span className="text-[10px] sm:text-[11px] font-bold text-white drop-shadow-md">Commentaire</span>
+              </div>
+            </>
+          )}
 
           <div className="flex flex-col items-center gap-2 relative">
             <button 

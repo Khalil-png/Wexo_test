@@ -65,6 +65,9 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [activeSubTab, setActiveSubTab] = useState<'videos' | 'shorts' | 'posts'>('videos');
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showYouTubeModal, setShowYouTubeModal] = useState(false);
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [isYoutubeLoading, setIsYoutubeLoading] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
   const [showPublishMenu, setShowPublishMenu] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -326,6 +329,66 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
     if (diffInMonths < 12) return `il y a ${diffInMonths} mois`;
     const diffInYears = Math.floor(diffInMonths / 12);
     return `il y a ${diffInYears} an${diffInYears > 1 ? 's' : ''}`;
+  };
+
+  const handleYouTubePublish = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!youtubeUrl.trim() || !user?.uid) return;
+    
+    setIsYoutubeLoading(true);
+    setError(null);
+    console.log('[YouTubeImport] Tentative d\'import pour:', youtubeUrl);
+
+    try {
+      // 1. Extraire l'ID vidéo YouTube
+      const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+      const match = youtubeUrl.match(regExp);
+      const videoId = (match && match[7].length === 11) ? match[7] : null;
+
+      if (!videoId) {
+        throw new Error("L'URL YouTube ne semble pas valide.");
+      }
+
+      // 2. Récupérer les métadonnées via oEmbed (Public & Gratuit)
+      const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+      console.log('[YouTubeImport] Récupération métadonnées via oEmbed...');
+      
+      const response = await fetch(oembedUrl);
+      if (!response.ok) {
+        throw new Error("Impossible de récupérer les infos de la vidéo. Elle est peut-être privée ou inexistante.");
+      }
+      
+      const metadata = await response.json();
+      console.log('[YouTubeImport] Métadonnées reçues:', metadata);
+
+      // 3. Créer le record dans PocketBase
+      await pb.collection('shorts').create({
+        title: metadata.title || 'YouTube Short',
+        description: `Importé depuis YouTube (${metadata.author_name})`,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        thumbnail_url: metadata.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+        creator_id: profile?.id || user.uid,
+        source: 'youtube',
+        youtube_id: videoId,
+        youtube_channel: metadata.author_name,
+        views: 0,
+        likes: 0,
+        analysis_status: 'completed',
+        is_appropriate: true
+      });
+
+      console.log('[YouTubeImport] Succès ! Short ajouté à Wexo.');
+      setSuccess("YouTube Short importé avec succès !");
+      setShowYouTubeModal(false);
+      setYoutubeUrl('');
+      fetchMyVideos();
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      console.error('[YouTubeImport] Erreur:', err);
+      setError(err.message || "Erreur lors de l'import YouTube.");
+    } finally {
+      setIsYoutubeLoading(false);
+    }
   };
 
   const uploadFileToStorage = async (file: File | Blob, bucket: string) => {
@@ -811,6 +874,23 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                     <span className="text-[9px] text-slate-500">Format vertical</span>
                   </div>
                 </button>
+
+                {user?.email === 'ky.chaine@gmail.com' && (
+                  <button 
+                    onClick={() => {
+                      setShowYouTubeModal(true);
+                      setShowPublishMenu(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 text-white rounded-2xl transition-colors text-left"
+                  >
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/fc/Youtube_shorts_icon.svg/250px-Youtube_shorts_icon.svg.png" alt="YT" className="w-5 h-5" />
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold">YouTube Short</span>
+                      <span className="text-[9px] text-slate-500">Importation via lien</span>
+                    </div>
+                  </button>
+                )}
+
                 <button 
                   onClick={() => {
                     setIsShort(false);
@@ -1081,6 +1161,61 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
           )
         )}
       </div>
+
+      {/* Modal YouTube Short */}
+      {showYouTubeModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[500] flex items-center justify-center p-4">
+          <div className="bg-[#121212] w-full max-w-lg border border-white/10 rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-white/5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/fc/Youtube_shorts_icon.svg/250px-Youtube_shorts_icon.svg.png" className="w-6 h-6" alt="YT" />
+                <h3 className="text-xl font-black text-white tracking-tight">Importer sur Wexo</h3>
+              </div>
+              <button onClick={() => setShowYouTubeModal(false)} className="text-slate-400 hover:text-white transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleYouTubePublish} className="p-8 space-y-6">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Lien du Short YouTube</label>
+                <div className="relative">
+                  <input 
+                    type="url" 
+                    placeholder="https://youtube.com/shorts/..."
+                    value={youtubeUrl}
+                    onChange={(e) => setYoutubeUrl(e.target.value)}
+                    required
+                    disabled={isYoutubeLoading}
+                    className="w-full bg-white/5 border border-white/10 focus:border-red-500/50 rounded-2xl p-4 text-white font-medium outline-none transition-all placeholder:text-slate-600"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-600 px-1 italic">
+                  L'application va automatiquement capter la vidéo, la chaîne et le titre.
+                </p>
+              </div>
+
+              {error && (
+                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-500 text-sm font-bold">
+                  <AlertCircle size={18} /> {error}
+                </div>
+              )}
+
+              <button 
+                type="submit"
+                disabled={isYoutubeLoading || !youtubeUrl.trim()}
+                className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black py-4 rounded-2xl shadow-xl shadow-red-900/10 flex items-center justify-center gap-3 transition-all active:scale-95"
+              >
+                {isYoutubeLoading ? (
+                  <><Loader2 className="animate-spin" size={20} /> Importation...</>
+                ) : (
+                  <>Importer sur Wexo</>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showAnalysisOverlay && (
         <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/90 backdrop-blur-2xl animate-in fade-in duration-500">

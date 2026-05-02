@@ -136,6 +136,9 @@ export interface Video {
   views: number;
   likes: number;
   is_short?: boolean;
+  source?: 'wexo' | 'youtube';
+  youtube_id?: string;
+  youtube_channel?: string;
   categories?: string[];
   type?: string;
   name_of_type?: string | null;
