@@ -361,16 +361,22 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       const metadata = await response.json();
       console.log('[YouTubeImport] Métadonnées reçues:', metadata);
 
+      // Tenter de récupérer l'avatar du channel
+      // oEmbed ne donne pas l'avatar, mais on peut tenter un proxy d'avatar via le nom d'auteur
+      const authorName = metadata.author_name || 'YouTube Creator';
+      const channelAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=f43f5e&color=fff&bold=true`;
+
       // 3. Créer le record dans PocketBase
       await pb.collection('shorts').create({
         title: metadata.title || 'YouTube Short',
-        description: `Importé depuis YouTube (${metadata.author_name})`,
+        description: `Importé depuis YouTube par ${metadata.author_name}`,
         url: `https://www.youtube.com/watch?v=${videoId}`,
         thumbnail_url: metadata.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
         creator_id: profile?.id || user.uid,
         source: 'youtube',
         youtube_id: videoId,
-        youtube_channel: metadata.author_name,
+        youtube_channel: authorName,
+        youtube_channel_avatar: channelAvatar, // Stockage de l'avatar (fallback propre)
         views: 0,
         likes: 0,
         analysis_status: 'completed',

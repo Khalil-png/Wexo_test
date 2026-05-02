@@ -139,6 +139,7 @@ export interface Video {
   source?: 'wexo' | 'youtube';
   youtube_id?: string;
   youtube_channel?: string;
+  youtube_channel_avatar?: string;
   categories?: string[];
   type?: string;
   name_of_type?: string | null;

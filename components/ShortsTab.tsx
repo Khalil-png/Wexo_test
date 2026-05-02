@@ -65,6 +65,7 @@ const ShortsTab: React.FC<ShortsTabProps> = ({ user, profile }) => {
           source: v.source || 'wexo',
           youtube_id: v.youtube_id,
           youtube_channel: v.youtube_channel,
+          youtube_channel_avatar: v.youtube_channel_avatar,
           created_at: v.created
         };
       });
@@ -569,13 +570,14 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
         {/* Video Container (Wrapper for everything that must stay in the video area) */}
         <div className={`relative h-full bg-black overflow-hidden flex items-center justify-center group ${isMobileDevice() ? 'w-full rounded-0' : 'max-h-[calc(100vh-120px)] aspect-[9/16] rounded-2xl shadow-2xl border border-white/10'}`}>
           {isYoutube ? (
-            <div className="absolute inset-0 w-full h-full pb-[150%] sm:pb-0">
+            <div className="absolute inset-0 w-full h-full overflow-hidden">
                <iframe 
-                src={`https://www.youtube.com/embed/${short.youtube_id}?autoplay=${isActive ? 1 : 0}&mute=${isMuted ? 1 : 0}&loop=1&playlist=${short.youtube_id}&controls=0&modestbranding=1&rel=0`}
-                className="absolute inset-0 w-full h-full"
+                src={`https://www.youtube.com/embed/${short.youtube_id}?autoplay=${isActive ? 1 : 0}&mute=${isMuted ? 1 : 0}&loop=1&playlist=${short.youtube_id}&controls=0&modestbranding=1&rel=0&iv_load_policy=3&showinfo=0&disablekb=1&enablejsapi=1`}
+                className="absolute top-1/2 left-1/2 w-[300%] h-[100%] -translate-x-1/2 -translate-y-1/2 pointer-events-none scale-150"
+                style={{ objectFit: 'cover' }}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
               />
+              <div className="absolute inset-0 bg-transparent z-10" onClick={togglePlay} />
             </div>
           ) : (
             <video 
@@ -653,7 +655,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
             <div className="flex flex-col gap-3 pointer-events-auto">
               <div className="flex items-center gap-3">
                 <img 
-                  src={isYoutube ? "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/512px-YouTube_full-color_icon_%282017%29.svg.png" : (short.creator_avatar || DEFAULT_AVATAR)} 
+                  src={isYoutube ? (short.youtube_channel_avatar || "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/512px-YouTube_full-color_icon_%282017%29.svg.png") : (short.creator_avatar || DEFAULT_AVATAR)} 
                   className={`w-10 h-10 rounded-full border-2 ${isYoutube ? 'border-red-500' : 'border-white/20'} shadow-lg`}
                   alt=""
                   referrerPolicy="no-referrer"
