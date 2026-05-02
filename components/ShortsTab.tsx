@@ -653,24 +653,30 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
             <div className="flex flex-col gap-3 pointer-events-auto">
               <div className="flex items-center gap-3">
                 <img 
-                  src={short.creator_avatar || DEFAULT_AVATAR} 
-                  className="w-9 h-9 rounded-full border border-white/20"
+                  src={isYoutube ? "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/512px-YouTube_full-color_icon_%282017%29.svg.png" : (short.creator_avatar || DEFAULT_AVATAR)} 
+                  className={`w-10 h-10 rounded-full border-2 ${isYoutube ? 'border-red-500' : 'border-white/20'} shadow-lg`}
                   alt=""
                   referrerPolicy="no-referrer"
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <Username 
-                      username={short.creator_name || 'Utilisateur'} 
-                      displayName={short.creator_display_name}
-                      isVerified={short.creator_is_verified} 
-                      isAdmin={short.creator_role === 'admin'}
-                      email={short.creator_email}
-                      className="text-sm font-bold text-white tracking-tight" 
-                      badgeSize={14} 
-                    />
+                    {isYoutube ? (
+                      <span className="text-sm font-black text-white tracking-tight uppercase drop-shadow-md">
+                        {short.youtube_channel || 'YouTube Creator'}
+                      </span>
+                    ) : (
+                      <Username 
+                        username={short.creator_name || 'Utilisateur'} 
+                        displayName={short.creator_display_name}
+                        isVerified={short.creator_is_verified} 
+                        isAdmin={short.creator_role === 'admin'}
+                        email={short.creator_email}
+                        className="text-sm font-bold text-white tracking-tight" 
+                        badgeSize={14} 
+                      />
+                    )}
                     {isYoutube && (
-                      <div className="bg-red-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-sm uppercase tracking-tighter">
+                      <div className="bg-red-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-sm uppercase tracking-tighter shadow-sm">
                         YouTube
                       </div>
                     )}
@@ -681,12 +687,12 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
                         href={`https://www.youtube.com/watch?v=${short.youtube_id}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center gap-1 text-[10px] font-bold text-white/80 hover:text-white transition-colors"
+                        className="flex items-center gap-1 text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors drop-shadow-md"
                       >
                         <ExternalLink size={10} /> www.youtube.com
                       </a>
                     ) : (
-                      <span className="text-[10px] font-bold text-white/60">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</span>
+                      <span className="text-[10px] font-bold text-white/60 drop-shadow-md">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</span>
                     )}
                   </div>
                 </div>
