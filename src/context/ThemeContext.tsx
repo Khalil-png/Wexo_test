@@ -12,6 +12,18 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const THEME_COLORS: Record<string, string> = {
+  'bleu': '#0b57ff',
+  'rouge': '#fc0944',
+  'rose': '#ec4899',
+  'vert': '#03bf54',
+  'vert foncé': '#0da300',
+  'orange': '#bc5617',
+  'violet': '#8b5cf6',
+};
+
+const DEFAULT_COLOR = '#0b57ff';
+
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [mode, setModeState] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem('wexo-theme-mode');
@@ -20,9 +32,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [primaryColor, setPrimaryColorState] = useState(() => {
     const saved = localStorage.getItem('wexo-primary-color');
+    // Support des noms de couleurs stockés en local
+    if (saved && THEME_COLORS[saved]) return THEME_COLORS[saved];
     // Migration vers le nouveau bleu par défaut
-    if (saved === '#3b82f6' || saved === '#0040ff') return '#0b57ff';
-    return saved || '#0b57ff';
+    if (saved === '#3b82f6' || saved === '#0040ff') return DEFAULT_COLOR;
+    return saved || DEFAULT_COLOR;
   });
 
   const modeRef = useRef(mode);
@@ -42,18 +56,28 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const syncAndSubscribe = async (userId: string) => {
       try {
-        // Initial sync
-        const user = await pb.collection('users').getOne(userId);
+        console.log('[ThemeSync] Synchronisation avec le serveur...');
+        // Initial sync - On force la récupération du profil frais
+        const user = await pb.collection('users').getOne(userId, { '$autoCancel': false });
+        
+        // Mode
         if (user.theme_mode && user.theme_mode !== modeRef.current) {
+          console.log('[ThemeSync] Mode mis à jour depuis le serveur:', user.theme_mode);
           setModeState(user.theme_mode as ThemeMode);
           localStorage.setItem('wexo-theme-mode', user.theme_mode);
         }
-        if (user.primary_color && user.primary_color !== colorRef.current) {
-          setPrimaryColorState(user.primary_color);
-          localStorage.setItem('wexo-primary-color', user.primary_color);
+        
+        // Couleur - Support des noms de couleurs
+        if (user.primary_color) {
+          const serverColor = THEME_COLORS[user.primary_color] || user.primary_color;
+          if (serverColor !== colorRef.current) {
+            console.log('[ThemeSync] Couleur mise à jour depuis le serveur:', user.primary_color);
+            setPrimaryColorState(serverColor);
+            localStorage.setItem('wexo-primary-color', serverColor);
+          }
         }
 
-        // Real-time subscription
+        // Real-time subscription - Pour que PC et Mobile se mettent à jour INSTANTANÉMENT
         unsubscribe = await pb.collection('users').subscribe(userId, (e) => {
           if (e.action === 'update') {
             const data = e.record;
@@ -61,12 +85,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               setModeState(data.theme_mode as ThemeMode);
               localStorage.setItem('wexo-theme-mode', data.theme_mode);
             }
-            if (data.primary_color && data.primary_color !== colorRef.current) {
-              setPrimaryColorState(data.primary_color);
-              localStorage.setItem('wexo-primary-color', data.primary_color);
+            if (data.primary_color) {
+              const liveColor = THEME_COLORS[data.primary_color] || data.primary_color;
+              if (liveColor !== colorRef.current) {
+                setPrimaryColorState(liveColor);
+                localStorage.setItem('wexo-primary-color', liveColor);
+              }
             }
           }
-        });
+        }, { '$autoCancel': false });
       } catch (err) {
         console.error('[ThemeSync] Sync error:', err);
       }
@@ -84,9 +111,13 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
 
-    // Initial check
+    // Initial check - Très important au démarrage
     if (pb.authStore.model?.id) {
       syncAndSubscribe(pb.authStore.model.id);
+    } else {
+      // Si pas encore d'ID mais qu'on a un token (cas rare au boot)
+      const model = pb.authStore.model;
+      if (model?.id) syncAndSubscribe(model.id);
     }
 
     const unbindAuth = pb.authStore.onChange(handleAuthChange);
@@ -113,13 +144,21 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const setPrimaryColor = async (color: string, sync: boolean = true) => {
+    // Si c'est un hex, on cherche le nom correspondant
+    let colorToSave = color;
+    Object.entries(THEME_COLORS).forEach(([name, hex]) => {
+      if (hex.toLowerCase() === color.toLowerCase()) colorToSave = name;
+    });
+
+    console.log('[ThemeSync] Enregistrement de la couleur:', colorToSave);
     setPrimaryColorState(color);
     localStorage.setItem('wexo-primary-color', color);
     
     if (sync && pb.authStore.model?.id) {
       try {
+        // On enregistre le NOM de la couleur sur le serveur comme demandé
         await pb.collection('users').update(pb.authStore.model.id, {
-          primary_color: color
+          primary_color: colorToSave
         });
       } catch (err) {
         console.error('[ThemeSync] Update color error:', err);
