@@ -359,12 +359,14 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       }
       
       const metadata = await response.json();
-      console.log('[YouTubeImport] Métadonnées reçues:', metadata);
+      console.log('[YouTubeImport] Métadonnées reçues avec succès :', metadata);
 
       // Tenter de récupérer l'avatar du channel
-      // oEmbed ne donne pas l'avatar, mais on peut tenter un proxy d'avatar via le nom d'auteur
       const authorName = metadata.author_name || 'YouTube Creator';
-      const channelAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=f43f5e&color=fff&bold=true`;
+      // Utilisation d'un service d'avatar constant basé sur le nom pour plus de cohérence
+      const channelAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=f43f5e&color=fff&bold=true&size=128`;
+
+      console.log('[YouTubeImport] Création de la vidéo dans la base Wexo...');
 
       // 3. Créer le record dans PocketBase
       await pb.collection('shorts').create({
@@ -376,22 +378,22 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
         source: 'youtube',
         youtube_id: videoId,
         youtube_channel: authorName,
-        youtube_channel_avatar: channelAvatar, // Stockage de l'avatar (fallback propre)
+        youtube_channel_avatar: channelAvatar,
         views: 0,
         likes: 0,
         analysis_status: 'completed',
         is_appropriate: true
       });
 
-      console.log('[YouTubeImport] Succès ! Short ajouté à Wexo.');
-      setSuccess("YouTube Short importé avec succès !");
+      console.log('[YouTubeImport] ✅ Import terminé avec succès pour :', metadata.title);
+      setSuccess(`Super ! "${metadata.title}" a été ajouté à ton feed.`);
       setShowYouTubeModal(false);
       setYoutubeUrl('');
       fetchMyVideos();
-      setTimeout(() => setSuccess(null), 3000);
+      setTimeout(() => setSuccess(null), 5000);
     } catch (err: any) {
-      console.error('[YouTubeImport] Erreur:', err);
-      setError(err.message || "Erreur lors de l'import YouTube.");
+      console.error('[YouTubeImport] ❌ ÉCHEC DE L\'IMPORTATION :', err);
+      setError(err.message || "Impossible de récupérer cette vidéo. Vérifie le lien.");
     } finally {
       setIsYoutubeLoading(false);
     }
