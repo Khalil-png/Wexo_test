@@ -33,12 +33,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const presetColors = [
-    { name: 'Wexo Blue', value: '#0b57ff' },
-    { name: 'Rouge', value: '#ef4444' },
-    { name: 'Vert', value: '#10b981' },
+    { name: 'Bleu', value: '#0b57ff' },
+    { name: 'Rouge', value: '#fc0944' },
+    { name: 'Vert', value: '#03bf54' },
+    { name: 'Vert Foncé', value: '#0da300' },
+    { name: 'Orange', value: '#bc5617' },
     { name: 'Violet', value: '#8b5cf6' },
-    { name: 'Orange', value: '#f59e0b' },
-    { name: 'Rose', value: '#ec4899' },
   ];
 
   const handleUpdateProfile = async () => {
@@ -254,20 +254,21 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
           </div>
 
           <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
-            <h3 className="text-sm font-bold text-white/40 mb-4">Couleur d'accentuation</h3>
-            <div className="grid grid-cols-3 gap-3">
+            <h3 className="text-sm font-bold text-white/40 mb-6">Couleur d'accentuation</h3>
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-4">
               {presetColors.map((color) => (
                 <button 
                   key={color.value}
                   onClick={() => setPrimaryColor(color.value)}
-                  className={`p-4 rounded-2xl flex items-center justify-center gap-2 border-2 transition-all ${primaryColor === color.value ? 'bg-white/10 shadow-lg' : 'hover:bg-white/5 border-transparent'}`}
-                  style={{ borderColor: primaryColor === color.value ? color.value : 'transparent' }}
+                  className={`aspect-square rounded-2xl transition-all relative ${primaryColor === color.value ? 'scale-110 shadow-lg' : 'hover:scale-105 opacity-80 hover:opacity-100'}`}
+                  style={{ backgroundColor: color.value }}
+                  title={color.name}
                 >
-                  <div 
-                    className="w-6 h-6 rounded-full shadow-inner" 
-                    style={{ backgroundColor: color.value }}
-                  />
-                  <span className="text-[10px] font-black uppercase tracking-tighter text-white/80">{color.name}</span>
+                  {primaryColor === color.value && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-2.5 h-2.5 bg-white rounded-full shadow-sm" />
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
