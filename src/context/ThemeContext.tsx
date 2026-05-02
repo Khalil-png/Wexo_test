@@ -20,7 +20,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [primaryColor, setPrimaryColorState] = useState(() => {
     const saved = localStorage.getItem('wexo-primary-color');
-    return saved || '#3b82f6';
+    return saved || '#0040ff';
   });
 
   // Load from DB on init if logged in

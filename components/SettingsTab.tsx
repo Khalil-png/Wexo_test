@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   User, 
   Shield, 
   Palette, 
   Smartphone, 
   Camera, 
-  Check, 
   Moon, 
   Sun, 
   ChevronRight,
   LogOut,
-  Lock
+  Lock,
+  Upload
 } from 'lucide-react';
 import { pb } from '@/services/pocketbaseService';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -24,15 +24,16 @@ interface SettingsTabProps {
 
 const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) => {
   const { mode, setMode, primaryColor, setPrimaryColor } = useTheme();
-  const [activeSection, setActiveSection] = useState<'main' | 'compte' | 'profil' | 'theme' | 'onglets'>( 'main' );
+  const [activeSection, setActiveSection] = useState<'main' | 'compte' | 'profil' | 'theme' | 'onglets'>('main');
   const [displayName, setDisplayName] = useState(profile?.display_name || '');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showAvatarMenu, setShowAvatarMenu] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Couleurs prédéfinies
   const presetColors = [
-    { name: 'Bleu', value: '#3b82f6' },
+    { name: 'Wexo Blue', value: '#0040ff' },
     { name: 'Rouge', value: '#ef4444' },
     { name: 'Vert', value: '#10b981' },
     { name: 'Violet', value: '#8b5cf6' },
@@ -45,7 +46,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
     setLoading(true);
     try {
       await pb.collection('users').update(pb.authStore.model.id, {
-        name: displayName
+        display_name: displayName
       });
       setSuccess('Profil mis à jour !');
       setTimeout(() => setSuccess(null), 3000);
@@ -57,25 +58,47 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !pb.authStore.model?.id) return;
+
+    setLoading(true);
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    try {
+      await pb.collection('users').update(pb.authStore.model.id, formData);
+      setSuccess('Photo de profil mise à jour !');
+      setShowAvatarMenu(false);
+      setTimeout(() => setSuccess(null), 3000);
+      window.location.reload();
+    } catch (err: any) {
+      setError(err.message);
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderHeader = (title: string) => (
-    <div className="flex items-center gap-4 mb-6 sticky top-0 bg-[#0f0f0f]/80 backdrop-blur-md z-10 py-2">
+    <div className="flex items-center gap-4 mb-8 sticky top-0 bg-[#0f0f0f]/80 backdrop-blur-md z-10 py-4">
       <button 
         onClick={() => setActiveSection('main')}
         className="p-2 hover:bg-white/10 rounded-full transition-colors"
       >
         <ChevronRight className="rotate-180" />
       </button>
-      <h2 className="text-xl font-black tracking-tight">{title}</h2>
+      <h2 className="text-2xl font-black tracking-tight">{title}</h2>
     </div>
   );
 
-  const SectionButton = ({ icon: Icon, label, description, onClick, color = "text-white" }: any) => (
+  const SectionButton = ({ icon: Icon, label, description, onClick }: any) => (
     <button 
       onClick={onClick}
       className="w-full flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all group"
     >
       <div className="flex items-center gap-4">
-        <div className={`p-3 rounded-xl bg-white/5 group-hover:bg-white/10 transition-colors ${color}`}>
+        <div className="p-3 rounded-xl bg-white/5 group-hover:bg-white/10 transition-colors text-white">
           <Icon size={24} />
         </div>
         <div className="text-left">
@@ -93,12 +116,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
         {renderHeader('Compte')}
         <div className="space-y-6">
           <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
-            <h3 className="text-sm font-black text-white/40 uppercase tracking-widest mb-4">Sécurité</h3>
+            <h3 className="text-sm font-bold text-white/40 mb-4">Sécurité</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-white/60 mb-2 px-1">Changer le mot de passe</label>
+                <label className="block text-xs font-semibold text-white/30 mb-2 px-1">Changer le mot de passe</label>
                 <button 
-                  onClick={() => alert("Fonctionnalité en cours de déploiement via PocketBase")}
+                  onClick={() => alert("Fonctionnalité en cours de déploiement")}
                   className="w-full p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-left flex items-center justify-between transition-all"
                 >
                   <span className="text-sm font-bold">Réinitialiser via email</span>
@@ -107,17 +130,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
               </div>
             </div>
           </div>
-          
-          <div className="bg-red-500/5 p-6 rounded-3xl border border-red-500/10">
-            <h3 className="text-sm font-black text-red-500/60 uppercase tracking-widest mb-4">Zone de danger</h3>
-            <button 
-               onClick={onLogout}
-               className="w-full flex items-center gap-3 p-4 bg-red-500/20 hover:bg-red-500/30 text-red-500 rounded-2xl font-black transition-all"
-            >
-              <LogOut size={20} />
-              DÉCONNEXION
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -125,38 +137,36 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
 
   if (activeSection === 'profil') {
     return (
-      <div className="p-6 max-w-2xl mx-auto h-full overflow-y-auto">
+      <div className="p-6 max-w-2xl mx-auto h-full overflow-y-auto pb-32">
         {renderHeader('Profil')}
-        <div className="space-y-8">
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative group">
+        <div className="space-y-12">
+          <div className="flex flex-col items-center gap-6">
+            <div className="relative">
               <img 
-                src={profile?.avatar_url || "https://ui-avatars.com/api/?name=User&background=3b82f6&color=fff"} 
-                className="w-32 h-32 rounded-full border-4 border-white/10 shadow-2xl object-cover"
+                src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.username}&background=0040ff&color=fff`} 
+                className="w-40 h-40 rounded-full border-4 border-white/10 shadow-2xl object-cover"
                 alt="Avatar"
               />
               <button 
-               className="absolute bottom-0 right-0 p-3 bg-primary rounded-full shadow-xl hover:scale-110 transition-transform text-white border-2 border-[#0f0f0f]"
-               style={{ backgroundColor: primaryColor }}
+                onClick={() => setShowAvatarMenu(true)}
+                className="absolute -bottom-4 left-1/2 -translate-x-1/2 px-6 py-2.5 rounded-full shadow-2xl flex items-center gap-2 font-bold text-sm border-4 border-[#0f0f0f] hover:scale-105 active:scale-95 transition-all text-white"
+                style={{ backgroundColor: primaryColor }}
               >
-                <Camera size={20} />
+                <Camera size={16} />
+                Modifier
               </button>
-            </div>
-            <div className="text-center">
-              <div className="text-xl font-black tracking-tight">{profile?.username}</div>
-              <div className="text-sm text-white/40">{profile?.email}</div>
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div>
-              <label className="block text-xs font-black text-white/40 uppercase tracking-widest mb-2 px-1">Nom d'affichage</label>
+              <label className="block text-sm font-bold text-white/30 mb-3 px-1">Pseudo d'affichage</label>
               <input 
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl focus:ring-2 focus:ring-primary outline-none transition-all font-bold"
-                placeholder="Ton pseudo..."
+                className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl focus:ring-2 outline-none transition-all font-bold text-lg text-white"
+                placeholder="Ex: Mon Pseudo..."
                 style={{ '--tw-ring-color': primaryColor } as any}
               />
             </div>
@@ -164,7 +174,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
             <button 
               onClick={handleUpdateProfile}
               disabled={loading}
-              className="w-full p-4 rounded-2xl font-black text-white shadow-xl hover:opacity-90 active:scale-95 transition-all text-sm tracking-widest uppercase disabled:opacity-50"
+              className="w-full p-5 rounded-2xl font-black text-white shadow-xl hover:opacity-90 active:scale-95 transition-all text-sm tracking-widest uppercase disabled:opacity-50"
               style={{ backgroundColor: primaryColor }}
             >
               {loading ? 'MODIFICATION...' : 'SAUVEGARDER'}
@@ -173,6 +183,45 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
             {success && <div className="text-center text-green-500 font-bold text-sm animate-bounce">{success}</div>}
           </div>
         </div>
+
+        {showAvatarMenu && (
+          <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+            <div className="bg-[#1a1a1a] w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:zoom-in duration-300">
+              <div className="p-6">
+                <h3 className="text-lg font-black mb-6 text-center text-white">Modifier la photo</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex flex-col items-center gap-3 p-6 bg-white/5 hover:bg-white/10 rounded-3xl transition-all"
+                  >
+                    <Upload size={32} style={{ color: primaryColor }} />
+                    <span className="font-bold text-sm text-white">Importer</span>
+                  </button>
+                  <button 
+                    className="flex flex-col items-center gap-3 p-6 bg-white/5 hover:bg-white/10 rounded-3xl transition-all opacity-50"
+                    disabled
+                  >
+                    <Camera size={32} style={{ color: primaryColor }} />
+                    <span className="font-bold text-sm text-white">Caméra</span>
+                  </button>
+                </div>
+                <button 
+                  onClick={() => setShowAvatarMenu(false)}
+                  className="w-full mt-6 p-4 text-white/40 font-bold hover:text-white transition-colors"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              accept="image/*" 
+              onChange={handleFileChange} 
+            />
+          </div>
+        )}
       </div>
     );
   }
@@ -182,32 +231,30 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
       <div className="p-6 max-w-2xl mx-auto h-full overflow-y-auto">
         {renderHeader('Apparence')}
         <div className="space-y-8">
-          {/* Mode Sombre / Clair */}
           <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
-            <h3 className="text-sm font-black text-white/40 uppercase tracking-widest mb-4">Mode d'affichage</h3>
+            <h3 className="text-sm font-bold text-white/40 mb-4">Mode d'affichage</h3>
             <div className="grid grid-cols-2 gap-4">
               <button 
                 onClick={() => setMode('dark')}
-                className={`p-6 rounded-2xl border-2 flex flex-col items-center gap-3 transition-all ${mode === 'dark' ? 'border-primary bg-primary/10' : 'border-white/5 bg-white/5 hover:border-white/10'}`}
-                style={{ borderColor: mode === 'dark' ? primaryColor : undefined }}
+                className={`p-6 rounded-2xl border-2 flex flex-col items-center gap-3 transition-all ${mode === 'dark' ? 'bg-white/5' : 'border-white/5 bg-white/5 hover:border-white/10'}`}
+                style={{ borderColor: mode === 'dark' ? primaryColor : 'transparent' }}
               >
-                <Moon className={mode === 'dark' ? 'text-primary' : 'text-white/40'} style={{ color: mode === 'dark' ? primaryColor : undefined }} />
+                <Moon className={mode === 'dark' ? '' : 'text-white/40'} style={{ color: mode === 'dark' ? primaryColor : undefined }} />
                 <span className={`text-sm font-black tracking-tight ${mode === 'dark' ? 'text-white' : 'text-white/40'}`}>SOMBRE</span>
               </button>
               <button 
                 onClick={() => setMode('light')}
-                className={`p-6 rounded-2xl border-2 flex flex-col items-center gap-3 transition-all ${mode === 'light' ? 'border-primary bg-primary/10' : 'border-white/5 bg-white/5 hover:border-white/10'}`}
-                style={{ borderColor: mode === 'light' ? primaryColor : undefined }}
+                className={`p-6 rounded-2xl border-2 flex flex-col items-center gap-3 transition-all ${mode === 'light' ? 'bg-white/5' : 'border-white/5 bg-white/5 hover:border-white/10'}`}
+                style={{ borderColor: mode === 'light' ? primaryColor : 'transparent' }}
               >
-                <Sun className={mode === 'light' ? 'text-primary' : 'text-white/40'} style={{ color: mode === 'light' ? primaryColor : undefined }} />
+                <Sun className={mode === 'light' ? '' : 'text-white/40'} style={{ color: mode === 'light' ? primaryColor : undefined }} />
                 <span className={`text-sm font-black tracking-tight ${mode === 'light' ? 'text-white' : 'text-white/40'}`}>CLAIR</span>
               </button>
             </div>
           </div>
 
-          {/* Couleur Principale */}
           <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
-            <h3 className="text-sm font-black text-white/40 uppercase tracking-widest mb-4">Couleur d'accentuation</h3>
+            <h3 className="text-sm font-bold text-white/40 mb-4">Couleur d'accentuation</h3>
             <div className="grid grid-cols-3 gap-3">
               {presetColors.map((color) => (
                 <button 
@@ -230,65 +277,26 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
     );
   }
 
-  if (activeSection === 'onglets') {
-    return (
-      <div className="p-6 max-w-2xl mx-auto h-full overflow-y-auto">
-        {renderHeader('Onglets Navigation')}
-        <div className="space-y-4">
-          <div className="bg-primary/10 border border-primary/20 p-4 rounded-2xl flex items-start gap-4" style={{ borderColor: `${primaryColor}40`, backgroundColor: `${primaryColor}15` }}>
-            <Smartphone className="text-primary mt-1" style={{ color: primaryColor }} />
-            <div>
-              <div className="font-bold text-sm text-white">Personnalisation Mobile</div>
-              <p className="text-xs text-white/60 mt-1">Choisissez les onglets qui apparaissent dans votre barre de navigation rapide sur smartphone.</p>
-            </div>
-          </div>
-          
-          <div className="space-y-2 opacity-50">
-             {['Accueil', 'Shorts', 'Messages', 'Profil'].map((tab) => (
-               <div key={tab} className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                 <span className="font-bold text-sm">{tab}</span>
-                 <div className="w-12 h-6 bg-primary/40 rounded-full relative" style={{ backgroundColor: primaryColor }}>
-                    <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full" />
-                 </div>
-               </div>
-             ))}
-             <p className="text-[10px] text-center text-white/30 font-bold uppercase tracking-widest mt-4 italic">Bientôt disponible</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-full overflow-y-auto bg-[#0f0f0f]">
-      {/* Profil Header Card */}
-      <div className="p-6">
-        <div className="bg-gradient-to-br from-white/10 to-white/5 p-6 rounded-[32px] border border-white/10 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 blur-3xl -mr-16 -mt-16 rounded-full" style={{ backgroundColor: `${primaryColor}20` }} />
-          
-          <div className="flex items-center gap-6 relative z-10">
-            <div className="relative">
-              <img 
-                src={profile?.avatar_url || "https://ui-avatars.com/api/?name=User&background=3b82f6&color=fff"} 
-                className="w-20 h-20 rounded-3xl shadow-xl border-2 border-white/10 object-cover"
-                alt="Avatar"
-              />
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 border-4 border-[#1a1a1a] rounded-full shadow-lg" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black tracking-tight text-white">{profile?.display_name || profile?.username}</h2>
-              <p className="text-sm text-white/40 font-medium">{profile?.email}</p>
-              <div className="mt-2 inline-flex items-center gap-2 px-2 py-0.5 bg-white/10 rounded-full border border-white/10">
-                <Shield size={12} className="text-primary" style={{ color: primaryColor }} />
-                <span className="text-[10px] font-bold uppercase text-white/60 tracking-wider">Compte Vérifié</span>
-              </div>
-            </div>
+      <div className="p-8 pb-4">
+        <div className="flex items-center gap-6">
+          <div className="relative">
+            <img 
+              src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.username}&background=0040ff&color=fff`} 
+              className="w-24 h-24 rounded-full shadow-2xl border-4 border-white/5 object-cover"
+              alt="Avatar"
+            />
+          </div>
+          <div>
+            <h2 className="text-3xl font-black tracking-tight text-white">{profile?.display_name || profile?.username}</h2>
+            <p className="text-base text-white/40 font-medium">{profile?.email}</p>
           </div>
         </div>
       </div>
 
-      <div className="px-6 pb-24 space-y-2">
-        <h3 className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em] mb-4 px-2">Configuration Générale</h3>
+      <div className="px-6 pb-24 space-y-1">
+        <div className="h-px bg-white/5 mx-2 my-6" />
         
         <SectionButton 
           icon={User} 
@@ -302,8 +310,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
           label="Thème & Apparence" 
           description="Mode sombre, couleurs et interface"
           onClick={() => setActiveSection('theme')}
-          color="text-primary"
-          style={{ color: primaryColor }}
         />
         
         <SectionButton 
@@ -322,19 +328,19 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
           />
         )}
 
-        <div className="pt-8 mb-4">
-          <SectionButton 
-            icon={LogOut} 
-            label="Déconnexion" 
-            description="Quitter votre session en toute sécurité"
+        <div className="pt-12">
+          <button 
             onClick={onLogout}
-            color="text-red-500"
-          />
-        </div>
-
-        <div className="text-center pt-8 opacity-20">
-          <div className="text-[10px] font-black tracking-[0.3em] uppercase">Wexo v0.1.0</div>
-          <div className="text-[8px] mt-1">Made with ❤️ for creativity</div>
+            className="w-full flex items-center justify-between p-5 bg-white/5 hover:bg-white/10 text-white rounded-2xl transition-all group"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-white/5">
+                <LogOut size={24} className="text-white" />
+              </div>
+              <span className="font-bold">Déconnexion</span>
+            </div>
+            <ChevronRight size={20} className="text-white/20" />
+          </button>
         </div>
       </div>
     </div>
