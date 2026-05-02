@@ -13,7 +13,9 @@
         "created_at": { "type": "string", "format": "date-time", "description": "When the profile was created" },
         "is_verified": { "type": "boolean", "description": "Whether the user has the verified badge" },
         "role": { "type": "string", "enum": ["admin", "user"], "description": "The user's role" },
-        "auth_method": { "type": "string", "description": "Method used for authentication (google, password, anonymous)" }
+        "auth_method": { "type": "string", "description": "Method used for authentication (google, password, anonymous)" },
+        "theme_mode": { "type": "string", "description": "User's preferred theme mode (dark/light) - Plain Text" },
+        "primary_color": { "type": "string", "description": "User's preferred primary accent color (hex) - Plain Text" }
       },
       "required": ["id", "username"]
     },

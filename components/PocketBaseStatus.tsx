@@ -36,11 +36,11 @@ const PocketBaseStatus: React.FC = () => {
     return (
         <div className="fixed bottom-20 left-4 right-4 md:left-auto md:right-8 md:w-96 z-[100] animate-in slide-in-from-bottom-4 duration-500">
             <div className={`p-4 rounded-2xl border backdrop-blur-xl shadow-2xl ${
-                status === 'testing' ? 'bg-blue-500/10 border-blue-500/20' : 'bg-red-500/10 border-red-500/20'
+                status === 'testing' ? 'bg-primary/10 border-primary/20' : 'bg-red-500/10 border-red-500/20'
             }`}>
                 <div className="flex items-start gap-4">
                     <div className={`p-3 rounded-full ${
-                        status === 'testing' ? 'bg-blue-500/20 text-blue-400' : 'bg-red-500/20 text-red-400'
+                        status === 'testing' ? 'bg-primary/20 text-primary' : 'bg-red-500/20 text-red-400'
                     }`}>
                         {status === 'testing' ? <RefreshCw className="animate-spin" size={24} /> : <TriangleAlert size={24} />}
                     </div>

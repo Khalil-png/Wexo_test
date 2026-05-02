@@ -19,10 +19,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
       onClick={() => onTabChange(item.id)}
       className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all duration-200 group mb-1 ${
         activeTab === item.id 
-          ? 'text-white shadow-sm' 
+          ? 'bg-[#272727] text-white shadow-sm' 
           : 'text-slate-400 hover:bg-white/10 hover:text-white'
       }`}
-      style={activeTab === item.id ? { backgroundColor: 'var(--primary-color)' } : {}}
     >
       <div className="flex items-center gap-4">
         {getIcon(item.icon, activeTab === item.id)}

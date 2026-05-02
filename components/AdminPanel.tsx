@@ -481,7 +481,7 @@ const AdminPanel: React.FC<{ user: any; profile: any }> = ({ user, profile }) =>
                               ) : (
                                 <button 
                                   onClick={() => { setVerifyingUser(u); setIsConfirmingVerif(true); }}
-                                  className="p-2 bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white rounded-xl transition-all"
+                                  className="p-2 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-xl transition-all"
                                   title="Vérifier l'utilisateur"
                                 >
                                   <Check size={16} />
@@ -551,7 +551,7 @@ const AdminPanel: React.FC<{ user: any; profile: any }> = ({ user, profile }) =>
       {isConfirmingVerif && verifyingUser && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-[#1a1a1a] border border-white/10 rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in duration-300">
-            <div className={`w-16 h-16 ${verifyingUser.is_verified ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'} rounded-2xl flex items-center justify-center mb-6 mx-auto`}>
+            <div className={`w-16 h-16 ${verifyingUser.is_verified ? 'bg-red-500/20 text-red-500' : 'bg-primary/20 text-primary'} rounded-2xl flex items-center justify-center mb-6 mx-auto`}>
               {verifyingUser.is_verified ? <AlertCircle size={32} /> : <Shield size={32} />}
             </div>
             <h3 className="text-xl font-black text-white text-center mb-2">
@@ -567,7 +567,7 @@ const AdminPanel: React.FC<{ user: any; profile: any }> = ({ user, profile }) =>
             <div className="flex flex-col gap-3">
               <button 
                 onClick={handleToggleVerification}
-                className={`w-full py-4 ${verifyingUser.is_verified ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20' : 'bg-blue-500 hover:bg-blue-600 shadow-blue-500/20'} text-white text-xs font-black rounded-2xl transition-all active:scale-95 shadow-xl`}
+                className={`w-full py-4 ${verifyingUser.is_verified ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20' : 'bg-primary hover:opacity-90 shadow-primary/20'} text-white text-xs font-black rounded-2xl transition-all active:scale-95 shadow-xl`}
               >
                 {verifyingUser.is_verified ? 'Enlever le tag' : 'Confirmer la vérification'}
               </button>
@@ -585,7 +585,7 @@ const AdminPanel: React.FC<{ user: any; profile: any }> = ({ user, profile }) =>
       {isConfirmingRole && verifyingUser && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-[#1a1a1a] border border-white/10 rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in duration-300">
-            <div className={`w-16 h-16 ${verifyingUser.role === 'admin' ? 'bg-red-500/20 text-red-500' : 'bg-blue-500/20 text-blue-500'} rounded-2xl flex items-center justify-center mb-6 mx-auto`}>
+            <div className={`w-16 h-16 ${verifyingUser.role === 'admin' ? 'bg-red-500/20 text-red-500' : 'bg-primary/20 text-primary'} rounded-2xl flex items-center justify-center mb-6 mx-auto`}>
               <Shield size={32} />
             </div>
             <h3 className="text-xl font-black text-white text-center mb-2">
@@ -602,7 +602,7 @@ const AdminPanel: React.FC<{ user: any; profile: any }> = ({ user, profile }) =>
             <div className="flex flex-col gap-3">
               <button 
                 onClick={handleToggleRole}
-                className={`w-full py-4 ${verifyingUser.role === 'admin' ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20' : 'bg-blue-500 hover:bg-blue-600 shadow-blue-500/20'} text-white text-xs font-black rounded-2xl transition-all active:scale-95 shadow-xl`}
+                className={`w-full py-4 ${verifyingUser.role === 'admin' ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20' : 'bg-primary hover:opacity-90 shadow-primary/20'} text-white text-xs font-black rounded-2xl transition-all active:scale-95 shadow-xl`}
               >
                 {verifyingUser.role === 'admin' ? 'Enlever les droits' : 'Confirmer'}
               </button>

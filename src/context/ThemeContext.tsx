@@ -1,29 +1,81 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { pb } from '@/services/pocketbaseService';
 
 type ThemeMode = 'dark' | 'light';
 
 interface ThemeContextType {
   mode: ThemeMode;
   primaryColor: string;
-  setMode: (mode: ThemeMode) => void;
-  setPrimaryColor: (color: string) => void;
+  setMode: (mode: ThemeMode, sync?: boolean) => void;
+  setPrimaryColor: (color: string, sync?: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [mode, setMode] = useState<ThemeMode>(() => {
+  const [mode, setModeState] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem('wexo-theme-mode');
     return (saved as ThemeMode) || 'dark';
   });
 
-  const [primaryColor, setPrimaryColor] = useState(() => {
+  const [primaryColor, setPrimaryColorState] = useState(() => {
     const saved = localStorage.getItem('wexo-primary-color');
-    return saved || '#3b82f6'; // Bleu par défaut (Tailwind blue-500)
+    return saved || '#3b82f6';
   });
 
+  // Load from DB on init if logged in
   useEffect(() => {
-    localStorage.setItem('wexo-theme-mode', mode);
+    const syncFromDB = async () => {
+      if (pb.authStore.model?.id) {
+        try {
+          const user = await pb.collection('users').getOne(pb.authStore.model.id);
+          if (user.theme_mode) {
+             setModeState(user.theme_mode);
+             localStorage.setItem('wexo-theme-mode', user.theme_mode);
+          }
+          if (user.primary_color) {
+             setPrimaryColorState(user.primary_color);
+             localStorage.setItem('wexo-primary-color', user.primary_color);
+          }
+        } catch (err) {
+          console.error('[ThemeSync] Init error:', err);
+        }
+      }
+    };
+    syncFromDB();
+  }, []);
+
+  const setMode = async (newMode: ThemeMode, sync: boolean = true) => {
+    setModeState(newMode);
+    localStorage.setItem('wexo-theme-mode', newMode);
+    
+    if (sync && pb.authStore.model?.id) {
+      try {
+        await pb.collection('users').update(pb.authStore.model.id, {
+          theme_mode: newMode
+        });
+      } catch (err) {
+        console.error('[ThemeSync] Update mode error:', err);
+      }
+    }
+  };
+
+  const setPrimaryColor = async (color: string, sync: boolean = true) => {
+    setPrimaryColorState(color);
+    localStorage.setItem('wexo-primary-color', color);
+    
+    if (sync && pb.authStore.model?.id) {
+      try {
+        await pb.collection('users').update(pb.authStore.model.id, {
+          primary_color: color
+        });
+      } catch (err) {
+        console.error('[ThemeSync] Update color error:', err);
+      }
+    }
+  };
+
+  useEffect(() => {
     if (mode === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -32,11 +84,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [mode]);
 
   useEffect(() => {
-    localStorage.setItem('wexo-primary-color', primaryColor);
-    // On met à jour une variable CSS pour l'utiliser partout
     document.documentElement.style.setProperty('--primary-color', primaryColor);
     
-    // Calcul d'une version plus sombre pour les bulles etc
+    // Version foncée
     const r = parseInt(primaryColor.slice(1, 3), 16);
     const g = parseInt(primaryColor.slice(3, 5), 16);
     const b = parseInt(primaryColor.slice(5, 7), 16);

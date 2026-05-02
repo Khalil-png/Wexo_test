@@ -23,9 +23,9 @@ const GamesTab: React.FC = () => {
       id: 'morpion' as const,
       title: 'Morpion',
       description: 'Alignez trois symboles identiques pour gagner contre un ami ou l\'IA.',
-      icon: <Gamepad2 className="text-blue-400" size={32} />,
-      color: 'bg-blue-500/10',
-      borderColor: 'border-blue-500/20',
+      icon: <Gamepad2 className="text-primary" size={32} style={{ color: 'var(--primary-color)' }} />,
+      color: 'bg-primary/10',
+      borderColor: 'border-primary/20',
       tag: 'Stratégie'
     }
   ];
