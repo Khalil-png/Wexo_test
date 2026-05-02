@@ -1278,7 +1278,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         <div className="p-6 pb-2 space-y-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <h2 className="text-3xl font-bold text-white tracking-tight">Messages</h2>
-            <div className="flex items-center gap-2">
+            <div className="hidden lg:flex items-center gap-2">
               <button 
                 onClick={() => setIsSearchingUsers(true)}
                 className="p-2.5 bg-white/5 text-white hover:bg-white/10 rounded-lg transition-all border border-white/10 group"
@@ -1308,6 +1308,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         </div>
 
         <div className="flex-1 overflow-y-auto no-scrollbar relative pt-4">
+          {/* Nouveau Message FAB pour Mobile */}
+          {isMobileDevice() && (
+            <button 
+              onClick={() => setIsSearchingUsers(true)}
+              className="fixed bottom-24 right-6 w-14 h-14 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center z-50 active:scale-95 transition-all animate-in zoom-in duration-300"
+            >
+              <Plus size={28} />
+            </button>
+          )}
+
           {/* Gemini List Item */}
           <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-4 px-6 py-4 cursor-pointer transition-all ${selectedId === 'gemini' ? 'bg-white/5' : 'hover:bg-white/5'}`}>
             <div className="w-10 h-10 rounded-full overflow-hidden relative flex-shrink-0 flex items-center justify-center">
@@ -1638,7 +1648,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     onTouchStart={() => handleMessageTouchStart(msg.id)}
                     onTouchEnd={() => handleMessageTouchEnd(msg.id)}
                     onClick={(e) => handleMessageClick(msg.id, e)}
-                    className={`flex group relative w-full px-4 sm:px-8 transition-all py-1.5 ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0' : (idx === 0 ? 'mt-0' : 'mt-6')} ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
+                    className={`flex group relative w-full px-4 sm:px-8 transition-all ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-[2px] py-[2px]' : (idx === 0 ? 'mt-0 py-1.5' : 'mt-4 py-1.5')} ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
                   >
                     {/* Sélection visuelle par background uniquement, comme demandé */}
                     <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'} ${isSelected ? 'scale-[0.98]' : ''} transition-transform duration-200`}>
