@@ -160,14 +160,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
 
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-bold text-white/30 mb-3 px-1">Pseudo d'affichage</label>
+              <label className="block text-sm font-medium text-white/40 mb-3 px-1">Pseudo d'affichage</label>
               <input 
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl focus:ring-2 outline-none transition-all font-bold text-lg text-white"
+                className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl outline-none transition-all font-bold text-lg text-white"
                 placeholder="Ex: Mon Pseudo..."
-                style={{ '--tw-ring-color': primaryColor } as any}
+                style={{ focusRing: primaryColor } as any}
               />
             </div>
             
@@ -284,13 +284,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
           <div className="relative">
             <img 
               src={profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.username}&background=0040ff&color=fff`} 
-              className="w-24 h-24 rounded-full shadow-2xl border-4 border-white/5 object-cover"
+              className="w-24 h-24 rounded-full shadow-2xl object-cover ring-4 ring-white/5"
               alt="Avatar"
             />
           </div>
           <div>
-            <h2 className="text-3xl font-black tracking-tight text-white">{profile?.display_name || profile?.username}</h2>
-            <p className="text-base text-white/40 font-medium">{profile?.email}</p>
+            <h2 className="text-3xl font-black tracking-tight text-white mb-1">{profile?.display_name || profile?.username}</h2>
+            <p className="text-base text-white/30 font-medium">{profile?.email}</p>
           </div>
         </div>
       </div>

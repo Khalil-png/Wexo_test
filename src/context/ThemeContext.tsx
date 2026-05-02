@@ -20,6 +20,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [primaryColor, setPrimaryColorState] = useState(() => {
     const saved = localStorage.getItem('wexo-primary-color');
+    // Si l'utilisateur a l'ancien bleu par défaut, on le force au nouveau Wexo Blue
+    if (saved === '#3b82f6') return '#0040ff';
     return saved || '#0040ff';
   });
 
