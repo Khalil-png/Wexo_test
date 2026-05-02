@@ -340,10 +340,10 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
     console.log('[YouTubeImport] Tentative d\'import pour:', youtubeUrl);
 
     try {
-      // 1. Extraire l'ID vidéo YouTube
-      const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+      // 1. Extraire l'ID vidéo YouTube (Supporte shorts, watch, live, embed, etc.)
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|shorts\/|live\/)([^#&?]*).*/;
       const match = youtubeUrl.match(regExp);
-      const videoId = (match && match[7].length === 11) ? match[7] : null;
+      const videoId = (match && match[2].length === 11) ? match[2] : null;
 
       if (!videoId) {
         throw new Error("L'URL YouTube ne semble pas valide.");
