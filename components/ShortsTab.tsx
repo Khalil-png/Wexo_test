@@ -182,6 +182,7 @@ interface ShortItemProps {
 
 const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(short.likes || 0);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -193,6 +194,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
   const [showSharePopup, setShowSharePopup] = useState(false);
   const sharePopupRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
+  const [ytReady, setYtReady] = useState(false);
 
   useClickOutside(sharePopupRef, () => setShowSharePopup(false));
   const [copiedId, setCopiedId] = useState(false);
@@ -249,12 +251,32 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
     if (isActive && videoRef.current && !isYoutube) {
       videoRef.current.play().catch(() => {});
       setIsPaused(false);
+    } else if (isActive && isYoutube) {
+      setIsPaused(false);
+      // Wait a bit for the player to initialize
+      const timer = setTimeout(() => setYtReady(true), 1200);
+      return () => clearTimeout(timer);
     } else if (videoRef.current && !isYoutube) {
       videoRef.current.pause();
       videoRef.current.currentTime = 0;
       setIsPaused(true);
+    } else if (isYoutube) {
+      setIsPaused(true);
+      setYtReady(false);
     }
   }, [isActive, isYoutube]);
+
+  // Handle Play/Pause for YouTube iframe via postMessage
+  useEffect(() => {
+    if (isYoutube && isActive && iframeRef.current) {
+      const func = isPaused ? 'pauseVideo' : 'playVideo';
+      iframeRef.current.contentWindow?.postMessage(JSON.stringify({
+        event: 'command',
+        func: func,
+        args: []
+      }), '*');
+    }
+  }, [isPaused, isYoutube, isActive]);
 
   useEffect(() => {
     if (isActive) {
@@ -572,13 +594,35 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
           {isYoutube ? (
             <div className="absolute inset-0 w-full h-full bg-black flex items-center justify-center">
                <iframe 
+                ref={iframeRef}
                 src={`https://www.youtube.com/embed/${short.youtube_id}?autoplay=${isActive ? 1 : 0}&mute=${isMuted ? 1 : 0}&loop=1&playlist=${short.youtube_id}&controls=0&modestbranding=1&rel=0&iv_load_policy=3&showinfo=0&disablekb=1&enablejsapi=1&origin=${window.location.origin}`}
-                className="w-full h-full pointer-events-none"
+                className={`w-full h-full pointer-events-none transition-opacity duration-700 ${ytReady ? 'opacity-100' : 'opacity-0'}`}
                 style={{ border: 'none' }}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               />
-              {/* Overlay pour capturer les clics et empêcher l'interaction avec le lecteur YT */}
-              <div className="absolute inset-0 z-10 bg-transparent cursor-pointer" onClick={togglePlay} />
+              
+              {/* Flicker protection / Placeholder */}
+              {!ytReady && (
+                <div className="absolute inset-0 z-0">
+                  <img 
+                    src={short.thumbnail_url} 
+                    className="w-full h-full object-cover blur-sm opacity-50"
+                    alt=""
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 text-red-600 animate-spin" />
+                  </div>
+                </div>
+              )}
+
+              {/* Overlay pour capturer les clics et afficher l'état Pause */}
+              <div className="absolute inset-0 z-10 bg-transparent cursor-pointer flex items-center justify-center" onClick={togglePlay}>
+                {isPaused && (
+                  <div className="w-20 h-20 bg-black/40 rounded-full flex items-center justify-center animate-in zoom-in-75 duration-200">
+                    <Play className="text-white fill-white ml-1" size={40} />
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <video 
@@ -657,16 +701,21 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
               <div className="flex items-center gap-3">
                 <img 
                   src={isYoutube ? (short.youtube_channel_avatar || "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/512px-YouTube_full-color_icon_%282017%29.svg.png") : (short.creator_avatar || DEFAULT_AVATAR)} 
-                  className={`w-10 h-10 rounded-full border-2 ${isYoutube ? 'border-red-500' : 'border-white/20'} shadow-lg`}
+                  className={`w-10 h-10 rounded-full border-2 ${isYoutube ? 'border-red-600' : 'border-white/20'} shadow-lg`}
                   alt=""
                   referrerPolicy="no-referrer"
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     {isYoutube ? (
-                      <span className="text-sm font-black text-white tracking-tight uppercase drop-shadow-md">
-                        {short.youtube_channel || 'YouTube Creator'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-black text-white tracking-tight drop-shadow-md">
+                          {short.youtube_channel || 'YouTube Creator'}
+                        </span>
+                        <div className="bg-red-600 text-[10px] font-black px-2 py-0.5 rounded text-white shadow-lg border border-red-500/50">
+                          YOUTUBE
+                        </div>
+                      </div>
                     ) : (
                       <Username 
                         username={short.creator_name || 'Utilisateur'} 
@@ -678,11 +727,6 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
                         badgeSize={14} 
                       />
                     )}
-                    {isYoutube && (
-                      <div className="bg-red-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-sm uppercase tracking-tighter shadow-sm">
-                        YouTube
-                      </div>
-                    )}
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     {isYoutube ? (
@@ -690,9 +734,9 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
                         href={`https://www.youtube.com/watch?v=${short.youtube_id}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center gap-1 text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors drop-shadow-md"
+                        className="flex items-center gap-1.5 text-[11px] font-bold text-white/90 hover:text-red-400 transition-colors drop-shadow-md bg-white/5 px-2 py-0.5 rounded-full border border-white/5"
                       >
-                        <ExternalLink size={10} /> www.youtube.com
+                        <ExternalLink size={11} className="text-red-500" /> www.youtube.com
                       </a>
                     ) : (
                       <span className="text-[10px] font-bold text-white/60 drop-shadow-md">{subscriberCount} abonné{subscriberCount > 1 ? 's' : ''}</span>
