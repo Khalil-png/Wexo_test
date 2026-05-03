@@ -35,6 +35,9 @@ interface Post {
   avatar?: string;
 }
 
+import { db, serverTimestamp, handleFirestoreError, OperationType } from '@/services/firebase';
+import { collection, addDoc } from 'firebase/firestore';
+
 interface PostsTabProps {
   user: any;
   profile: any;
@@ -188,21 +191,23 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
           'likes_count+': 1
         });
 
-        // NOTIFICATION for author
+        // NOTIFICATION for author (via Firebase)
         const post = posts.find(p => p.id === postId);
         if (post && post.user_id !== user.uid) {
           try {
-            await pb.collection('notifications').create({
+            await addDoc(collection(db, 'notifications'), {
               user_id: post.user_id,
               sender_id: user.uid,
               sender_avatar: profile?.avatar_url || '',
               type: 'like',
               title: 'Nouveau like',
               content: `${profile?.display_name || user.displayName || 'Un utilisateur'} a aimé votre post.`,
-              status: 'pending',
-              read: false
+              status: 'unread',
+              created_at: serverTimestamp()
             });
-          } catch (nErr) {}
+          } catch (nErr) {
+            handleFirestoreError(nErr, OperationType.WRITE, 'notifications');
+          }
         }
       }
 

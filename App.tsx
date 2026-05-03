@@ -29,6 +29,9 @@ import { HelpCircle, TriangleAlert, X, Construction, CheckCircle } from 'lucide-
 import { generateSnowflake } from '@/utils/snowflake';
 import { AnimatePresence } from 'framer-motion';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
+import { db, auth } from '@/services/firebase';
+import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { signInAnonymously } from 'firebase/auth';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { App as CapApp } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
@@ -336,6 +339,7 @@ const AppContent: React.FC = () => {
         setProfile({
           id: model.id,
           username: model.username,
+          name: model.name,
           display_name: model.name || model.username,
           avatar_url: model.avatar_url || DEFAULT_AVATAR,
           role: model.role || 'user',
@@ -352,6 +356,72 @@ const AppContent: React.FC = () => {
       unsub();
     };
   }, []);
+
+  // Firebase Real-time Notifications Listener
+  useEffect(() => {
+    if (!pbUser?.id) return;
+
+    // S'assurer qu'on est connecté à Firebase (anonymement pour le temps réel sans forcer un login Google)
+    const initFirebase = async () => {
+      try {
+        if (!auth.currentUser) {
+          await signInAnonymously(auth);
+          console.log('Firebase: Connecté anonymement');
+        }
+      } catch (err) {
+        console.error('Firebase Auth Error:', err);
+      }
+    };
+    initFirebase();
+
+    // Écouter les notifications Firestore en temps réel
+    // On utilise l'ID PocketBase comme filtrage
+    const q = query(
+      collection(db, 'notifications'), 
+      where('user_id', '==', pbUser.id),
+      orderBy('created_at', 'desc'),
+      limit(20)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const notification = change.doc.data();
+          
+          // Ne pas afficher de notification locale si elle est déjà lue ou si elle est ancienne
+          // (Firestore déclenche 'added' pour tout l'historique au début)
+          // On compare avec l'heure actuelle
+          const createdAtDate = notification.created_at?.toDate?.() || new Date();
+          const createdAt = createdAtDate.getTime();
+          const now = new Date().getTime();
+          const isNew = (now - createdAt) < 30000; // Moins de 30 secondes pour être sûr de capturer les nouvelles
+
+          if (isNew && notification.status === 'unread') {
+            log('Nouvelle notification reçue via Firebase:', notification.title);
+            
+            if (isMobileDevice()) {
+              LocalNotifications.schedule({
+                notifications: [{
+                  id: Math.floor(Math.random() * 1000000),
+                  title: notification.title || 'Wexo',
+                  body: notification.content || '',
+                  largeBody: notification.content,
+                  summaryText: notification.title,
+                  schedule: { at: new Date(Date.now() + 100) },
+                  sound: 'default',
+                  extra: notification
+                }]
+              });
+            }
+          }
+        }
+      });
+    }, (error) => {
+      console.error('Firestore listener error:', error);
+    });
+
+    return () => unsubscribe();
+  }, [pbUser?.id]);
 
   useEffect(() => {
     if (!pbUser?.id) return;

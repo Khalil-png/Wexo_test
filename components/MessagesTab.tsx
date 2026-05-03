@@ -15,7 +15,8 @@ import { DEFAULT_AVATAR } from '../constants';
 import { Message } from '@/types';
 import { getSmartResponse, generateImage, generateVideo, checkApiKey, openKeySelector, analyzeVideo } from '@/services/geminiService';
 import { pb, uploadToPocketBase } from '@/services/pocketbaseService';
-// Firebase désactivé
+import { db, serverTimestamp, handleFirestoreError, OperationType } from '@/services/firebase';
+import { collection, addDoc } from 'firebase/firestore';
 import { isMobileDevice } from '@/src/utils/device';
 import { useClickOutside } from '@/utils/hooks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -904,17 +905,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
       setFriendships(prev => [...prev, newFriendship]);
 
-      // CRÉATION DE LA NOTIFICATION POUR LE DESTINATAIRE
-      await pb.collection('notifications').create({
-        user_id: targetId,
-        sender_id: user.uid,
-        sender_avatar: profile?.avatar_url || '',
-        type: 'friend_request',
-        title: 'Demande d\'ami',
-        content: `${profile?.display_name || user.displayName || 'Un utilisateur'} souhaite vous ajouter en ami.`,
-        status: 'pending',
-        read: false
-      });
+      // CRÉATION DE LA NOTIFICATION POUR LE DESTINATAIRE (via Firebase)
+      try {
+        await addDoc(collection(db, 'notifications'), {
+          user_id: targetId,
+          sender_id: user.uid,
+          sender_avatar: profile?.avatar_url || '',
+          type: 'friend_request',
+          title: 'Demande d\'ami',
+          content: `${profile?.display_name || user.displayName || 'Un utilisateur'} souhaite vous ajouter en ami.`,
+          status: 'unread',
+          created_at: serverTimestamp()
+        });
+      } catch (notifErr) {
+        handleFirestoreError(notifErr, OperationType.WRITE, 'notifications');
+      }
     } catch (err) {
       console.error("Erreur demande ami:", err);
     }
@@ -964,23 +969,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       };
       await pb.collection('messages').create(pbData);
 
-      // CRÉATION DE LA NOTIFICATION POUR LE DESTINATAIRE
+      // CRÉATION DE LA NOTIFICATION POUR LE DESTINATAIRE (via Firebase)
       if (selectedId && selectedId !== 'gemini') {
         try {
-          await pb.collection('notifications').create({
+          await addDoc(collection(db, 'notifications'), {
             user_id: selectedId,
             sender_id: user.uid,
             sender_avatar: profile?.avatar_url || '',
             type: 'message',
             title: profile?.display_name || user.displayName || 'Wexo',
             content: text || (finalFileData ? 'Pièce jointe reçue' : 'Nouveau message'),
-            status: 'pending',
-            read: false
+            status: 'unread',
+            created_at: serverTimestamp()
           });
         } catch (notifErr: any) {
-          if (notifErr.status !== 404) {
-            console.warn("Échec création notification:", notifErr);
-          }
+          handleFirestoreError(notifErr, OperationType.WRITE, 'notifications');
         }
       }
 

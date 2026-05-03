@@ -25,7 +25,7 @@ interface SettingsTabProps {
 const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) => {
   const { mode, setMode, primaryColor, setPrimaryColor } = useTheme();
   const [activeSection, setActiveSection] = useState<'main' | 'compte' | 'profil' | 'theme' | 'onglets'>('main');
-  const [displayName, setDisplayName] = useState(profile?.display_name || '');
+  const [displayName, setDisplayName] = useState(profile?.name || profile?.display_name || '');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,9 +46,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
     if (!pb.authStore.model?.id) return;
     setLoading(true);
     try {
-      await pb.collection('users').update(pb.authStore.model.id, {
-        display_name: displayName
+      const updatedRecord = await pb.collection('users').update(pb.authStore.model.id, {
+        name: displayName
       });
+      
+      // Update local auth store to trigger onChange in App.tsx
+      pb.authStore.save(pb.authStore.token, updatedRecord);
+      
       setSuccess('Profil mis à jour !');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
@@ -64,15 +68,31 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
     if (!file || !pb.authStore.model?.id) return;
 
     setLoading(true);
-    const formData = new FormData();
-    formData.append('avatar', file);
-
     try {
-      await pb.collection('users').update(pb.authStore.model.id, formData);
+      // 1. Créer une entrée dans la collection 'media'
+      const mediaFormData = new FormData();
+      mediaFormData.append('file', file);
+      mediaFormData.append('name', file.name || `avatar_${Date.now()}`);
+      
+      const mediaRecord = await pb.collection('media').create(mediaFormData);
+      
+      // 2. Récupérer l'URL permanente du média
+      const newAvatarUrl = pb.files.getUrl(mediaRecord, mediaRecord.file);
+      
+      // 3. Mettre à jour 'avatar_url' (et aussi le champ 'avatar' natif pour la cohérence)
+      // On crée un FormData pour le champ 'avatar' natif
+      const userFormData = new FormData();
+      userFormData.append('avatar', file);
+      userFormData.append('avatar_url', newAvatarUrl);
+
+      const updatedRecord = await pb.collection('users').update(pb.authStore.model.id, userFormData);
+
+      // Update local auth store to trigger onChange in App.tsx
+      pb.authStore.save(pb.authStore.token, updatedRecord);
+
       setSuccess('Photo de profil mise à jour !');
       setShowAvatarMenu(false);
       setTimeout(() => setSuccess(null), 3000);
-      window.location.reload();
     } catch (err: any) {
       setError(err.message);
       setTimeout(() => setError(null), 3000);
