@@ -113,19 +113,29 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
       else onDecline();
     }
   };
-
   return (
-    <div className="fixed inset-0 z-[1000] bg-black flex flex-col items-center justify-between py-20 px-6 text-white overflow-hidden select-none">
-      {/* Background Glow */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#1a1a1a] to-black opacity-50"></div>
+    <div className="fixed inset-0 z-[2000] bg-[#0b0e11] flex flex-col items-center justify-between py-16 px-6 text-white overflow-hidden select-none">
+      {/* WhatsApp-style dark patterned background */}
+      <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]"></div>
       
+      {/* Top Banner (Optional, for "Chiffré de bout en bout" look) */}
+      <div className="relative z-10 flex items-center gap-2 text-white/40 text-[10px] tracking-wider uppercase font-bold">
+        <Lock size={10} />
+        <span>Chiffré de bout en bout</span>
+      </div>
+
       {/* Caller Info */}
-      <div className="relative z-10 flex flex-col items-center text-center mt-12 animate-in zoom-in duration-700">
-        <div className="mb-8 relative">
+      <div className="relative z-10 flex flex-col items-center text-center mt-4 animate-in fade-in slide-in-from-top-4 duration-1000">
+        <h1 className="text-3xl font-normal mb-1 tracking-tight text-white">{caller.username}</h1>
+        <p className="text-[#00a884] text-sm font-medium tracking-wide mb-10">Appel vidéo Wexo...</p>
+        
+        <div className="relative">
           <motion.div 
-            animate={{ scale: [1, 1.05, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="w-48 h-48 rounded-full overflow-hidden border-4 border-white/20 bg-slate-900 shadow-[0_0_80px_rgba(255,255,255,0.1)]"
+            animate={{ 
+              scale: [1, 1.02, 1],
+            }}
+            transition={{ duration: 3, repeat: Infinity }}
+            className="w-40 h-40 rounded-full overflow-hidden bg-slate-800"
           >
             <img 
               src={caller.avatar_url || DEFAULT_AVATAR} 
@@ -134,63 +144,63 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
               referrerPolicy="no-referrer"
             />
           </motion.div>
-          {/* Animated rings */}
-          <div className="absolute inset-x-0 top-0 flex justify-center -z-10 mt-24">
-             {[1, 2, 3].map(i => (
+          
+          {/* Subtle pulse rings */}
+          <div className="absolute inset-0 flex justify-center items-center -z-10">
+             {[1, 2].map(i => (
                <motion.div
                  key={i}
-                 initial={{ scale: 0.8, opacity: 0.5 }}
-                 animate={{ scale: 2.2, opacity: 0 }}
-                 transition={{ duration: 3, repeat: Infinity, delay: i }}
-                 className="absolute w-40 h-40 rounded-full border border-white/30"
+                 initial={{ scale: 1, opacity: 0.2 }}
+                 animate={{ scale: 1.8, opacity: 0 }}
+                 transition={{ duration: 4, repeat: Infinity, delay: i * 2 }}
+                 className="absolute w-40 h-40 rounded-full border border-white/20"
                />
              ))}
           </div>
         </div>
-
-        <h1 className="text-4xl font-bold mb-3 tracking-tight">{caller.username}</h1>
-        <p className="text-white/40 text-lg font-medium tracking-widest uppercase">Wexo Video Call...</p>
       </div>
 
       {/* Action Buttons */}
-      <div className="relative z-10 w-full max-w-sm grid grid-cols-2 gap-12 px-8 mb-12">
-        {/* Decline */}
-        <div className="flex flex-col items-center gap-3">
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={onDecline}
-            className="w-20 h-20 rounded-full bg-[#ff3b30] flex items-center justify-center shadow-2xl shadow-red-500/30"
-          >
-            <PhoneOff size={32} className="text-white" />
-          </motion.button>
-          <span className="text-xs font-bold text-white/50 uppercase tracking-widest">Refuser</span>
+      <div className="relative z-10 w-full max-w-sm flex flex-col items-center gap-16 pb-10">
+        {/* Swipe Handle or Quick Options */}
+        <div className="flex gap-20">
+          <button className="flex flex-col items-center gap-2">
+            <MessageSquare size={20} className="text-white/60" />
+            <span className="text-[10px] text-white/40 font-medium">Message</span>
+          </button>
+          <button className="flex flex-col items-center gap-2">
+             <Video size={20} className="text-white/60" />
+             <span className="text-[10px] text-white/40 font-medium">Vidéo</span>
+          </button>
         </div>
 
-        {/* Accept */}
-        <div className="flex flex-col items-center gap-3">
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={onAccept}
-            className="w-20 h-20 rounded-full bg-[#34c759] flex items-center justify-center shadow-2xl shadow-emerald-500/30"
-          >
-            <Phone size={32} className="text-white fill-current" />
-          </motion.button>
-          <span className="text-xs font-bold text-white/50 uppercase tracking-widest">Répondre</span>
+        {/* Real Answer/Decline area */}
+        <div className="w-full flex justify-around items-end">
+          <div className="flex flex-col items-center gap-3">
+             <motion.button
+               whileTap={{ scale: 0.9 }}
+               onClick={onDecline}
+               className="w-16 h-16 rounded-full bg-[#ff3b30] flex items-center justify-center shadow-lg"
+             >
+               <PhoneOff size={28} className="text-white" />
+             </motion.button>
+             <span className="text-xs text-white shadow-sm font-medium">Décliner</span>
+          </div>
+
+          <div className="flex flex-col items-center gap-3">
+             <motion.button
+               whileTap={{ scale: 0.9 }}
+               onClick={onAccept}
+               className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg"
+               style={{ backgroundColor: '#25D366' }} // WhatsApp Green
+             >
+               <Phone size={28} className="text-white fill-current" />
+             </motion.button>
+             <span className="text-xs text-white shadow-sm font-medium">Répondre</span>
+          </div>
         </div>
       </div>
-      
-      {/* Quick Message Option */}
-      <div className="relative z-10 w-full flex justify-center mb-10">
-        <button 
-          onClick={() => setShowQuickMessages(true)}
-          className="flex flex-col items-center gap-2 group"
-        >
-          <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
-            <MessageSquare size={20} className="text-white/60" />
-          </div>
-          <span className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">Message</span>
-        </button>
-      </div>
+v>
 
       {/* Quick Messages Modal */}
       <AnimatePresence>

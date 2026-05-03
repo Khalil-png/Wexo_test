@@ -33,8 +33,18 @@ import { db, auth } from '@/services/firebase';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { App as CapApp } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
+
+// Utility to check if we are in a native Capacitor environment
+const isNative = () => {
+  return window.hasOwnProperty('Capacitor') && (window as any).Capacitor.getPlatform() !== 'web';
+};
+
+const ringtoneAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3');
+ringtoneAudio.loop = true;
+ringtoneAudio.volume = 1.0;
 
 // Safe wrapper for console in case it's not available in background
 const log = (...args: any[]) => console.log('[App]', ...args);
@@ -77,6 +87,34 @@ const AppContent: React.FC = () => {
   const [callTimer, setCallTimer] = useState(0);
   const [showCamera, setShowCamera] = useState(false);
   const [isKeyboardActive, setIsKeyboardActive] = useState(false);
+  const [isRinging, setIsRinging] = useState(false);
+
+  useEffect(() => {
+    if (incomingCall) {
+      log('Incoming call detected, starting ringtone and haptics');
+      setIsRinging(true);
+      ringtoneAudio.play().catch(e => log("Audio play failed:", e));
+      
+      let hapticsInterval: any = null;
+      
+      if (isNative()) {
+        hapticsInterval = setInterval(() => {
+          Haptics.vibrate({ duration: 500 });
+        }, 1200);
+      } else if (navigator.vibrate) {
+        navigator.vibrate([500, 500, 500, 500, 500]);
+      }
+
+      return () => {
+        log('Call handled, stopping ringtone and haptics');
+        if (hapticsInterval) clearInterval(hapticsInterval);
+        ringtoneAudio.pause();
+        ringtoneAudio.currentTime = 0;
+        setIsRinging(false);
+        if (navigator.vibrate) navigator.vibrate(0);
+      };
+    }
+  }, [incomingCall]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -428,16 +466,46 @@ const AppContent: React.FC = () => {
 
     // Écouter les actions sur les notifications (clic sur les boutons Répondre/Décliner)
     const setupNotificationListeners = async () => {
-      await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
-        const { notification, actionId } = action;
-        if (notification.extra?.type === 'call') {
-          if (actionId === 'accept') {
-            handleAcceptCallFromNotification(notification.extra.callId);
-          } else if (actionId === 'decline') {
-            handleDeclineCallFromNotification(notification.extra.callId);
-          }
+      try {
+        // Créer le canal de notification avec importance maximale (Android)
+        if (isMobileDevice()) {
+          await LocalNotifications.createChannel({
+            id: 'calls',
+            name: 'Appels Entrants',
+            description: 'Canal pour les appels audio et vidéo',
+            importance: 5, // Importance MAX
+            visibility: 1, // Public
+            vibration: true,
+            sound: 'ringtone.mp3' // Assurez-vous d'avoir un son dans android/app/src/main/res/raw
+          });
         }
-      });
+
+        await LocalNotifications.registerActionTypes({
+          types: [
+            {
+              id: 'INCOMING_CALL',
+              actions: [
+                { id: 'accept', title: 'Répondre', foreground: true },
+                { id: 'decline', title: 'Refuser', destructive: true, foreground: false }
+              ]
+            }
+          ]
+        });
+
+        await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+          const { notification, actionId } = action;
+          if (notification.extra?.type === 'call') {
+            const callId = notification.extra.callId;
+            if (actionId === 'accept') {
+              handleAcceptCallFromNotification(callId);
+            } else if (actionId === 'decline') {
+              handleDeclineCallFromNotification(callId);
+            }
+          }
+        });
+      } catch (e) {
+        console.warn("LocalNotifications error:", e);
+      }
     };
     setupNotificationListeners();
 
@@ -508,26 +576,30 @@ const AppContent: React.FC = () => {
 
       // 2. Déclencher une notification système
       if (isMobileDevice()) {
-        LocalNotifications.schedule({
-          notifications: [
-            {
-              title: `APPEL ENTRANT: ${callerName}`,
-              body: "Appuyez pour répondre",
-              id: 999,
-              schedule: { at: new Date(Date.now() + 100) },
-              sound: 'default',
-              channelId: 'calls',
-              ongoing: true,
-              autoCancel: false,
-              extra: {
-                type: 'call',
-                callId: record.id,
-                source: source
-              },
-              actionTypeId: 'INCOMING_CALL'
-            }
-          ]
-        });
+        try {
+          await LocalNotifications.schedule({
+            notifications: [
+              {
+                title: `APPEL ENTRANT: ${callerName}`,
+                body: "Appuyez pour répondre",
+                id: 999,
+                schedule: { at: new Date(Date.now() + 100) },
+                sound: 'ringtone.mp3', // Utilisez le canal 'calls' créé
+                channelId: 'calls',
+                ongoing: true, // Non suppressible par swipe
+                autoCancel: false,
+                extra: {
+                  type: 'call',
+                  callId: record.id,
+                  source: source
+                },
+                actionTypeId: 'INCOMING_CALL'
+              }
+            ]
+          });
+        } catch (e) {
+          console.warn("Notification error:", e);
+        }
         if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
       }
     };
