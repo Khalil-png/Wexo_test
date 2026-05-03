@@ -49,6 +49,17 @@ async function startServer() {
 
       console.log(`[CALL] Appel initié: ${callRef.id} de ${callerId} vers ${receiverId}`);
 
+      // Créer aussi une notification pour le destinataire afin qu'elle apparaisse dans la cloche
+      await db.collection("notifications").add({
+        user_id: receiverId,
+        sender_id: callerId,
+        type: "call",
+        title: "Appel entrant",
+        content: "Vous avez un nouvel appel.",
+        status: "unread",
+        created_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+
       res.json({ 
         success: true, 
         callId: callRef.id,

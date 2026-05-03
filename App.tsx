@@ -441,113 +441,129 @@ const AppContent: React.FC = () => {
     };
     setupNotificationListeners();
 
-    // Écouter les appels entrants
+    // Écouter les appels entrants (PocketBase)
     pb.collection('calls').subscribe('*', async ({ action, record }) => {
       if (action === 'create' && record.receiver_id === pbUser.id && record.status === 'incoming') {
-        const caller = record.expand?.caller_id;
-        let callerName = "Utilisateur inconnu";
-        let avatar = DEFAULT_AVATAR;
-
-        if (caller) {
-          callerName = caller.username;
-          avatar = caller.avatar ? pb.files.getUrl(caller, caller.avatar) : (caller.avatar_url || DEFAULT_AVATAR);
-        }
-
-        // 1. Déclencher le Overlay React (si l'app est au premier plan)
-        setIncomingCall({
-          id: record.id,
-          caller_id: record.caller_id,
-          receiver_id: record.receiver_id,
-          profiles: {
-            username: callerName,
-            avatar_url: avatar
-          }
-        });
-
-        // 2. Déclencher une notification système (style appel natif)
-        if (isMobileDevice()) {
-          LocalNotifications.schedule({
-            notifications: [
-              {
-                title: `APPEL ENTRANT: ${callerName}`,
-                body: "Appuyez pour répondre",
-                id: 999,
-                schedule: { at: new Date(Date.now() + 100) },
-                sound: 'default',
-                channelId: 'calls',
-                ongoing: true,
-                autoCancel: false,
-                smallIcon: 'ic_stat_name', // Needs to exist in android/res/drawable
-                extra: {
-                  type: 'call',
-                  callId: record.id
-                },
-                actionTypeId: 'INCOMING_CALL'
-              }
-            ]
-          });
-          
-          // Vibrer le téléphone
-          if (navigator.vibrate) {
-            navigator.vibrate([500, 200, 500, 200, 500]);
-          }
-        }
-      }
-
-      // Si l'appelant annule ou si le statut change (ex: décliné par un autre appareil)
-      if (action === 'update' && (record.receiver_id === pbUser.id || record.caller_id === pbUser.id)) {
-        if (record.status === 'completed' || record.status === 'missed') {
-          if (incomingCall?.id === record.id) {
-            // Trigger local notification for missed call if it was an incoming call for us
-            if (record.status === 'missed' && record.receiver_id === pbUser.id) {
-              // Cancel incoming notification if it existed
-              LocalNotifications.cancel({ notifications: [{ id: 999 }] });
-              
-              LocalNotifications.schedule({
-                notifications: [
-                  {
-                    title: "Appel manqué",
-                    body: `Vous avez manqué un appel de ${incomingCall?.profiles.username || 'un utilisateur'}`,
-                    id: Math.floor(Math.random() * 10000),
-                    schedule: { at: new Date(Date.now() + 100) },
-                    sound: 'default',
-                    channelId: 'default'
-                  }
-                ]
-              });
-            } else if (record.status === 'completed') {
-               // Cancel call notification on completion
-               LocalNotifications.cancel({ notifications: [{ id: 999 }] });
-            }
-            setIncomingCall(null);
-          }
-          if (activeCall?.id === record.id) setActiveCall(null);
-        }
-        
-        // Gérer le passage en "ongoing" pour l'initiateur
-        if (record.status === 'ongoing' && record.caller_id === pbUser.id) {
-           if (activeCall && activeCall.id === record.id && !activeCall.isOngoing) {
-              setActiveCall((prev: any) => ({ ...prev, isOngoing: true }));
-           }
-        }
+        handleIncomingCall(record, 'pb');
       }
       
-      if (action === 'delete') {
-        if (incomingCall?.id === record.id) setIncomingCall(null);
-        if (activeCall?.id === record.id) setActiveCall(null);
+      if (action === 'update' && (record.receiver_id === pbUser.id || record.caller_id === pbUser.id)) {
+        handleCallUpdate(record);
       }
     }, { expand: 'caller_id' });
 
-    // Souscription aux notifications globales
-    pb.collection('notifications').subscribe('*', async (e) => {
-      const { action, record } = e;
-      if (action === 'create' && record.user_id === pbUser.id) {
-          // On laisse useEffect(checkPendingNotifications) s'en occuper pour être synchrone avec le NAS
-      }
+    // Écouter les appels entrants (Firebase)
+    const callsQuery = query(
+      collection(db, 'calls'),
+      where('receiverId', '==', pbUser.id),
+      where('status', '==', 'outgoing'), // 'outgoing' means it was sent from server to receiver
+      limit(1)
+    );
+
+    const unsubscribeFirebaseCalls = onSnapshot(callsQuery, (snapshot) => {
+      snapshot.docChanges().forEach(async (change) => {
+        if (change.type === 'added') {
+          const record = change.doc.data();
+          // Map Firebase record to PocketBase-like structure for the UI
+          const mappedRecord = {
+            id: change.doc.id,
+            caller_id: record.callerId,
+            receiver_id: record.receiverId,
+            status: 'incoming', // Switch status for the receiver's UI
+            type: record.type,
+            source: 'firebase'
+          };
+          handleIncomingCall(mappedRecord, 'firebase');
+        }
+      });
     });
+
+    const handleIncomingCall = async (record: any, source: 'pb' | 'firebase') => {
+      let callerName = "Utilisateur inconnu";
+      let avatar = DEFAULT_AVATAR;
+
+      if (source === 'pb' && record.expand?.caller_id) {
+        const caller = record.expand.caller_id;
+        callerName = caller.username;
+        avatar = caller.avatar ? pb.files.getUrl(caller, caller.avatar) : (caller.avatar_url || DEFAULT_AVATAR);
+      } else {
+        try {
+          const sender = await pb.collection('users').getOne(record.caller_id);
+          callerName = sender.username;
+          avatar = sender.avatar ? pb.files.getUrl(sender, sender.avatar) : (sender.avatar_url || DEFAULT_AVATAR);
+        } catch (e) {}
+      }
+
+      // 1. Déclencher le Overlay React
+      setIncomingCall({
+        id: record.id,
+        caller_id: record.caller_id,
+        receiver_id: record.receiver_id,
+        source: source,
+        profiles: {
+          username: callerName,
+          avatar_url: avatar
+        }
+      });
+
+      // 2. Déclencher une notification système
+      if (isMobileDevice()) {
+        LocalNotifications.schedule({
+          notifications: [
+            {
+              title: `APPEL ENTRANT: ${callerName}`,
+              body: "Appuyez pour répondre",
+              id: 999,
+              schedule: { at: new Date(Date.now() + 100) },
+              sound: 'default',
+              channelId: 'calls',
+              ongoing: true,
+              autoCancel: false,
+              extra: {
+                type: 'call',
+                callId: record.id,
+                source: source
+              },
+              actionTypeId: 'INCOMING_CALL'
+            }
+          ]
+        });
+        if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
+      }
+    };
+
+    const handleCallUpdate = (record: any) => {
+      if (record.status === 'completed' || record.status === 'missed' || record.status === 'rejected') {
+        if (incomingCall?.id === record.id) {
+          if (record.status === 'missed' && record.receiver_id === pbUser.id) {
+            LocalNotifications.cancel({ notifications: [{ id: 999 }] });
+            LocalNotifications.schedule({
+              notifications: [{
+                title: "Appel manqué",
+                body: `Vous avez manqué un appel de ${incomingCall?.profiles.username || 'un utilisateur'}`,
+                id: Math.floor(Math.random() * 10000),
+                schedule: { at: new Date(Date.now() + 100) },
+                sound: 'default'
+              }]
+            });
+          } else {
+            LocalNotifications.cancel({ notifications: [{ id: 999 }] });
+          }
+          setIncomingCall(null);
+        }
+        if (activeCall?.id === record.id) setActiveCall(null);
+      }
+      
+      if (record.status === 'ongoing' && record.caller_id === pbUser.id) {
+         if (activeCall && activeCall.id === record.id && !activeCall.isOngoing) {
+            setActiveCall((prev: any) => ({ ...prev, isOngoing: true }));
+         }
+      }
+    };
 
     return () => {
       pb.collection('calls').unsubscribe('*');
+      unsubscribeFirebaseCalls();
       pb.collection('notifications').unsubscribe('*');
     };
   }, [pbUser?.id, incomingCall?.id, activeCall?.id]);
@@ -683,17 +699,38 @@ const AppContent: React.FC = () => {
 
   const handleAcceptCallFromNotification = async (callId: string) => {
     try {
-      await pb.collection('calls').update(callId, { status: 'ongoing' });
-      const record = await pb.collection('calls').getOne(callId, { expand: 'caller_id' });
-      const caller = record.expand?.caller_id;
+      const source = incomingCall?.source || 'pb';
+      let callerData: any = null;
+
+      if (source === 'pb') {
+        await pb.collection('calls').update(callId, { status: 'ongoing' });
+        const record = await pb.collection('calls').getOne(callId, { expand: 'caller_id' });
+        callerData = {
+          id: record.id,
+          caller_id: record.caller_id,
+          receiver_id: record.receiver_id,
+          username: record.expand?.caller_id?.username || 'Utilisateur',
+          avatar: record.expand?.caller_id?.avatar ? pb.files.getUrl(record.expand.caller_id, record.expand.caller_id.avatar) : (record.expand?.caller_id?.avatar_url || DEFAULT_AVATAR)
+        };
+      } else {
+        await updateDoc(doc(db, 'calls', callId), { status: 'accepted', lastUpdate: new Date() });
+        const sender = await pb.collection('users').getOne(incomingCall.caller_id);
+        callerData = {
+          id: callId,
+          caller_id: incomingCall.caller_id,
+          receiver_id: incomingCall.receiver_id,
+          username: sender.username,
+          avatar: sender.avatar ? pb.files.getUrl(sender, sender.avatar) : (sender.avatar_url || DEFAULT_AVATAR)
+        };
+      }
       
       setActiveCall({
-        id: record.id,
-        caller_id: record.caller_id,
-        receiver_id: record.receiver_id,
+        id: callerData.id,
+        caller_id: callerData.caller_id,
+        receiver_id: callerData.receiver_id,
         profiles: {
-          username: caller?.username || 'Utilisateur',
-          avatar_url: caller?.avatar ? pb.files.getUrl(caller, caller.avatar) : (caller?.avatar_url || DEFAULT_AVATAR)
+          username: callerData.username,
+          avatar_url: callerData.avatar
         }
       });
       setIncomingCall(null);
@@ -712,7 +749,12 @@ const AppContent: React.FC = () => {
 
   const handleDeclineCallFromNotification = async (callId: string) => {
     try {
-      await pb.collection('calls').update(callId, { status: 'missed' });
+      const source = incomingCall?.source || 'pb';
+      if (source === 'pb') {
+        await pb.collection('calls').update(callId, { status: 'missed' });
+      } else {
+        await updateDoc(doc(db, 'calls', callId), { status: 'rejected', lastUpdate: new Date() });
+      }
       setIncomingCall(null);
       LocalNotifications.cancel({ notifications: [{ id: 999 }] });
     } catch (err) {

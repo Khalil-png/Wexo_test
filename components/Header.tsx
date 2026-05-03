@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, LogOut, X, Circle, Menu, UserPlus, Check, Trash2, MessageCircle, User, Camera, Home, Heart } from 'lucide-react';
+import { Search, Bell, LogOut, X, Circle, Menu, UserPlus, Check, Trash2, MessageCircle, User, Camera, Home, Heart, Phone } from 'lucide-react';
 import { DEFAULT_AVATAR } from '../constants';
 import Username from './Username';
 import { Copy } from 'lucide-react';
@@ -9,12 +9,12 @@ import { isMobileDevice } from '../src/utils/device';
 import { useClickOutside } from '../utils/hooks';
 import { pb } from '../services/pocketbaseService';
 import { Preferences } from '@capacitor/preferences';
-
-// Firebase désactivé
+import { db } from '../services/firebase';
+import { collection, query, where, onSnapshot, orderBy, limit, updateDoc, doc } from 'firebase/firestore';
 
 interface Notification {
   id: string;
-  type: 'friend_request' | 'friend_accepted' | 'message' | 'like';
+  type: 'friend_request' | 'friend_accepted' | 'message' | 'like' | 'call';
   sender_id: string;
   sender_name?: string;
   sender_avatar?: string;
@@ -22,6 +22,7 @@ interface Notification {
   read: boolean;
   timestamp: string;
   group_id?: string;
+  source?: 'pb' | 'firebase';
 }
 
 interface HeaderProps {
@@ -125,7 +126,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
       }
 
       try {
-        // Migration NAS : Récupération des vraies notifications
+        // Migration NAS : Récupération des vraies notifications de PocketBase
         const records = await pb.collection('notifications').getList(1, 20, {
           filter: `user_id="${user.uid}"`,
           sort: '-created'
@@ -143,10 +144,14 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
             minute: '2-digit' 
           }),
           read: record.read === true,
-          group_id: record.group_id
+          group_id: record.group_id,
+          source: 'pb'
         }));
         
-        setNotifications(mappedNotifs);
+        setNotifications(prev => {
+          const others = prev.filter(n => n.source !== 'pb');
+          return [...mappedNotifs, ...others].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        });
       } catch (err: any) {
          if (err.status !== 404) {
            console.warn("Erreur lors de la récupération des notifications:", err);
@@ -156,7 +161,8 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
 
     fetchNotifications();
 
-    // S'abonner aux notifications en temps réel pour mettre à jour la liste
+    // 1. S'abonner aux notifications PocketBase
+    let pbUnsub: any;
     try {
       pb.collection('notifications').subscribe('*', (e) => {
         if (e.record.user_id === user.uid) {
@@ -176,16 +182,75 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                  minute: '2-digit' 
                }),
                read: record.read === true,
-               group_id: record.group_id
+               group_id: record.group_id,
+               source: 'pb'
              });
            }
         }
-      });
+      }).then(u => pbUnsub = u);
     } catch (err) {
       console.warn("Erreur souscription notifications:", err);
     }
     
+    // 2. S'abonner aux notifications Firebase (pour le temps réel et les alertes serveur)
+    const q = query(
+      collection(db, 'notifications'),
+      where('user_id', '==', user.uid),
+      orderBy('created_at', 'desc'),
+      limit(20)
+    );
+
+    const firebaseUnsub = onSnapshot(q, (snapshot) => {
+      const firebaseNotifs: Notification[] = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          type: data.type || 'message',
+          sender_id: data.sender_id || '',
+          sender_name: data.title || 'Inconnu',
+          sender_avatar: data.sender_avatar || '',
+          content: data.content || '',
+          timestamp: data.created_at?.toDate?.() ? data.created_at.toDate().toLocaleTimeString('fr-FR', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }) : 'Maintenant',
+          read: data.status === 'read',
+          source: 'firebase'
+        };
+      });
+
+      setNotifications(prev => {
+        const others = prev.filter(n => n.source !== 'firebase');
+        // Merge and sort
+        const merged = [...others, ...firebaseNotifs];
+        return merged.slice(0, 30); // Garder les 30 dernières
+      });
+
+      // Gérer les nouvelles notifications Firebase pour le son/popup
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          const createdAt = data.created_at?.toDate?.()?.getTime() || Date.now();
+          if (Date.now() - createdAt < 10000) { // Si moins de 10 secondes
+            handleNewNotification({
+              id: change.doc.id,
+              type: data.type || 'message',
+              sender_id: data.sender_id || '',
+              sender_name: data.title || 'Inconnu',
+              sender_avatar: data.sender_avatar || '',
+              content: data.content || '',
+              timestamp: 'Maintenant',
+              read: false,
+              source: 'firebase'
+            });
+          }
+        }
+      });
+    });
+
     return () => {
+      if (pbUnsub) pbUnsub();
+      firebaseUnsub();
       pb.collection('notifications').unsubscribe('*').catch(() => {});
     };
   }, [user?.uid]);
@@ -216,6 +281,9 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
         } else if (notif.type === 'friend_accepted') {
           title = `Demande acceptée`;
           body = `${notif.sender_name} a accepté votre demande !`;
+        } else if (notif.type === 'call') {
+          title = `Appel manqué`;
+          body = `Vous avez un appel de ${notif.sender_name}`;
         }
 
         const composedIcon = await composeNotificationIcon(notif.sender_avatar || DEFAULT_AVATAR);
@@ -293,17 +361,21 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
   const handleNotificationClick = async (notif: Notification) => {
     if (!user?.uid) return;
 
-    // Mark as read in PocketBase
+    // Mark as read
     if (!notif.read) {
       try {
-        await pb.collection('notifications').update(notif.id, { read: true });
+        if (notif.source === 'pb') {
+          await pb.collection('notifications').update(notif.id, { read: true });
+        } else {
+          await updateDoc(doc(db, 'notifications', notif.id), { status: 'read' });
+        }
         setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
       } catch (err) {
         console.warn("Erreur marquage notification lue:", err);
       }
     }
 
-    if (notif.type === 'message' || notif.type === 'friend_request' || notif.type === 'friend_accepted') {
+    if (notif.type === 'message' || notif.type === 'friend_request' || notif.type === 'friend_accepted' || notif.type === 'call') {
       onTabChange('message');
       if (notif.type === 'message') {
         const url = new URL(window.location.href);
@@ -319,6 +391,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
   };
 
   const handleDeleteAllNotifications = async () => {
+    // Logic to clear list locally (or delete in DB if wanted)
     setNotifications([]);
   };
 
@@ -396,7 +469,13 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                             e.stopPropagation();
                             try {
                               const unread = notifications.filter(n => !n.read);
-                              await Promise.all(unread.map(n => pb.collection('notifications').update(n.id, { read: true })));
+                              for (const n of unread) {
+                                if (n.source === 'pb') {
+                                  await pb.collection('notifications').update(n.id, { read: true });
+                                } else {
+                                  await updateDoc(doc(db, 'notifications', n.id), { status: 'read' });
+                                }
+                              }
                               setNotifications(prev => prev.map(n => ({ ...n, read: true })));
                             } catch (err) {
                               console.warn(err);
@@ -486,6 +565,27 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                               </div>
                               <p className="text-[11px] text-white/90 leading-tight">
                                 {n.content || "A aimé votre post !"}
+                              </p>
+                            </div>
+                          </div>
+                        ) : n.type === 'call' ? (
+                          <div className="flex gap-4 items-start">
+                            <div className="relative flex-shrink-0">
+                              <div className="w-11 h-11 rounded-full overflow-hidden border border-white/10">
+                                <img src={n.sender_avatar || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                              </div>
+                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#1a1a1a] rounded-full flex items-center justify-center border border-white/10 text-orange-500">
+                                <Phone size={10} fill="currentColor" />
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="text-[11px] font-bold text-orange-400 truncate">{n.sender_name}</span>
+                                <span className="text-slate-500 text-[10px]">•</span>
+                                <span className="text-slate-400 text-[10px] font-medium">appel</span>
+                              </div>
+                              <p className="text-[11px] text-white/90 leading-tight">
+                                {n.content || "Appel manqué"}
                               </p>
                             </div>
                           </div>
