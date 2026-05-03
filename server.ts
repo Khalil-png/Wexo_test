@@ -3,15 +3,62 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import admin from "firebase-admin";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialisation de Firebase Admin
+// Dans cet environnement, il utilise les identifiants par défaut du projet
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp();
+    console.log("✅ Firebase Admin initialisé");
+  } catch (error) {
+    console.error("❌ Erreur initialisation Firebase Admin:", error);
+  }
+}
+
+const db = admin.firestore();
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
+
+  // Route pour initier un appel (Le serveur communique avec Firebase)
+  app.post("/api/calls/initiate", async (req, res) => {
+    const { callerId, receiverId, type } = req.body;
+
+    if (!callerId || !receiverId) {
+      return res.status(400).json({ error: "Missing callerId or receiverId" });
+    }
+
+    try {
+      // Le serveur crée le document dans Firebase
+      // L'utilisateur destinataire recevra immédiatement l'alerte car il écoute cette collection
+      const callRef = await db.collection("calls").add({
+        callerId,
+        receiverId,
+        type: type || "video",
+        status: "outgoing",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdate: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      console.log(`[CALL] Appel initié: ${callRef.id} de ${callerId} vers ${receiverId}`);
+
+      res.json({ 
+        success: true, 
+        callId: callRef.id,
+        message: "Firebase a été notifié de l'appel" 
+      });
+    } catch (error: any) {
+      console.error("Erreur initiation appel:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // Route pour recevoir les logs du navigateur dans le terminal
   app.post("/api/log", (req, res) => {

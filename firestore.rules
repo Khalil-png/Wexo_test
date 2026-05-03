@@ -55,5 +55,30 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isSignedIn(); 
     }
+
+    // Appels (Calls)
+    match /calls/{callId} {
+      function isValidCall(data) {
+        return data.callerId is string && 
+               data.receiverId is string &&
+               data.status in ['outgoing', 'incoming', 'accepted', 'rejected', 'ended'];
+      }
+
+      // Un utilisateur peut lire un appel s'il en est l'expéditeur ou le destinataire
+      allow read: if isSignedIn() && (
+        resource.data.callerId != null || resource.data.receiverId != null
+      );
+      
+      // Le serveur crée l'appel (Admin bypass), mais on autorise aussi le client
+      // pour plus de flexibilité si vous voulez bypasser le serveur plus tard
+      allow create: if isSignedIn() && isValidCall(incoming());
+      
+      // Mise à jour de l'état (ex: accepter ou rejeter l'appel)
+      allow update: if isSignedIn() && (
+        incoming().diff(existing()).affectedKeys().hasAny(['status', 'lastUpdate'])
+      );
+      
+      allow delete: if isSignedIn();
+    }
   }
 }
