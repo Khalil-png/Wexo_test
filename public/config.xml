@@ -2,7 +2,7 @@
 <widget id="com.wexo.app" version="0.0.1" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
     <name>Wexo</name>
     <description>Wexo - Le réseau social nouvelle génération.</description>
-    <author email="ky.chaine@gmail.com" href="https://wexo.netlify.app">Wexo Team</author>
+    <author email="ky.chaine@gmail.com" href="https://wexo-steel.vercel.app">Wexo Team</author>
     <content src="index.html" />
     
     <access origin="*" />

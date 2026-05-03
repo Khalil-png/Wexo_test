@@ -251,7 +251,7 @@ const PostsTab: React.FC<PostsTabProps> = ({ user, profile }) => {
 
   const copyToClipboard = () => {
     if (!selectedPost) return;
-    const url = `https://wexo.netlify.app/?post=${selectedPost.id}`;
+    const url = `https://wexo-steel.vercel.app/?post=${selectedPost.id}`;
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

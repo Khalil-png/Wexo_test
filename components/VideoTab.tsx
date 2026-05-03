@@ -80,7 +80,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, onTabChange, user,
   };
 
   const copyToClipboard = () => {
-    const url = `https://wexo.netlify.app/?video=${selectedVideo?.id}`;
+    const url = `https://wexo-steel.vercel.app/?video=${selectedVideo?.id}`;
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -531,7 +531,7 @@ const VideoTab: React.FC<VideoTabProps> = ({ onBecomeCreator, onTabChange, user,
                             <input 
                               type="text" 
                               readOnly 
-                              value={`https://wexo.netlify.app/?video=${selectedVideo.id}`}
+                              value={`https://wexo-steel.vercel.app/?video=${selectedVideo.id}`}
                               className="bg-transparent text-xs text-slate-400 outline-none flex-1 truncate font-medium"
                             />
                             <button 

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   User, 
   Shield, 
@@ -10,7 +10,11 @@ import {
   ChevronRight,
   LogOut,
   Lock,
-  Upload
+  Upload,
+  ArrowLeft,
+  RotateCcw,
+  MoreVertical,
+  Loader2
 } from 'lucide-react';
 import { pb } from '@/services/pocketbaseService';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -30,7 +34,195 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  
+  // States for interactive cropping
+  const [showCropper, setShowCropper] = useState(false);
+  const [tempImage, setTempImage] = useState<string | null>(null);
+  const [rotation, setRotation] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [minZoom, setMinZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const maskRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setShowCamera(true);
+      setShowAvatarMenu(false);
+    } catch (err) {
+      setError("Impossible d'accéder à la caméra. Vérifiez les permissions.");
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setShowCamera(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        setTempImage(dataUrl);
+        setShowCropper(true);
+        setRotation(0);
+        setZoom(1);
+        setOffset({ x: 0, y: 0 });
+        stopCamera();
+      }
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setTempImage(reader.result as string);
+        setShowCropper(true);
+        setRotation(0);
+        setZoom(1);
+        setOffset({ x: 0, y: 0 });
+        setShowAvatarMenu(false);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const calculateMinZoom = useCallback(() => {
+    if (!imgRef.current || !maskRef.current) return;
+    const img = imgRef.current;
+    const maskSize = maskRef.current.offsetWidth;
+    const isRotated = (rotation / 90) % 2 !== 0;
+    const scaleX = maskSize / (isRotated ? img.clientHeight : img.clientWidth);
+    const scaleY = maskSize / (isRotated ? img.clientWidth : img.clientHeight);
+    const mZoom = Math.max(scaleX, scaleY);
+    setMinZoom(mZoom);
+    if (zoom < mZoom) setZoom(mZoom);
+  }, [rotation, zoom]);
+
+  const constrainOffset = useCallback((x: number, y: number, currentZoom: number) => {
+    if (!imgRef.current || !maskRef.current) return { x, y };
+    const maskSize = maskRef.current.offsetWidth;
+    const img = imgRef.current;
+    const isRotated = (rotation / 90) % 2 !== 0;
+    const displayedW = (isRotated ? img.clientHeight : img.clientWidth) * currentZoom;
+    const displayedH = (isRotated ? img.clientWidth : img.clientHeight) * currentZoom;
+    const limitX = Math.max(0, (displayedW - maskSize) / 2);
+    const limitY = Math.max(0, (displayedH - maskSize) / 2);
+    return {
+      x: Math.min(Math.max(x, -limitX), limitX),
+      y: Math.min(Math.max(y, -limitY), limitY)
+    };
+  }, [rotation]);
+
+  const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+    setIsDragging(true);
+    const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
+    setDragStart({ x: clientX - offset.x, y: clientY - offset.y });
+  };
+
+  const handleMouseMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!isDragging) return;
+    const clientX = 'touches' in e ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
+    const clientY = 'touches' in e ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+    setOffset(constrainOffset(clientX - dragStart.x, clientY - dragStart.y, zoom));
+  }, [isDragging, dragStart, constrainOffset, zoom]);
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', () => setIsDragging(false));
+      window.addEventListener('touchmove', handleMouseMove);
+      window.addEventListener('touchend', () => setIsDragging(false));
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('touchmove', handleMouseMove);
+    };
+  }, [isDragging, handleMouseMove]);
+
+  const applyCrop = async () => {
+    if (!tempImage || !imgRef.current || !maskRef.current || !pb.authStore.model?.id) return;
+    
+    setLoading(true);
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 150; 
+      canvas.height = 150;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 150, 150);
+      
+      ctx.translate(75, 75);
+      ctx.rotate((rotation * Math.PI) / 180);
+      
+      const displayToCanvasScale = 150 / maskRef.current.offsetWidth;
+      ctx.scale(zoom * displayToCanvasScale, zoom * displayToCanvasScale);
+      
+      ctx.translate(offset.x / zoom, offset.y / zoom);
+      ctx.drawImage(imgRef.current, -imgRef.current.clientWidth / 2, -imgRef.current.clientHeight / 2, imgRef.current.clientWidth, imgRef.current.clientHeight);
+      
+      const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      
+      // Conversion dataURL en Blob
+      const res = await fetch(croppedDataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], `avatar_${Date.now()}.jpg`, { type: 'image/jpeg' });
+
+      // 1. Créer une entrée dans la collection 'media'
+      const mediaFormData = new FormData();
+      mediaFormData.append('file', file);
+      mediaFormData.append('name', `avatar_${Date.now()}`);
+      
+      const mediaRecord = await pb.collection('media').create(mediaFormData);
+      
+      // 2. Récupérer l'URL permanente du média
+      const newAvatarUrl = pb.files.getUrl(mediaRecord, mediaRecord.file);
+      
+      // 3. Mettre à jour 'avatar_url' and native 'avatar'
+      const userFormData = new FormData();
+      userFormData.append('avatar', file);
+      userFormData.append('avatar_url', newAvatarUrl);
+
+      const updatedRecord = await pb.collection('users').update(pb.authStore.model.id, userFormData);
+
+      pb.authStore.save(pb.authStore.token, updatedRecord);
+
+      setSuccess('Photo de profil mise à jour !');
+      setShowCropper(false);
+      setShowAvatarMenu(false);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      setError(err.message);
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const presetColors = [
     { name: 'bleu', value: '#0b57ff' },
@@ -54,44 +246,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
       pb.authStore.save(pb.authStore.token, updatedRecord);
       
       setSuccess('Profil mis à jour !');
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (err: any) {
-      setError(err.message);
-      setTimeout(() => setError(null), 3000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !pb.authStore.model?.id) return;
-
-    setLoading(true);
-    try {
-      // 1. Créer une entrée dans la collection 'media'
-      const mediaFormData = new FormData();
-      mediaFormData.append('file', file);
-      mediaFormData.append('name', file.name || `avatar_${Date.now()}`);
-      
-      const mediaRecord = await pb.collection('media').create(mediaFormData);
-      
-      // 2. Récupérer l'URL permanente du média
-      const newAvatarUrl = pb.files.getUrl(mediaRecord, mediaRecord.file);
-      
-      // 3. Mettre à jour 'avatar_url' (et aussi le champ 'avatar' natif pour la cohérence)
-      // On crée un FormData pour le champ 'avatar' natif
-      const userFormData = new FormData();
-      userFormData.append('avatar', file);
-      userFormData.append('avatar_url', newAvatarUrl);
-
-      const updatedRecord = await pb.collection('users').update(pb.authStore.model.id, userFormData);
-
-      // Update local auth store to trigger onChange in App.tsx
-      pb.authStore.save(pb.authStore.token, updatedRecord);
-
-      setSuccess('Photo de profil mise à jour !');
-      setShowAvatarMenu(false);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       setError(err.message);
@@ -201,8 +355,71 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
             </button>
 
             {success && <div className="text-center text-green-500 font-bold text-sm animate-bounce">{success}</div>}
+            {error && <div className="text-center text-red-500 font-bold text-sm">{error}</div>}
           </div>
         </div>
+
+        {showCamera && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black">
+            <div className="w-full max-w-2xl bg-[#0a0a0a] rounded-2xl overflow-hidden flex flex-col h-full md:h-[90vh]">
+              <div className="flex items-center justify-between p-6 border-b border-white/5 bg-[#111111]">
+                <button onClick={stopCamera} className="text-white hover:bg-white/10 p-2 rounded-2xl transition-colors"><ArrowLeft size={24} /></button>
+                <h2 className="text-white font-medium text-lg">Prendre une photo</h2>
+                <div className="w-10"></div>
+              </div>
+              <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  playsInline 
+                  className="w-full h-full object-cover"
+                  style={{ transform: 'scaleX(-1)' }}
+                />
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div className="w-[min(70vw,380px)] aspect-square rounded-full border-2 border-white/30 shadow-[0_0_0_2000px_rgba(0,0,0,0.5)]"></div>
+                </div>
+              </div>
+              <div className="p-8 bg-[#111111] border-t border-white/5 flex flex-col items-center">
+                <button 
+                  onClick={capturePhoto} 
+                  className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center shadow-2xl active:scale-90 transition-transform"
+                >
+                  <div className="w-16 h-16 border-4 border-black rounded-full"></div>
+                </button>
+                <p className="mt-4 text-slate-500 text-[10px] font-black uppercase tracking-widest">Cliquez pour capturer</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCropper && tempImage && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black select-none">
+            <div className="w-full max-w-2xl bg-[#0a0a0a] rounded-2xl overflow-hidden flex flex-col h-full md:h-[90vh]">
+              <div className="flex items-center justify-between p-6 border-b border-white/5 bg-[#111111]">
+                <button onClick={() => setShowCropper(false)} className="text-white hover:bg-white/10 p-2 rounded-2xl transition-colors"><ArrowLeft size={24} /></button>
+                <h2 className="text-white font-medium text-lg">Ajuster la photo</h2>
+                <button className="text-white/60 hover:text-white transition-colors"><MoreVertical size={24} /></button>
+              </div>
+              <div className="flex-1 relative bg-black overflow-hidden cursor-move touch-none" onMouseDown={handleMouseDown} onTouchStart={handleMouseDown}>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom}) rotate(${rotation}deg)` }}>
+                  <img ref={imgRef} src={tempImage} className="max-w-none w-[80%] h-auto" alt="Original" onLoad={calculateMinZoom} />
+                </div>
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div ref={maskRef} className="relative w-[min(70vw,380px)] aspect-square rounded-full border-2 border-white/30 shadow-[0_0_0_2000px_rgba(0,0,0,0.8)]"></div>
+                </div>
+              </div>
+              <div className="p-8 bg-[#111111] border-t border-white/5 space-y-8 flex flex-col items-center">
+                <input type="range" min={minZoom} max={minZoom + 3} step="0.01" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-full max-w-sm h-1 bg-white/20 rounded-full appearance-none accent-white" />
+                <div className="flex gap-12">
+                  <button onClick={() => setRotation(r => (r - 90) % 360)} className="w-14 h-14 bg-white/5 hover:bg-white/10 rounded-2xl flex items-center justify-center transition-all"><RotateCcw size={24} className="text-white" /></button>
+                  <button disabled={loading} onClick={applyCrop} className="min-w-[180px] bg-white text-slate-900 font-black uppercase text-xs tracking-widest py-4 px-10 rounded-2xl shadow-xl flex items-center justify-center gap-2">
+                    {loading ? <Loader2 className="animate-spin" size={18} /> : 'Terminer'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showAvatarMenu && (
           <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
@@ -218,8 +435,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
                     <span className="font-bold text-sm text-white">Importer</span>
                   </button>
                   <button 
-                    className="flex flex-col items-center gap-3 p-6 bg-white/5 hover:bg-white/10 rounded-3xl transition-all opacity-50"
-                    disabled
+                    onClick={startCamera}
+                    className="flex flex-col items-center gap-3 p-6 bg-white/5 hover:bg-white/10 rounded-3xl transition-all"
                   >
                     <Camera size={32} style={{ color: primaryColor }} />
                     <span className="font-bold text-sm text-white">Caméra</span>

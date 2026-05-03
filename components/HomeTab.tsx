@@ -63,7 +63,8 @@ const HomeTab: React.FC<HomeTabProps> = ({ user, profile, onTabChange }) => {
           data = resultList.items
             .filter(p => {
               const creator = p.expand?.user_id || p.expand?.creator_id;
-              return creator?.role === 'admin' || creator?.email === 'ky.chaine@gmail.com';
+              // Filtrer strictement par le compte officiel wexo_official
+              return creator?.username === 'wexo_official';
             })
             .map(p => {
               const author = p.expand?.user_id || p.expand?.creator_id;

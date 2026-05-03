@@ -578,7 +578,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
 
   const copyToClipboard = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = `https://wexo.netlify.app/?short=${short.id}`;
+    const url = `https://wexo-steel.vercel.app/?short=${short.id}`;
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -822,7 +822,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
                   <input 
                     type="text" 
                     readOnly 
-                    value={`https://wexo.netlify.app/?short=${short.id}`}
+                    value={`https://wexo-steel.vercel.app/?short=${short.id}`}
                     className="bg-transparent text-xs text-slate-400 outline-none flex-1 truncate"
                   />
                   <button 
