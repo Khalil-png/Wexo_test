@@ -30,7 +30,7 @@ import { generateSnowflake } from '@/utils/snowflake';
 import { AnimatePresence } from 'framer-motion';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
 import { db, auth } from '@/services/firebase';
-import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { App as CapApp } from '@capacitor/app';
@@ -533,7 +533,7 @@ const AppContent: React.FC = () => {
     };
 
     const handleCallUpdate = (record: any) => {
-      if (record.status === 'completed' || record.status === 'missed' || record.status === 'rejected') {
+      if (record.status === 'completed' || record.status === 'missed' || record.status === 'rejected' || record.status === 'ended') {
         if (incomingCall?.id === record.id) {
           if (record.status === 'missed' && record.receiver_id === pbUser.id) {
             LocalNotifications.cancel({ notifications: [{ id: 999 }] });
@@ -554,16 +554,32 @@ const AppContent: React.FC = () => {
         if (activeCall?.id === record.id) setActiveCall(null);
       }
       
-      if (record.status === 'ongoing' && record.caller_id === pbUser.id) {
+      if ((record.status === 'ongoing' || record.status === 'accepted') && record.caller_id === pbUser.id) {
          if (activeCall && activeCall.id === record.id && !activeCall.isOngoing) {
             setActiveCall((prev: any) => ({ ...prev, isOngoing: true }));
          }
       }
     };
 
+    // Firebase Listener pour l'émetteur (suivi de l'appel actif)
+    let unsubscribeActiveCall: (() => void) | null = null;
+    if (activeCall && activeCall.id && !activeCall.isOngoing) {
+       unsubscribeActiveCall = onSnapshot(doc(db, 'calls', activeCall.id), (docSnap) => {
+         if (docSnap.exists()) {
+           const data = docSnap.data();
+           if (data.status === 'accepted' || data.status === 'ongoing') {
+             setActiveCall(prev => prev ? { ...prev, isOngoing: true } : null);
+           } else if (data.status === 'rejected' || data.status === 'ended') {
+             setActiveCall(null);
+           }
+         }
+       });
+    }
+
     return () => {
       pb.collection('calls').unsubscribe('*');
       unsubscribeFirebaseCalls();
+      if (unsubscribeActiveCall) unsubscribeActiveCall();
       pb.collection('notifications').unsubscribe('*');
     };
   }, [pbUser?.id, incomingCall?.id, activeCall?.id]);
@@ -788,28 +804,51 @@ const AppContent: React.FC = () => {
         return;
       }
 
-      // Sinon, on initie l'appel (depuis MessagesTab par exemple)
+      // Initiation de l'appel via l'API Serveur (Firebase + Notifications)
       console.log("Initiation d'un appel vers:", receiver.username);
       
-      const record = await pb.collection('calls').create({
-        caller_id: pbUser.id,
-        receiver_id: receiver.id,
-        type: 'audio',
-        status: 'incoming'
+      const response = await fetch('/api/calls/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callerId: pbUser.id,
+          receiverId: receiver.id,
+          type: 'video'
+        })
       });
 
+      const data = await response.json();
+      
+      if (!data.success) throw new Error(data.error || "Erreur serveur");
+
       setActiveCall({
-        id: record.id,
+        id: data.callId,
         caller_id: pbUser.id,
         receiver_id: receiver.id,
         profiles: {
           username: receiver.username,
-          avatar_url: receiver.avatar_url
+          avatar_url: receiver.avatar_url || DEFAULT_AVATAR
         }
       });
     } catch (err: any) {
       console.error("Erreur lancement appel:", err);
-      setNotification({ message: `Erreur appel: ${err.message}`, show: true });
+      // Fallback sur PocketBase si le serveur Firebase échoue
+      try {
+        const record = await pb.collection('calls').create({
+          caller_id: pbUser.id,
+          receiver_id: receiver.id,
+          type: 'audio',
+          status: 'incoming'
+        });
+        setActiveCall({
+          id: record.id,
+          caller_id: pbUser.id,
+          receiver_id: receiver.id,
+          profiles: { username: receiver.username, avatar_url: receiver.avatar_url }
+        });
+      } catch (e) {
+        setNotification({ message: "Échec de l'appel système et PocketBase", show: true });
+      }
     }
   };
 

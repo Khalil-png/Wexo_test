@@ -456,7 +456,14 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                 className={`p-2.5 rounded-2xl relative ${showNotifications ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
               >
                 <Bell size={22} />
-                {unreadCount > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[8px] font-bold w-4 h-4 rounded-full border-2 border-[#0f0f0f] flex items-center justify-center">{unreadCount}</span>}
+                {unreadCount > 0 && (
+                  <span className="absolute top-2 right-2 flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-white text-[8px] font-bold border-2 border-[#0f0f0f] items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  </span>
+                )}
               </button>
               {showNotifications && (
                 <div className="absolute top-full right-0 mt-4 w-72 sm:w-80 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">

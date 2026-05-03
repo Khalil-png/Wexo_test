@@ -30,13 +30,14 @@ const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[400] bg-slate-950 flex flex-col items-center justify-between py-24 px-6 text-white overflow-hidden animate-in fade-in duration-500">
-      {/* Background radial glow */}
+    <div className="fixed inset-0 z-[1001] bg-black flex flex-col items-center justify-between py-24 px-6 text-white overflow-hidden select-none">
+      {/* Dynamic Background */}
+      <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a] to-black opacity-90 animate-in fade-in duration-1000"></div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05)_0%,transparent_70%)] pointer-events-none" />
       
-      <div className="flex-1 flex flex-col items-center justify-center text-center mt-12 relative z-10 w-full">
+      <div className="flex-1 flex flex-col items-center justify-center text-center mt-12 relative z-10 w-full animate-in slide-in-from-bottom-12 duration-700">
         <div className="relative mb-12">
-          <div className="w-48 h-48 rounded-full overflow-hidden border-4 border-emerald-500/20 p-2 bg-slate-900 shadow-[0_0_50px_rgba(16,185,129,0.1)]">
+          <div className="w-48 h-48 rounded-full overflow-hidden border-4 border-emerald-500/20 p-2 bg-slate-900 shadow-[0_0_80px_rgba(16,185,129,0.1)]">
             {activeCall.caller_id === 'gemini' || activeCall.receiver_id === 'gemini' ? (
               <div className="w-full h-full overflow-hidden rounded-full flex items-center justify-center bg-slate-800">
                 <img 

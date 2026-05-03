@@ -115,86 +115,81 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[300] bg-[#0f172a] flex flex-col items-center justify-between py-24 px-6 text-white overflow-hidden animate-in fade-in duration-500">
+    <div className="fixed inset-0 z-[1000] bg-black flex flex-col items-center justify-between py-20 px-6 text-white overflow-hidden select-none">
+      {/* Background Glow */}
+      <div className="absolute inset-0 bg-gradient-to-b from-[#1a1a1a] to-black opacity-50"></div>
+      
       {/* Caller Info */}
-      <div className="flex flex-col items-center text-center mt-12">
-        <h1 className="text-5xl font-bold mb-2 tracking-tight">{caller.username}</h1>
-        <p className="text-slate-400 text-xl font-medium opacity-60">@{caller.username.toLowerCase().replace(/\s+/g, '')}</p>
-        
-        <div className="mt-20 relative">
-          <div className="w-64 h-64 rounded-full overflow-hidden border-8 border-white/5 bg-slate-800 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+      <div className="relative z-10 flex flex-col items-center text-center mt-12 animate-in zoom-in duration-700">
+        <div className="mb-8 relative">
+          <motion.div 
+            animate={{ scale: [1, 1.05, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="w-48 h-48 rounded-full overflow-hidden border-4 border-white/20 bg-slate-900 shadow-[0_0_80px_rgba(255,255,255,0.1)]"
+          >
             <img 
               src={caller.avatar_url || DEFAULT_AVATAR} 
               alt={caller.username}
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
             />
+          </motion.div>
+          {/* Animated rings */}
+          <div className="absolute inset-x-0 top-0 flex justify-center -z-10 mt-24">
+             {[1, 2, 3].map(i => (
+               <motion.div
+                 key={i}
+                 initial={{ scale: 0.8, opacity: 0.5 }}
+                 animate={{ scale: 2.2, opacity: 0 }}
+                 transition={{ duration: 3, repeat: Infinity, delay: i }}
+                 className="absolute w-40 h-40 rounded-full border border-white/30"
+               />
+             ))}
           </div>
         </div>
-      </div>
 
-      {/* Animated Arrows */}
-      <div className="flex flex-col items-center mb-[-40px]">
-        {[0, 1, 2].map((i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ 
-              opacity: [0, 1, 0],
-              y: [20, 0, -20]
-            }}
-            transition={{
-              duration: 2,
-              repeat: Infinity,
-              delay: i * 0.4,
-              ease: "easeInOut"
-            }}
-            className="flex flex-col items-center"
-          >
-            <ChevronUp size={56} strokeWidth={2.5} className="text-white/30 -mb-8" />
-          </motion.div>
-        ))}
+        <h1 className="text-4xl font-bold mb-3 tracking-tight">{caller.username}</h1>
+        <p className="text-white/40 text-lg font-medium tracking-widest uppercase">Wexo Video Call...</p>
       </div>
 
       {/* Action Buttons */}
-      <div className="w-full max-w-md flex items-center justify-around px-4 mb-12">
-        {/* Decline Button */}
-        <div className="flex flex-col items-center gap-4">
-          <motion.div
-            drag="y"
-            dragConstraints={{ top: -300, bottom: 0 }}
-            dragElastic={0.1}
-            onDragEnd={(e, info) => handleDragEnd(e, info, 'decline')}
-            whileDrag={{ scale: 1.1 }}
-            className="w-24 h-24 rounded-full bg-[#ff0033] flex items-center justify-center shadow-2xl shadow-red-500/40 cursor-grab active:cursor-grabbing"
+      <div className="relative z-10 w-full max-w-sm grid grid-cols-2 gap-12 px-8 mb-12">
+        {/* Decline */}
+        <div className="flex flex-col items-center gap-3">
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={onDecline}
+            className="w-20 h-20 rounded-full bg-[#ff3b30] flex items-center justify-center shadow-2xl shadow-red-500/30"
           >
-            <PhoneOff size={36} className="rotate-[135deg]" />
-          </motion.div>
+            <PhoneOff size={32} className="text-white" />
+          </motion.button>
+          <span className="text-xs font-bold text-white/50 uppercase tracking-widest">Refuser</span>
         </div>
 
-        {/* Accept Button */}
-        <div className="flex flex-col items-center gap-4">
-          <motion.div
-            drag="y"
-            dragConstraints={{ top: -300, bottom: 0 }}
-            dragElastic={0.1}
-            onDragEnd={(e, info) => handleDragEnd(e, info, 'accept')}
-            whileDrag={{ scale: 1.1 }}
-            className="w-24 h-24 rounded-full bg-[#10b981] flex items-center justify-center shadow-2xl shadow-emerald-500/40 cursor-grab active:cursor-grabbing"
+        {/* Accept */}
+        <div className="flex flex-col items-center gap-3">
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={onAccept}
+            className="w-20 h-20 rounded-full bg-[#34c759] flex items-center justify-center shadow-2xl shadow-emerald-500/30"
           >
-            <Phone size={36} />
-          </motion.div>
+            <Phone size={32} className="text-white fill-current" />
+          </motion.button>
+          <span className="text-xs font-bold text-white/50 uppercase tracking-widest">Répondre</span>
         </div>
-
-        {/* Message Button */}
-        <div className="flex flex-col items-center gap-4">
-          <button 
-            onClick={() => setShowQuickMessages(true)}
-            className="w-24 h-24 rounded-full bg-[#262d35] flex items-center justify-center shadow-2xl hover:bg-slate-700 transition-colors"
-          >
-            <MessageSquare size={36} />
-          </button>
-        </div>
+      </div>
+      
+      {/* Quick Message Option */}
+      <div className="relative z-10 w-full flex justify-center mb-10">
+        <button 
+          onClick={() => setShowQuickMessages(true)}
+          className="flex flex-col items-center gap-2 group"
+        >
+          <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+            <MessageSquare size={20} className="text-white/60" />
+          </div>
+          <span className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">Message</span>
+        </button>
       </div>
 
       {/* Quick Messages Modal */}
