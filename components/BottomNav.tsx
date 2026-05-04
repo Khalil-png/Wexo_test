@@ -7,10 +7,11 @@ interface BottomNavProps {
   activeTab: TabId;
   onTabChange: (id: TabId) => void;
   userEmail?: string | null;
+  username?: string | null;
 }
 
-const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange, userEmail }) => {
-  const isSpecialUser = userEmail === 'ky.chaine@gmail.com';
+const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange, userEmail, username }) => {
+  const isSpecialUser = userEmail === 'ky.chaine@gmail.com' || username === 'khalil';
 
   // The 5 tabs requested by the user
   const tabs = [

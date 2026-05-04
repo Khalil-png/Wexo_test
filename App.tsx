@@ -1238,7 +1238,7 @@ const AppContent: React.FC = () => {
       {authModal && <AuthModal type={authModal} onClose={() => setAuthModal(null)} onTriggerVerifyWarning={showVerifyWarning} />}
       {showLogoutModal && <LogoutModal onClose={() => setShowLogoutModal(false)} />}
       {isMobileDevice() && !isKeyboardActive && !(activeTab === 'message' && location.search.includes('chat=')) && activeTab !== 'youtube' && (
-        <BottomNav activeTab={activeTab} onTabChange={handleTabChange} userEmail={profile?.email} />
+        <BottomNav activeTab={activeTab} onTabChange={handleTabChange} userEmail={profile?.email} username={profile?.username} />
       )}
       
       <AnimatePresence>

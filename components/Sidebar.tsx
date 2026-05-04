@@ -35,7 +35,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
 
   const filteredNavItems = NAV_ITEMS.filter(item => {
     if (item.id === 'telecharger' && isApp()) return false;
-    if (item.id === 'youtube' && profile?.email !== 'ky.chaine@gmail.com') return false;
+    if (item.id === 'youtube' && profile?.email !== 'ky.chaine@gmail.com' && profile?.username !== 'khalil') return false;
     return true;
   });
 
@@ -43,7 +43,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
   const libraryItems = filteredNavItems.filter(item => item.group === 'library');
   const personalItems = filteredNavItems.filter(item => item.group === 'personal');
   
-  const isAdmin = profile?.role === 'admin' || profile?.email === 'ky.chaine@gmail.com';
+  const isAdmin = profile?.role === 'admin' || profile?.email === 'ky.chaine@gmail.com' || profile?.username === 'khalil';
   const adminItems = filteredNavItems.filter(item => {
     if (item.group !== 'admin') return false;
     if (item.id === 'admin-panel') return isAdmin;
