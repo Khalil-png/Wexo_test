@@ -8,6 +8,7 @@ export type TabId =
   | 'appel'
   | 'ma-chaine' 
   | 'posts' 
+  | 'youtube'
   | 'historique' 
   | 'playlists' 
   | 'likes' 

@@ -264,10 +264,16 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
     if (typeof window !== 'undefined' && 'Notification' in window) {
       const winNotif = (window as any).Notification;
       if (winNotif && winNotif.permission === 'granted') {
-        const isMessageTab = notif.type === 'message' && activeTab === 'message';
+        const searchParams = new URLSearchParams(window.location.search);
+        const currentChatId = window.location.pathname === '/message' ? searchParams.get('chat') : null;
+        
+        const isCurrentChat = notif.type === 'message' && notif.sender_id === currentChatId;
         const isTabVisible = document.visibilityState === 'visible';
 
-        if (isMessageTab && isTabVisible) return;
+        if (isCurrentChat && isTabVisible) {
+          console.log('Skipping browser notification as user is in chat');
+          return;
+        }
 
         let title = 'Wexo Social';
         let body = '';

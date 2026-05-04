@@ -35,6 +35,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
 
   const filteredNavItems = NAV_ITEMS.filter(item => {
     if (item.id === 'telecharger' && isApp()) return false;
+    if (item.id === 'youtube' && profile?.email !== 'ky.chaine@gmail.com') return false;
     return true;
   });
 

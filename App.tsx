@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
@@ -21,6 +21,7 @@ import AdminPanel from '@/components/AdminPanel';
 import IncomingCallOverlay from '@/components/IncomingCallOverlay';
 import ActiveCallOverlay from '@/components/ActiveCallOverlay';
 import CameraOverlay from '@/components/CameraOverlay';
+import YouTubeTab from '@/components/YouTubeTab';
 import PocketBaseStatus from '@/components/PocketBaseStatus';
 import { isMobileDevice } from '@/src/utils/device';
 import { TabId, Workspace as WorkspaceType } from '@/types';
@@ -88,6 +89,13 @@ const AppContent: React.FC = () => {
   const [showCamera, setShowCamera] = useState(false);
   const [isKeyboardActive, setIsKeyboardActive] = useState(false);
   const [isRinging, setIsRinging] = useState(false);
+
+  // Track active chat for notification filtering
+  const activeChatIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    activeChatIdRef.current = location.pathname === '/message' ? searchParams.get('chat') : null;
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (incomingCall) {
@@ -435,6 +443,12 @@ const AppContent: React.FC = () => {
           const isNew = (now - createdAt) < 30000; // Moins de 30 secondes pour être sûr de capturer les nouvelles
 
           if (isNew && notification.status === 'unread') {
+            // Filter out if currently in the specific chat for message notifications
+            if (notification.type === 'message' && notification.sender_id === activeChatIdRef.current) {
+              log('Firebase message notification ignored (active chat)');
+              return;
+            }
+
             log('Nouvelle notification reçue via Firebase:', notification.title);
             
             if (isMobileDevice()) {
@@ -723,24 +737,31 @@ const AppContent: React.FC = () => {
     const setupMessageSubscription = async () => {
       await pb.collection('messages').subscribe('*', async ({ action, record }) => {
         if (action === 'create' && record.receiver_id === pbUser.id) {
+          // Check if user is currently in this specific chat
+          if (activeChatIdRef.current === record.sender_id) {
+            log('Message received in active chat, skipping system notification');
+            return;
+          }
+
           // New message received
           try {
             const sender = await pb.collection('users').getOne(record.sender_id);
             
-            // Only show notification if we're not currently on the message tab for this sender
-            // (Simple version: always show if it's a mobile app and we're receiving a message)
+            log('Triggering notification for message from:', sender.username);
+            
             if (isMobileDevice()) {
               LocalNotifications.schedule({
                 notifications: [
                   {
-                    title: `Message de ${sender.username}`,
+                    title: `${sender.username}`,
                     body: record.text || (record.media ? "Média reçu" : "Nouveau message"),
                     id: Math.floor(Math.random() * 10000),
                     schedule: { at: new Date(Date.now() + 100) },
                     sound: 'default',
                     channelId: 'messages',
                     extra: {
-                      senderId: record.sender_id
+                      senderId: record.sender_id,
+                      type: 'message'
                     }
                   }
                 ]
@@ -1012,7 +1033,8 @@ const AppContent: React.FC = () => {
         'abonnement': 'abonnement',
         'parametres': 'parametres',
         'commentaire': 'commentaire',
-        'admin-panel': 'admin-panel'
+        'admin-panel': 'admin-panel',
+        'youtube': 'youtube'
       };
       if (tabMap[path]) {
         setActiveTab(tabMap[path]);
@@ -1041,7 +1063,8 @@ const AppContent: React.FC = () => {
       'parametres': '/parametres',
       'commentaire': '/commentaire',
       'admin-panel': '/admin-panel',
-      'telecharger': '/telecharger'
+      'telecharger': '/telecharger',
+      'youtube': '/youtube'
     };
     navigate(pathMap[id] || '/');
     setIsSidebarOpen(false);
@@ -1133,6 +1156,8 @@ const AppContent: React.FC = () => {
              </p>
           </div>
         );
+      case 'youtube':
+        return <YouTubeTab />;
       default:
         return (
           <div className="flex flex-col items-center justify-center py-20 px-6 text-slate-600 bg-slate-900/10 rounded-xl border-2 border-slate-800 border-dashed animate-in fade-in duration-700">
@@ -1160,7 +1185,7 @@ const AppContent: React.FC = () => {
         </div>
       </div>
 
-      {!(isMobileDevice() && activeTab === 'message' && location.search.includes('chat=')) && (
+      {!(isMobileDevice() && (activeTab === 'message' && location.search.includes('chat='))) && !(isMobileDevice() && activeTab === 'youtube') && (
         <Header 
           user={user} 
           profile={profile} 
@@ -1184,8 +1209,8 @@ const AppContent: React.FC = () => {
         />
         
         <main className={`flex-1 w-full lg:ml-72 transition-all duration-500 ${
-          (activeTab === 'message' || activeTab === 'shorts' || activeTab === 'appel' || activeTab === 'parametres')
-            ? `p-0 ${isMobileDevice() ? (activeTab === 'message' && location.search.includes('chat=') ? 'pt-0 h-screen h-[100dvh]' : 'pt-[140px] h-screen h-[100dvh]') : 'mt-20 h-[calc(100vh-80px)]'} overflow-hidden bg-[#0f0f0f] ${isMobileDevice() && !(activeTab === 'message' && location.search.includes('chat=')) ? 'pb-24' : ''}` 
+          (activeTab === 'message' || activeTab === 'shorts' || activeTab === 'appel' || activeTab === 'parametres' || activeTab === 'youtube')
+            ? `p-0 ${isMobileDevice() ? (activeTab === 'message' && location.search.includes('chat=') ? 'pt-0 h-screen h-[100dvh]' : (activeTab === 'youtube' ? 'pt-0 h-screen h-[100dvh]' : 'pt-[140px] h-screen h-[100dvh]')) : 'mt-20 h-[calc(100vh-80px)]'} overflow-hidden bg-[#0f0f0f] ${isMobileDevice() && !((activeTab === 'message' && location.search.includes('chat=')) || activeTab === 'youtube') ? 'pb-24' : ''}` 
             : `p-4 sm:p-10 md:p-14 ${isMobileDevice() ? 'pt-[145px]' : 'pt-[125px]'} lg:pt-[105px] ${isMobileDevice() ? 'pb-28' : 'pb-10'}`
         }`}>
           <div className={`${
@@ -1212,7 +1237,9 @@ const AppContent: React.FC = () => {
 
       {authModal && <AuthModal type={authModal} onClose={() => setAuthModal(null)} onTriggerVerifyWarning={showVerifyWarning} />}
       {showLogoutModal && <LogoutModal onClose={() => setShowLogoutModal(false)} />}
-      {isMobileDevice() && !isKeyboardActive && !(activeTab === 'message' && location.search.includes('chat=')) && <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />}
+      {isMobileDevice() && !isKeyboardActive && !(activeTab === 'message' && location.search.includes('chat=')) && activeTab !== 'youtube' && (
+        <BottomNav activeTab={activeTab} onTabChange={handleTabChange} userEmail={profile?.email} />
+      )}
       
       <AnimatePresence>
         {incomingCall && (

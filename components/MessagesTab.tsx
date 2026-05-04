@@ -969,21 +969,36 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       };
       await pb.collection('messages').create(pbData);
 
-      // CRÉATION DE LA NOTIFICATION POUR LE DESTINATAIRE (via Firebase)
+      // CRÉATION DE LA NOTIFICATION POUR LE DESTINATAIRE (via Firebase et PocketBase)
       if (selectedId && selectedId !== 'gemini') {
+        const notifData = {
+          user_id: selectedId,
+          sender_id: user.uid,
+          sender_avatar: profile?.avatar_url || '',
+          type: 'message',
+          title: profile?.display_name || user.displayName || 'Wexo',
+          content: text || (finalFileData ? 'Pièce jointe reçue' : 'Nouveau message'),
+          status: 'unread',
+          created_at: serverTimestamp()
+        };
+
         try {
-          await addDoc(collection(db, 'notifications'), {
-            user_id: selectedId,
-            sender_id: user.uid,
-            sender_avatar: profile?.avatar_url || '',
-            type: 'message',
-            title: profile?.display_name || user.displayName || 'Wexo',
-            content: text || (finalFileData ? 'Pièce jointe reçue' : 'Nouveau message'),
-            status: 'unread',
-            created_at: serverTimestamp()
-          });
+          // Firebase Notification
+          await addDoc(collection(db, 'notifications'), notifData);
         } catch (notifErr: any) {
           handleFirestoreError(notifErr, OperationType.WRITE, 'notifications');
+        }
+
+        try {
+          // PocketBase Notification (Backup for the Bell)
+          await pb.collection('notifications').create({
+            ...notifData,
+            status: 'pending',
+            read: false,
+            created_at: null // Let PB handle it or use JS date
+          });
+        } catch (pbNotifErr) {
+          console.warn("PocketBase side notification failed:", pbNotifErr);
         }
       }
 

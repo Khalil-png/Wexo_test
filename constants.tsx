@@ -34,6 +34,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'appel', label: 'Appel', icon: 'Phone', group: 'primary' },
   { id: 'ma-chaine', label: 'Ma chaîne', icon: 'Video', group: 'primary' },
   { id: 'posts', label: 'Posts', icon: 'Layout', group: 'primary' },
+  { id: 'youtube', label: 'YouTube', icon: 'Youtube', group: 'primary' },
   
   { id: 'historique', label: 'Historique', icon: 'History', group: 'library' },
   { id: 'playlists', label: 'Playlists', icon: 'ListMusic', group: 'library' },
@@ -113,6 +114,14 @@ export const getIcon = (iconName: string, active: boolean) => {
       </svg>
     );
     case 'Download': return <Download size={size} color={color} strokeWidth={strokeWidth} fill={fill} />;
+    case 'Youtube': return (
+      <img 
+        src="https://upload.wikimedia.org/wikipedia/commons/e/ef/Youtube_logo.png" 
+        alt="YouTube"
+        style={{ width: size * 1.5, height: 'auto', objectFit: 'contain' }}
+        referrerPolicy="no-referrer"
+      />
+    );
     default: return <Home size={size} color={color} strokeWidth={strokeWidth} fill={fill} />;
   }
 };

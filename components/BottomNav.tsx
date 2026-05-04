@@ -6,16 +6,19 @@ import { getIcon } from '../constants';
 interface BottomNavProps {
   activeTab: TabId;
   onTabChange: (id: TabId) => void;
+  userEmail?: string | null;
 }
 
-const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) => {
+const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange, userEmail }) => {
+  const isSpecialUser = userEmail === 'ky.chaine@gmail.com';
+
   // The 5 tabs requested by the user
   const tabs = [
     { id: 'accueil', label: 'Accueil', icon: 'Home' },
     { id: 'posts', label: 'Posts', icon: 'Layout' },
     { id: 'shorts', label: 'Shorts', icon: 'Flame' },
     { id: 'message', label: 'Messages', icon: 'MessageSquare' },
-    { id: 'appel', label: 'Appel', icon: 'Phone' }
+    { id: isSpecialUser ? 'youtube' : 'appel', label: isSpecialUser ? 'YouTube' : 'Appel', icon: isSpecialUser ? 'Youtube' : 'Phone' }
   ];
 
   // Logic to show 4 slots:

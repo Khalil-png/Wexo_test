@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Phone, PhoneOff, MessageSquare, ChevronUp, X, User } from 'lucide-react';
+import { Phone, PhoneOff, MessageSquare, ChevronUp, X, User, Lock as LockIcon, Video } from 'lucide-react';
 import { DEFAULT_AVATAR } from '../constants';
 
 interface IncomingCallOverlayProps {
@@ -120,7 +120,7 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
       
       {/* Top Banner (Optional, for "Chiffré de bout en bout" look) */}
       <div className="relative z-10 flex items-center gap-2 text-white/40 text-[10px] tracking-wider uppercase font-bold">
-        <Lock size={10} />
+        <LockIcon size={10} />
         <span>Chiffré de bout en bout</span>
       </div>
 
@@ -200,7 +200,6 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
           </div>
         </div>
       </div>
-v>
 
       {/* Quick Messages Modal */}
       <AnimatePresence>
