@@ -408,6 +408,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       } as ExtendedMessage));
 
       // 2. Charger les messages d'info/système (message_info)
+      // Note: Le champ 'type' est maintenant en Texte brut sur PocketBase
       let infoMessages: ExtendedMessage[] = [];
       try {
         const infoFilter = chatIdToUse ? `chat="${chatIdToUse}"` : `(chat="${selectedId}" && user="${user.uid}") || (chat="${user.uid}" && user="${selectedId}")`;
@@ -416,11 +417,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           sort: 'created',
           expand: 'user'
         });
-        
+
         infoMessages = infoList.items.map(i => ({
           id: i.id,
           is_info: true,
-          info_type: i.type,
+          info_type: String(i.type), // Conversion explicite en string pour ton champ Texte
           sender_id: i.user,
           sender_name: i.expand?.user?.name || i.expand?.user?.username || 'Utilisateur',
           created_at: i.created,
@@ -428,7 +429,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           timestamp: new Date(i.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
         } as ExtendedMessage));
       } catch (e) {
-        console.warn("Collection message_info non trouvée ou vide");
+        console.warn("Collection message_info inaccessible ou vide:", e);
       }
 
       const allMessages = [...formatted, ...infoMessages].sort((a, b) => 
@@ -718,6 +719,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     if (!user || !selectedId || selectedId === 'gemini' || !activeChatId) return;
 
     try {
+      console.log(`Envoi info [${type}] pour le chat [${activeChatId}]`);
       await pb.collection('message_info').create({
         chat: activeChatId,
         user: user.uid,

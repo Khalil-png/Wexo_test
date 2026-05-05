@@ -3,7 +3,7 @@ export interface MessageInfo {
   id: string;
   chat: string;
   user: string;
-  type: 'screenshot' | 'call_missed' | 'encryption_verified' | 'chat_cleared' | 'member_added' | 'member_removed';
+  type: string;
   created: string;
   expand?: {
     user?: UserProfile;
