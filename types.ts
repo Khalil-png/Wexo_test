@@ -1,4 +1,27 @@
 
+export interface MessageInfo {
+  id: string;
+  chat: string;
+  user: string;
+  type: 'screenshot' | 'call_missed' | 'encryption_verified' | 'chat_cleared' | 'member_added' | 'member_removed';
+  created: string;
+  expand?: {
+    user?: UserProfile;
+  };
+}
+
+export interface Chat {
+  id: string;
+  name?: string;
+  type: 'direct' | 'group';
+  members: string[];
+  created: string;
+  updated: string;
+  expand?: {
+    members?: UserProfile[];
+  };
+}
+
 export type TabId = 
   | 'accueil' 
   | 'video' 
@@ -137,10 +160,12 @@ export interface Video {
   views: number;
   likes: number;
   is_short?: boolean;
-  source?: 'wexo' | 'youtube';
+  source?: 'wexo' | 'youtube' | 'upload';
   youtube_id?: string;
   youtube_channel?: string;
   youtube_channel_avatar?: string;
+  video_file?: any;
+  avatar_file?: any;
   categories?: string[];
   type?: string;
   name_of_type?: string | null;

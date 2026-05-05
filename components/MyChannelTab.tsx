@@ -67,6 +67,8 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showYouTubeModal, setShowYouTubeModal] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [ytChannelAvatar, setYtChannelAvatar] = useState<File | null>(null);
+  const [ytVideoFile, setYtVideoFile] = useState<File | null>(null);
   const [isYoutubeLoading, setIsYoutubeLoading] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
   const [showPublishMenu, setShowPublishMenu] = useState(false);
@@ -366,29 +368,46 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
       // Utilisation d'un service d'avatar constant basé sur le nom pour plus de cohérence
       const channelAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=f43f5e&color=fff&bold=true&size=128`;
 
-      console.log('[YouTubeImport] Création de la vidéo dans la base Wexo...');
+      // 3. Gérer les fichiers (Vidéo et Avatar)
+      let finalVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      let finalAvatarUrl = channelAvatar;
 
-      // 3. Créer le record dans PocketBase
+      if (ytVideoFile) {
+        setAnalysisStep('Téléchargement de la vidéo (YTDown)...');
+        finalVideoUrl = await uploadToPocketBase(ytVideoFile);
+      }
+
+      if (ytChannelAvatar) {
+        setAnalysisStep('Mise à jour du logo de la chaîne...');
+        finalAvatarUrl = await uploadToPocketBase(ytChannelAvatar);
+      }
+
+      console.log('[YouTubeImport] Création du Short...');
+
+      // 4. Créer le record dans PocketBase
       await pb.collection('shorts').create({
         title: metadata.title || 'YouTube Short',
-        description: `Importé depuis YouTube par ${metadata.author_name}`,
-        url: `https://www.youtube.com/watch?v=${videoId}`,
+        description: `Importé depuis YouTube`,
+        url: finalVideoUrl,
         thumbnail_url: metadata.thumbnail_url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
         creator_id: profile?.id || user.uid,
-        source: 'youtube',
+        source: ytVideoFile ? 'upload' : 'youtube',
         youtube_id: videoId,
-        youtube_channel: authorName,
-        youtube_channel_avatar: channelAvatar,
+        youtube_channel: metadata.author_name || authorName,
+        youtube_channel_avatar: finalAvatarUrl,
         views: 0,
         likes: 0,
         analysis_status: 'completed',
-        is_appropriate: true
+        is_appropriate: true,
+        video_file: ytVideoFile || null,
+        avatar_file: ytChannelAvatar || null
       });
 
-      console.log('[YouTubeImport] ✅ Import terminé avec succès pour :', metadata.title);
-      setSuccess(`Super ! "${metadata.title}" a été ajouté à ton feed.`);
+      setSuccess(`Short publié avec succès !`);
       setShowYouTubeModal(false);
       setYoutubeUrl('');
+      setYtChannelAvatar(null);
+      setYtVideoFile(null);
       fetchMyVideos();
       setTimeout(() => setSuccess(null), 5000);
     } catch (err: any) {
@@ -999,6 +1018,12 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                         </span>
                       )}
                     </div>
+                    {video.youtube_channel && (
+                      <div className="flex items-center gap-2 mb-2">
+                        {video.youtube_channel_avatar && <img src={video.youtube_channel_avatar} className="w-5 h-5 rounded-full border border-white/10" alt="" />}
+                        <span className="text-red-500 text-[10px] font-black uppercase tracking-widest">{video.youtube_channel}</span>
+                      </div>
+                    )}
                     <p className="text-slate-500 text-sm truncate max-w-md">{video.description || 'Aucune description'}</p>
                   </div>
 
@@ -1074,6 +1099,12 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
                         </span>
                       )}
                     </div>
+                    {video.youtube_channel && (
+                      <div className="flex items-center gap-2 mb-2">
+                        {video.youtube_channel_avatar && <img src={video.youtube_channel_avatar} className="w-5 h-5 rounded-full border border-white/10" alt="" />}
+                        <span className="text-red-500 text-[10px] font-black uppercase tracking-widest">{video.youtube_channel}</span>
+                      </div>
+                    )}
                     <p className="text-slate-500 text-sm truncate max-w-md">{video.description || 'Aucune description'}</p>
                   </div>
 
@@ -1185,21 +1216,65 @@ const MyChannelTab: React.FC<MyChannelTabProps> = ({ user, profile }) => {
             </div>
             
             <form onSubmit={handleYouTubePublish} className="p-8 space-y-6">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Lien du Short YouTube</label>
-                <div className="relative">
-                  <input 
-                    type="url" 
-                    placeholder="https://youtube.com/shorts/..."
-                    value={youtubeUrl}
-                    onChange={(e) => setYoutubeUrl(e.target.value)}
-                    required
-                    disabled={isYoutubeLoading}
-                    className="w-full bg-white/5 border border-white/10 focus:border-red-500/50 rounded-2xl p-4 text-white font-medium outline-none transition-all placeholder:text-slate-600"
-                  />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Lien du Short YouTube</label>
+                  <div className="relative">
+                    <input 
+                      type="url" 
+                      placeholder="https://youtube.com/shorts/..."
+                      value={youtubeUrl}
+                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      required
+                      disabled={isYoutubeLoading}
+                      className="w-full bg-white/5 border border-white/10 focus:border-red-500/50 rounded-2xl p-4 text-white font-medium outline-none transition-all placeholder:text-slate-600"
+                    />
+                  </div>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Vidéo (YTDown)</label>
+                    <div className="relative">
+                      <input 
+                        type="file" 
+                        accept="video/*"
+                        onChange={(e) => setYtVideoFile(e.target.files?.[0] || null)}
+                        className="hidden"
+                        id="yt-video-upload"
+                      />
+                      <label 
+                        htmlFor="yt-video-upload"
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-xs text-slate-500 cursor-pointer hover:border-white/50 transition-all flex items-center gap-2 overflow-hidden"
+                      >
+                        <Zap size={14} className="flex-shrink-0 text-amber-500" />
+                        <span className="truncate">{ytVideoFile ? ytVideoFile.name : "Sélectionner la vidéo"}</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Logo Chaîne</label>
+                    <div className="relative">
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={(e) => setYtChannelAvatar(e.target.files?.[0] || null)}
+                        className="hidden"
+                        id="yt-avatar-upload"
+                      />
+                      <label 
+                        htmlFor="yt-avatar-upload"
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-xs text-slate-500 cursor-pointer hover:border-white/50 transition-all flex items-center gap-2 overflow-hidden"
+                      >
+                        <UserIcon size={14} className="flex-shrink-0" />
+                        <span className="truncate">{ytChannelAvatar ? ytChannelAvatar.name : "Sélectionner le logo"}</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
                 <p className="text-[10px] text-slate-600 px-1 italic">
-                  L'application va automatiquement capter la vidéo, la chaîne et le titre.
+                  L'application récupère le nom de la chaîne et le titre via le lien. Ajoute tes fichiers téléchargés pour une meilleure expérience.
                 </p>
               </div>
 

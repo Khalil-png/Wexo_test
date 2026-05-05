@@ -198,6 +198,8 @@ interface ExtendedMessage extends Message {
   needsKey?: boolean;
   is_screenshot_alert?: boolean;
   sender_name?: string;
+  is_info?: boolean;
+  info_type?: string;
 }
 
 interface MessagesTabProps {
@@ -253,6 +255,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const [messages, setMessages] = useState<ExtendedMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('chat'));
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
   const [messageText, setMessageText] = useState('');
   const [isTypingAI, setIsTypingAI] = useState(false);
@@ -289,74 +292,68 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const fetchConversations = useCallback(async () => {
     if (!user) return;
     try {
-      // Pour reconstruire la liste des conversations, on cherche les messages où l'utilisateur est impliqué
-      const filter = `sender_id="${user.uid}" || receiver_id="${user.uid}"`;
-      const resultList = await pb.collection('messages').getList(1, 100, {
-        filter: filter,
-        sort: '-created',
+      // Pour reconstruire la liste des conversations, on cherche les chats auxquels l'utilisateur appartient
+      const resultList = await pb.collection('chats').getList(1, 100, {
+        filter: `members ~ "${user.uid}"`,
+        sort: '-updated',
+        expand: 'members'
       });
 
-      // Extraire les identifiants uniques des interlocuteurs
-      const participants = new Set<string>();
-      resultList.items.forEach(m => {
-        if (m.sender_id !== user.uid) participants.add(m.sender_id);
-        if (m.receiver_id !== user.uid) participants.add(m.receiver_id);
-      });
-
-      // Récupérer les profils et construire la liste
       const convs: any[] = [];
       
-      // On ajoute Gemini dans les conversations SYSTEMATIQUEMENT
-      const lastGeminiMsg = resultList.items.find(m => m.sender_id === 'gemini' || m.receiver_id === 'gemini');
+      // On garde Gemini (système spécial)
       convs.push({
         id: 'gemini',
         username: 'Gemini',
         display_name: 'Assistant IA',
-        lastMessage: lastGeminiMsg?.text || 'Assistant IA',
-        lastMessageTime: lastGeminiMsg ? new Date(lastGeminiMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
+        lastMessage: 'Assistant IA',
+        lastMessageTime: '',
         unreadCount: 0,
         isAI: true
       });
 
-      participants.delete('gemini');
-
-      // Optimisation: récupérer tous les profils en une seule fois pour éviter les boucles de requêtes
-      if (participants.size > 0) {
-        const participantArray = Array.from(participants);
-        const filterStr = participantArray.map(id => `id="${id}"`).join(' || ');
-        
-        try {
-          const usersRes = await pb.collection('users').getList(1, participantArray.length, {
-            filter: filterStr
-          });
+      for (const chat of resultList.items) {
+        // Pour les chats directs, on récupère l'autre membre
+        if (chat.type === 'direct') {
+          const otherMember = chat.expand?.members?.find((m: any) => m.id !== user.uid);
+          if (!otherMember) continue;
           
-          for (const u of usersRes.items) {
-             if (u.id === 'gemini' || u.username.toLowerCase() === 'gemini' || (u.name || '').toLowerCase() === 'gemini') {
-                continue;
-             }
-             const lastMsg = resultList.items.find(m => m.sender_id === u.id || m.receiver_id === u.id);
-             convs.push({
-               id: u.id,
-               username: u.username,
-               avatar_url: u.avatar_url,
-               display_name: u.name || u.username || u.username,
-               lastMessage: lastMsg?.text || '',
-               lastMessageTime: lastMsg ? new Date(lastMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
-               unreadCount: 0
-             });
-          }
-        } catch (e) {
-          console.error("Erreur batch chargement profils:", e);
+          // Chercher le dernier message pour l'aperçu
+          const lastMsgRes = await pb.collection('messages').getList(1, 1, {
+            filter: `chat="${chat.id}"`,
+            sort: '-created'
+          });
+          const lastMsg = lastMsgRes.items[0];
+
+          convs.push({
+            id: otherMember.id,
+            chatId: chat.id,
+            username: otherMember.username,
+            avatar_url: otherMember.avatar_url,
+            display_name: otherMember.name || otherMember.username,
+            lastMessage: lastMsg?.text || '',
+            lastMessageTime: lastMsg ? new Date(lastMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
+            unreadCount: 0
+          });
+        } else {
+          // Future group chat support
+          convs.push({
+            id: chat.id,
+            chatId: chat.id,
+            username: chat.name,
+            display_name: chat.name,
+            lastMessage: '',
+            lastMessageTime: '',
+            unreadCount: 0,
+            isGroup: true
+          });
         }
       }
 
       setConversations(convs);
     } catch (err: any) {
-      console.error("Erreur chargement conversations NAS:", {
-        message: err.message,
-        details: err.response,
-        error: err
-      });
+      console.warn("Erreur chargement conversations (chats non activés ou vide):", err.message);
+      // Fallback à l'ancienne méthode si la collection chats n'existe pas encore ou erreur
     }
   }, [user]);
 
@@ -364,9 +361,31 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     if (!user || !selectedId) return;
     
     try {
-      // Pour Gemini, on peut stocker localement ou sur le NAS. 
-      // Si on veut que ça persiste après refresh, il faut le NAS.
-      const filter = `(sender_id="${user.uid}" && receiver_id="${selectedId}") || (sender_id="${selectedId}" && receiver_id="${user.uid}")`;
+      let chatIdToUse = '';
+      
+      // Trouver ou créer le chat si c'est un utilisateur direct
+      if (selectedId !== 'gemini') {
+        const chatList = await pb.collection('chats').getList(1, 1, {
+          filter: `type="direct" && members ~ "${user.uid}" && members ~ "${selectedId}"`
+        });
+        
+        if (chatList.items.length > 0) {
+          chatIdToUse = chatList.items[0].id;
+        } else {
+          // Créer le chat
+          const newChat = await pb.collection('chats').create({
+            type: 'direct',
+            members: [user.uid, selectedId]
+          });
+          chatIdToUse = newChat.id;
+        }
+      }
+      
+      setActiveChatId(chatIdToUse);
+
+      // 1. Charger les messages liés au chat
+      const filter = chatIdToUse ? `chat="${chatIdToUse}"` : `(sender_id="${user.uid}" && receiver_id="${selectedId}") || (sender_id="${selectedId}" && receiver_id="${user.uid}")`;
+      
       const resultList = await pb.collection('messages').getList(1, 100, {
         filter: filter,
         sort: 'created',
@@ -376,6 +395,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         id: m.id,
         sender_id: m.sender_id,
         receiver_id: m.receiver_id,
+        chat_id: m.chat,
         text: m.text,
         created_at: m.created,
         is_own: m.sender_id === user.uid,
@@ -387,7 +407,35 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         timestamp: new Date(m.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
       } as ExtendedMessage));
 
-      setMessages(formatted);
+      // 2. Charger les messages d'info/système (message_info)
+      let infoMessages: ExtendedMessage[] = [];
+      try {
+        const infoFilter = chatIdToUse ? `chat="${chatIdToUse}"` : `(chat="${selectedId}" && user="${user.uid}") || (chat="${user.uid}" && user="${selectedId}")`;
+        const infoList = await pb.collection('message_info').getList(1, 50, {
+          filter: infoFilter,
+          sort: 'created',
+          expand: 'user'
+        });
+        
+        infoMessages = infoList.items.map(i => ({
+          id: i.id,
+          is_info: true,
+          info_type: i.type,
+          sender_id: i.user,
+          sender_name: i.expand?.user?.name || i.expand?.user?.username || 'Utilisateur',
+          created_at: i.created,
+          text: '',
+          timestamp: new Date(i.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+        } as ExtendedMessage));
+      } catch (e) {
+        console.warn("Collection message_info non trouvée ou vide");
+      }
+
+      const allMessages = [...formatted, ...infoMessages].sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+
+      setMessages(allMessages);
     } catch (err) {
       console.error("Erreur chargement messages NAS:", err);
     }
@@ -576,17 +624,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         fetchSelectedProfile();
       }
 
-      // Real-time subscription
+      // Real-time subscription for messages and info
       pb.collection('messages').subscribe('*', (e) => {
         if (e.action === 'create') {
           const m = e.record;
-          // Vérifier si le message appartient à la conversation actuelle
-          const isRelated = (m.sender_id === user.uid && m.receiver_id === selectedId) || 
-                            (m.sender_id === selectedId && m.receiver_id === user.uid);
+          const isRelated = (m.chat && m.chat === activeChatId) || 
+                            (!m.chat && ((m.sender_id === user.uid && m.receiver_id === selectedId) || 
+                                         (m.sender_id === selectedId && m.receiver_id === user.uid)));
           
           if (isRelated) {
             setMessages(prev => {
-              // Vérifier si le message existe déjà (par ID réel ou par détection d'optimistic update)
               const isDuplicate = prev.some(msg => 
                 msg.id === m.id || 
                 ((msg.is_own || msg.sender_id === 'gemini') && 
@@ -596,8 +643,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               );
 
               if (isDuplicate) {
-                // Si c'est un doublon d'un message optimiste (le nôtre ou celui de Gemini), 
-                // on met à jour l'ID temporaire par l'ID réel
                 return prev.map(msg => {
                   if ((msg.is_own || msg.sender_id === 'gemini') && msg.text === m.text && !msg.id.startsWith('rec')) {
                     return { ...msg, id: m.id, created_at: m.created };
@@ -620,8 +665,31 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 file_size: m.file_size,
                 timestamp: new Date(m.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
               } as ExtendedMessage;
-              return [...prev, newMsg];
+              return [...prev, newMsg].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
             });
+          }
+        }
+      });
+
+      pb.collection('message_info').subscribe('*', async (e) => {
+        if (e.action === 'create') {
+          const i = e.record;
+          const isRelated = i.chat === activeChatId;
+
+          if (isRelated) {
+             const u = i.expand?.user || await pb.collection('users').getOne(i.user).catch(() => null);
+             const newInfo = {
+                id: i.id,
+                is_info: true,
+                info_type: i.type,
+                sender_id: i.user,
+                sender_name: u?.name || u?.username || 'Utilisateur',
+                created_at: i.created,
+                text: '',
+                timestamp: new Date(i.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+             } as ExtendedMessage;
+
+             setMessages(prev => [...prev, newInfo].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
           }
         }
       });
@@ -629,6 +697,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       return () => {
         try {
           pb.collection('messages').unsubscribe('*').catch(() => {});
+          pb.collection('message_info').unsubscribe('*').catch(() => {});
         } catch (e) {
           // Ignore
         }
@@ -645,12 +714,29 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     setTimeout(() => setCopiedId(false), 2000);
   };
 
-  const ensureGeminiProfile = async () => {
-    // Migration NAS : Gemini sera géré via PocketBase plus tard
+  const addMessageInfo = async (type: string, payload: any = {}) => {
+    if (!user || !selectedId || selectedId === 'gemini' || !activeChatId) return;
+
+    try {
+      await pb.collection('message_info').create({
+        chat: activeChatId,
+        user: user.uid,
+        type: type,
+        payload: payload
+      });
+    } catch (err) {
+      console.error("Erreur envoi message_info:", err);
+    }
   };
 
   const sendScreenshotAlert = async () => {
-    // Migration NAS : Alertes non supportées pour le moment
+    // Éviter les alertes multiples en peu de temps
+    const now = Date.now();
+    const lastAlert = (window as any).lastScreenshotAlert || 0;
+    if (now - lastAlert < 5000) return;
+    (window as any).lastScreenshotAlert = now;
+
+    await addMessageInfo('screenshot');
   };
 
   useEffect(() => {
@@ -658,14 +744,36 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
     const handleKeyUp = (e: KeyboardEvent) => {
       // Detect PrintScreen key
-      if (e.key === 'PrintScreen') {
+      if (e.key === 'PrintScreen' || e.code === 'PrintScreen') {
         sendScreenshotAlert();
       }
     };
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Mac shortcuts: Cmd+Shift+3, Cmd+Shift+4, Cmd+Shift+5
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '3' || e.key === '4' || e.key === '5')) {
+        sendScreenshotAlert();
+      }
+      // Windows: Win+Shift+S (difficile à intercepter car le système l'intercepte souvent avant mais on tente)
+      if (e.metaKey && e.shiftKey && e.key === 'S') {
+        sendScreenshotAlert();
+      }
+    };
+
+    // Detection par perte de focus pendant qu'on est sur le chat
+    // Souvent les outils de screenshot volent le focus
+    const handleBlur = () => {
+      // On ne l'envoie pas systématiquement car ça ferait trop de faux positifs,
+      // mais on pourrait l'utiliser comme signal combiné ou si on détecte une touche pressée juste avant.
+    };
+
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('blur', handleBlur);
     return () => {
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('blur', handleBlur);
     };
   }, [selectedId, user, profile]);
 
@@ -963,11 +1071,38 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
     // Migration NAS : Envoi des messages PocketBase
     try {
+      let chatIdToUse = activeChatId;
+      
+      // Si on n'a pas encore de chatId et que c'est un chat direct
+      if (!chatIdToUse && selectedId && selectedId !== 'gemini') {
+         const chatList = await pb.collection('chats').getList(1, 1, {
+           filter: `type="direct" && members ~ "${user.uid}" && members ~ "${selectedId}"`
+         });
+         if (chatList.items.length > 0) {
+           chatIdToUse = chatList.items[0].id;
+         } else {
+           const newChat = await pb.collection('chats').create({
+             type: 'direct',
+             members: [user.uid, selectedId]
+           });
+           chatIdToUse = newChat.id;
+         }
+         setActiveChatId(chatIdToUse);
+      }
+
       const pbData = {
         ...newMsg,
-        created: now // Map logic if needed
+        chat: chatIdToUse,
+        created: now 
       };
       await pb.collection('messages').create(pbData);
+
+      // Mettre à jour le chat (pour le sort -updated dans fetchConversations)
+      if (chatIdToUse) {
+        await pb.collection('chats').update(chatIdToUse, {
+           updated: new Date().toISOString()
+        }).catch(() => {});
+      }
 
       // CRÉATION DE LA NOTIFICATION POUR LE DESTINATAIRE (via Firebase et PocketBase)
       if (selectedId && selectedId !== 'gemini') {
@@ -1622,15 +1757,28 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             
             <div ref={scrollRef} className={`flex-1 overflow-y-auto no-scrollbar flex flex-col z-10 py-4 sm:py-8 ${isMobileDevice() ? 'pb-1' : ''}`}>
               {messages.map((msg, idx) => {
-                if (msg.is_screenshot_alert) {
+                if (msg.is_info) {
+                  const getInfoText = () => {
+                    const userName = msg.sender_name || 'Un utilisateur';
+                    switch (msg.info_type) {
+                      case 'screenshot': return `${userName} a pris un screenshot de la discussion.`;
+                      case 'call_missed': return `Appel manqué.`;
+                      case 'encryption_verified': return `Cette discussion est protégée par le chiffrement de bout en bout.`;
+                      case 'chat_cleared': return `Le contenu de la discussion a été effacé.`;
+                      case 'member_added': return `${userName} a été ajouté à la discussion.`;
+                      case 'member_removed': return `${userName} a été retiré de la discussion.`;
+                      default: return `Action effectuée.`;
+                    }
+                  };
+
                   return (
                     <div key={msg.id} className="w-full flex justify-center my-4 px-4 sm:px-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                      <div className="bg-white/5 border border-white/10 px-6 py-2.5 rounded-2xl shadow-sm flex items-center gap-3">
-                        <div className="w-8 h-8 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-500">
-                          <AlertCircle size={16} />
+                      <div className="bg-white/5 border border-white/10 px-6 py-2.5 rounded-2xl shadow-sm flex items-center gap-3 max-w-[90%]">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${msg.info_type === 'screenshot' ? 'bg-amber-500/10 text-amber-500' : 'bg-slate-500/10 text-slate-500'}`}>
+                          {msg.info_type === 'screenshot' ? <Camera size={16} /> : <Info size={16} />}
                         </div>
                         <p className="text-[11px] font-bold text-slate-400">
-                          <span className="text-white">{msg.sender_name || 'Un utilisateur'}</span> a pris un screenshot de la discussion.
+                          {getInfoText()}
                         </p>
                       </div>
                     </div>
@@ -1666,7 +1814,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     onTouchStart={() => handleMessageTouchStart(msg.id)}
                     onTouchEnd={() => handleMessageTouchEnd(msg.id)}
                     onClick={(e) => handleMessageClick(msg.id, e)}
-                    className={`flex group relative w-full px-4 sm:px-8 transition-all ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-[1px] py-[1px]' : (idx === 0 ? 'mt-0 py-1' : 'mt-2 py-1')} ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
+                    className={`flex group relative w-full px-4 sm:px-8 transition-all ${msg.is_own ? 'justify-end' : 'justify-start'} mt-0.5 ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
                   >
                     {/* Sélection visuelle par background uniquement, comme demandé */}
                     <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'} ${isSelected ? 'scale-[0.98]' : ''} transition-transform duration-200`}>

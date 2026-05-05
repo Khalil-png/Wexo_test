@@ -245,7 +245,8 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
     // Migration NAS
   };
 
-  const isYoutube = short.source === 'youtube';
+  const isYoutube = short.source === 'youtube' || (short.source === 'upload' && short.youtube_id);
+  const useIframe = short.source === 'youtube';
 
   useEffect(() => {
     if (isActive && videoRef.current && !isYoutube) {
@@ -591,7 +592,7 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
         
         {/* Video Container (Wrapper for everything that must stay in the video area) */}
         <div className={`relative h-full bg-black overflow-hidden flex items-center justify-center group ${isMobileDevice() ? 'w-full rounded-0' : 'max-h-[calc(100vh-120px)] aspect-[9/16] rounded-2xl shadow-2xl border border-white/10'}`}>
-          {isYoutube ? (
+          {useIframe ? (
             <div className="absolute inset-0 w-full h-full bg-black flex items-center justify-center">
                <iframe 
                 ref={iframeRef}
@@ -708,9 +709,14 @@ const ShortItem: React.FC<ShortItemProps> = ({ short, isActive, user, profile })
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     {isYoutube ? (
-                      <div className="bg-red-600 text-[12px] font-black px-3 py-1 rounded-md text-white shadow-lg border border-red-500/50 flex items-center gap-2 tracking-widest">
-                        <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                        YOUTUBE
+                      <div className="flex flex-col gap-1">
+                        <div className="bg-red-600 w-fit text-[10px] font-black px-2 py-0.5 rounded-md text-white shadow-lg border border-red-500/50 flex items-center gap-1.5 tracking-widest">
+                          <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                          YOUTUBE
+                        </div>
+                        <span className="text-sm font-bold text-white tracking-tight drop-shadow-md">
+                          {short.youtube_channel || 'YouTube Creator'}
+                        </span>
                       </div>
                     ) : (
                       <Username 
