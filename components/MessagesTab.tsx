@@ -193,6 +193,7 @@ const CodeBlock: React.FC<{ code: string; lang?: string }> = ({ code, lang = 'ja
 interface ExtendedMessage extends Message {
   isAI?: boolean;
   isError?: boolean;
+  errorDetails?: string;
   isGeneratingImage?: boolean;
   isGeneratingVideo?: boolean;
   needsKey?: boolean;
@@ -476,6 +477,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       console.error("Erreur profil destinataire:", e);
     }
   }, [selectedId]);
+
+  const isOwnerAccount = user?.email === 'ky.chaine@gmail.com' || user?.username === 'khalil' || user?.displayName === 'khalil';
 
   useEffect(() => {
     // API VisualViewport : La plus fiable sur APK Android pour détecter le clavier
@@ -1209,7 +1212,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         
         const aiResult = await getSmartResponse(history);
         const responseText = aiResult.text;
-        const isQuotaError = responseText.includes("quota dépassé");
+        const isQuotaError = responseText.includes("quota dépassé") || (aiResult.isError && aiResult.errorDetails?.includes("QUOTA"));
         
         const aiSnowflakeId = generateSnowflake();
         const aiMsg: any = { 
@@ -1217,6 +1220,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           sender_id: 'gemini', 
           receiver_id: user.uid, 
           text: responseText, 
+          isError: aiResult.isError,
+          errorDetails: aiResult.errorDetails,
           created_at: new Date().toISOString() 
         };
 
@@ -1802,8 +1807,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                                 msg.isGeneratingVideo || 
                                 /\.(mp4|mov|avi|wmv|flv|mkv|webm)$/i.test(msg.file_name || '');
                 const isDeleted = msg.is_deleted_for_everyone;
+                const isAI = msg.sender_id === 'gemini';
                 const hasPrevSameSender = idx > 0 && messages[idx - 1].sender_id === msg.sender_id;
                 const hasNextSameSender = idx < messages.length - 1 && messages[idx + 1].sender_id === msg.sender_id;
+                const prevWasAI = idx > 0 && messages[idx - 1].sender_id === 'gemini';
                 
                 const emojiOnly = msg.text && isOnlyEmojis(msg.text);
                 const emojiCount = emojiOnly ? countEmojis(msg.text) : 0;
@@ -1817,6 +1824,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 }
                 
                 const isSelected = selectedMessageIds.has(msg.id);
+
+                // Spacing logic: more space when switching between AI and user
+                let extraMargin = 'mt-1.5';
+                if (!hasPrevSameSender) {
+                  if (idx > 0 && (isAI !== prevWasAI)) {
+                    extraMargin = 'mt-8'; // More space between Gemini and others
+                  } else {
+                    extraMargin = 'mt-4'; // Standard space between groups
+                  }
+                } else {
+                  extraMargin = 'mt-1';
+                }
                 
                 return (
                   <div 
@@ -1824,7 +1843,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     onTouchStart={() => handleMessageTouchStart(msg.id)}
                     onTouchEnd={() => handleMessageTouchEnd(msg.id)}
                     onClick={(e) => handleMessageClick(msg.id, e)}
-                    className={`flex group relative w-full px-4 sm:px-8 transition-all ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0.5' : 'mt-1.5'} ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
+                    className={`flex group relative w-full px-4 sm:px-8 transition-all ${msg.is_own ? 'justify-end' : 'justify-start'} ${extraMargin} ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
                   >
                     {/* Sélection visuelle par background uniquement, comme demandé */}
                     <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'} ${isSelected ? 'scale-[0.98]' : ''} transition-transform duration-200`}>
@@ -2004,7 +2023,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                                 <div className={`${isImage ? 'px-4 pt-1 pb-2.5' : 'px-4 py-2.5'}`}>
                                   <div className="flex items-end gap-3">
                                     <div className="flex flex-col gap-1 min-w-0">
-                                      {(msg.isError || (msg.text && msg.text.includes("quota dépassé"))) && <div className="flex items-center gap-1.5 text-red-500 mb-1"><AlertCircle size={14} /><span className="text-[10px] font-bold uppercase">Erreur de quota</span></div>}
+                                      {isOwnerAccount && (msg.isError || (msg.text && msg.text.includes("quota dépassé"))) && (
+                                        <div className="flex flex-col gap-1 mb-2">
+                                          <div className="flex items-center gap-1.5 text-red-500">
+                                            <AlertCircle size={14} />
+                                            <span className="text-[10px] font-bold uppercase">Erreur de quota / technique</span>
+                                          </div>
+                                          {msg.errorDetails && (
+                                            <div className="text-[9px] bg-red-500/10 p-1.5 rounded-lg border border-red-500/20 font-mono text-red-400 break-all">
+                                              {msg.errorDetails}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
                                       <div className={`${largeEmojis ? 'text-4xl' : 'text-sm'} font-medium leading-relaxed break-words`}>
                                         {renderMessageText(msg.text || '', largeEmojis)}
                                       </div>
@@ -2086,7 +2117,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             <div className={`flex flex-col bg-[#0f0f0f] flex-shrink-0 z-[110] relative`}>
               {/* Barre de Saisie */}
               <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1' : 'py-4'} bg-[#0f0f0f] border-t border-white/10`}>
-                {localUploadError && (
+                {isOwnerAccount && localUploadError && (
                   <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between text-red-500 text-[10px] font-bold">
                     <div className="flex items-center gap-2">
                       <AlertCircle size={14} />

@@ -4,13 +4,13 @@ import { GoogleGenAI, Type } from "@google/genai";
 const getApiKey = () => {
   // Use process.env.GEMINI_API_KEY as per instructions
   // @ts-ignore
-  return (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || 
+  const key = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || 
          // @ts-ignore
          import.meta.env.VITE_GEMINI_KEY || 
          // @ts-ignore
-         import.meta.env.VITE_GEMINI_API_KEY || 
-         // Fallback to the hardcoded test key if absolutely necessary
-         "AIzaSyBFkhqKIHMTDVnSJ_0IlCK4KyS7LQms67s";
+         import.meta.env.VITE_GEMINI_API_KEY;
+  
+  return key || "";
 };
 
 const getAI = () => {
@@ -41,9 +41,11 @@ export const openKeySelector = async () => {
 export const generatePostIdea = async (topic: string) => {
   try {
     const ai = getAI();
-    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const response = await model.generateContent(`Génère une idée de post engageante pour un réseau social sur le thème suivant : ${topic}. Réponds en français.`);
-    return response.response.text();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-preview',
+      contents: `Génère une idée de post engageante pour un réseau social sur le thème suivant : ${topic}. Réponds en français.`
+    });
+    return response.text;
   } catch (error: any) {
     if (error?.message?.includes('429') || error?.status === 429) {
       throw new Error("QUOTA_EXCEEDED");
@@ -55,9 +57,11 @@ export const generatePostIdea = async (topic: string) => {
 export const summarizeWorkspaceNote = async (content: string) => {
   try {
     const ai = getAI();
-    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const response = await model.generateContent(`Résume ces notes de travail de manière concise et professionnelle : ${content}`);
-    return response.response.text();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-preview',
+      contents: `Résume ces notes de travail de manière concise et professionnelle : ${content}`
+    });
+    return response.text;
   } catch (error: any) {
     if (error?.message?.includes('429') || error?.status === 429) {
       throw new Error("QUOTA_EXCEEDED");
@@ -71,9 +75,22 @@ export const summarizeWorkspaceNote = async (content: string) => {
  */
 export const generateImage = async (prompt: string) => {
   try {
-    // Standard approach for this SDK is using function calling or separate model
-    // Placeholder as the main logic is in getSmartResponse
-    return "";
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: prompt
+    });
+
+    const candidates = response.candidates || [];
+    const parts = candidates[0]?.content?.parts || [];
+    
+    for (const part of parts) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    
+    throw new Error("No image data returned from Gemini");
   } catch (error: any) {
     console.error("Image Generation Error:", error);
     throw error;
@@ -107,7 +124,6 @@ export interface VideoAnalysis {
 export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
   try {
     const ai = getAI();
-    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
     // Convert Blob to base64
     const reader = new FileReader();
@@ -120,7 +136,8 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
     });
     const base64Data = await base64Promise;
 
-    const response = await model.generateContent({
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-preview',
       contents: [
         {
           role: 'user',
@@ -149,12 +166,12 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
           ]
         }
       ],
-      generationConfig: {
+      config: {
         responseMimeType: "application/json",
       }
     });
 
-    const text = response.response.text() || "{}";
+    const text = response.text || "{}";
     return JSON.parse(text);
   } catch (error: any) {
     console.error("Video Analysis Error:", error);
@@ -168,14 +185,14 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
 export const analyzePost = async (content: string): Promise<{ is_appropriate: boolean, language: string, type: string, name_of_type: string | null }> => {
   try {
     const ai = getAI();
-    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const response = await model.generateContent({
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-preview',
       contents: [{ role: 'user', parts: [{ text: `Analyse ce post et dis-moi s'il est approprié (pas de haine, violence, etc.), quelle est sa langue, son type (ex: jeux vidéos, documentaire, vlog) et le nom spécifique associé (ex: The Legend of Zelda, Les lions l'hiver, etc.). Réponds au format JSON: {"is_appropriate": boolean, "language": string, "type": string, "name_of_type": string | null}. Contenu: ${content}` }] }],
-      generationConfig: {
+      config: {
         responseMimeType: "application/json",
       }
     });
-    const text = response.response.text() || "{}";
+    const text = response.text || "{}";
     return JSON.parse(text);
   } catch (error: any) {
     console.error("Post Analysis Error:", error);
@@ -190,54 +207,67 @@ export interface SmartResponse {
   text: string;
   imagePrompt?: string;
   videoPrompt?: string;
+  isError?: boolean;
+  errorDetails?: string;
 }
 
 export const getSmartResponse = async (history: any[]): Promise<SmartResponse> => {
     try {
+        const apiKey = getApiKey();
+        if (!apiKey) {
+            return { 
+                text: "L'assistant IA n'est pas encore configuré. (Clé API manquante) 🙂", 
+                isError: true,
+                errorDetails: "GEMINI_API_KEY is missing in environment variables."
+            };
+        }
+
         const ai = getAI();
-        const model = ai.getGenerativeModel({
-            model: 'gemini-1.5-flash',
-            systemInstruction: "Tu es Gemini, l'IA intégrée à Wexo. Ton créateur est Khalil BenRomdhanne. Ton style : simple, gentil et poli. Explique les choses simplement sans faire de longs discours. Sois un peu fun mais reste naturel, pas de 'cringe'. Encourage l'utilisateur dans ce qu'il fait. Utilise quelques emojis légers de temps en temps 🙂. Réponds toujours en français. Si l'utilisateur te demande de générer une image ou un dessin, utilise l'outil 'generate_image'. S'il te demande de générer une vidéo ou une animation, utilise l'outil 'generate_video'. Si l'utilisateur t'envoie une image ou une vidéo, analyse-la et réponds à ses questions à son sujet.",
-            tools: [{
-              functionDeclarations: [
-                {
-                  name: "generate_image",
-                  description: "Génère une image à partir d'une description textuelle.",
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      prompt: {
-                        type: Type.STRING,
-                        description: "Description détaillée de l'image à générer (en anglais)."
-                      }
-                    },
-                    required: ["prompt"]
+        const response = await ai.models.generateContent({
+            model: 'gemini-3.1-flash-preview',
+            contents: history,
+            config: {
+              systemInstruction: "Tu es Gemini, l'IA intégrée à Wexo. Ton créateur est Khalil BenRomdhanne. Ton style : simple, gentil et poli. Explique les choses simplement sans faire de longs discours. Sois un peu fun mais reste naturel, pas de 'cringe'. Encourage l'utilisateur dans ce qu'il fait. Utilise quelques emojis légers de temps en temps 🙂. Réponds toujours en français. Si l'utilisateur te demande de générer une image ou un dessin, utilise l'outil 'generate_image'. S'il te demande de générer une vidéo ou une animation, utilise l'outil 'generate_video'. Si l'utilisateur t'envoie une image ou une vidéo, analyse-la et réponds à ses questions à son sujet.",
+              tools: [{
+                functionDeclarations: [
+                  {
+                    name: "generate_image",
+                    description: "Génère une image à partir d'une description textuelle.",
+                    parameters: {
+                      type: Type.OBJECT,
+                      properties: {
+                        prompt: {
+                          type: Type.STRING,
+                          description: "Description détaillée de l'image à générer (en anglais)."
+                        }
+                      },
+                      required: ["prompt"]
+                    }
+                  },
+                  {
+                    name: "generate_video",
+                    description: "Génère une courte vidéo à partir d'une description textuelle.",
+                    parameters: {
+                      type: Type.OBJECT,
+                      properties: {
+                        prompt: {
+                          type: Type.STRING,
+                          description: "Description détaillée de la vidéo à générer (en anglais)."
+                        }
+                      },
+                      required: ["prompt"]
+                    }
                   }
-                },
-                {
-                  name: "generate_video",
-                  description: "Génère une courte vidéo à partir d'une description textuelle.",
-                  parameters: {
-                    type: Type.OBJECT,
-                    properties: {
-                      prompt: {
-                        type: Type.STRING,
-                        description: "Description détaillée de la vidéo à générer (en anglais)."
-                      }
-                    },
-                    required: ["prompt"]
-                  }
-                }
-              ]
-            }]
+                ]
+              }]
+            }
         });
 
-        const response = await model.generateContent({ contents: history });
-        const candidates = response.response.candidates || [];
+        const candidates = response.candidates || [];
         const content = candidates[0]?.content;
         const parts = content?.parts || [];
-        const text = parts.find(p => p.text)?.text || "";
-        const call = parts.find(p => p.functionCall)?.functionCall;
+        const text = response.text || "";
+        const call = response.functionCalls?.[0];
 
         if (call) {
           if (call.name === 'generate_image') {
@@ -256,10 +286,20 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
 
         return { text };
     } catch (error: any) {
-        if (error?.message?.includes('429') || error?.status === 429 || error?.code === 429) {
-            return { text: "Une erreur est survenu, réessayer plus tard. code erreur : quota dépassé" };
-        }
         console.error("Gemini API Error:", error);
-        return { text: "Désolé, j'ai rencontré un petit problème technique. Peux-tu réessayer dans un instant ? 🙂" };
+        
+        if (error?.message?.includes('429') || error?.status === 429 || error?.code === 429) {
+            return { 
+                text: "Désolé, j'ai atteint ma limite de messages pour le moment. Peux-tu réessayer plus tard ? 🙂", 
+                isError: true, 
+                errorDetails: "QUOTA_EXCEEDED: 429 Too Many Requests" 
+            };
+        }
+        
+        return { 
+            text: "Désolé, j'ai rencontré un petit problème technique. Peux-tu réessayer dans un instant ? 🙂", 
+            isError: true,
+            errorDetails: error?.message || String(error)
+        };
     }
 };
