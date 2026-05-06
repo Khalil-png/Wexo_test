@@ -300,6 +300,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       });
 
       const convs: any[] = [];
+      const seenUserIds = new Set();
       
       // On garde Gemini (système spécial)
       convs.push({
@@ -311,19 +312,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         unreadCount: 0,
         isAI: true
       });
+      seenUserIds.add('gemini');
 
       for (const chat of resultList.items) {
         // Pour les chats directs, on récupère l'autre membre
         if (chat.type === 'direct') {
           const otherMember = chat.expand?.members?.find((m: any) => m.id !== user.uid);
-          if (!otherMember) continue;
+          if (!otherMember || seenUserIds.has(otherMember.id)) continue;
           
-          // Chercher le dernier message pour l'aperçu
-          const lastMsgRes = await pb.collection('messages').getList(1, 1, {
+          // Vérifier le nombre de messages (doit être >= 2)
+          const messagesCountRes = await pb.collection('messages').getList(1, 2, {
             filter: `chat="${chat.id}"`,
             sort: '-created'
           });
-          const lastMsg = lastMsgRes.items[0];
+
+          // Si moins de 2 messages, on ne l'affiche pas dans la liste
+          if (messagesCountRes.totalItems < 2) continue;
+
+          const lastMsg = messagesCountRes.items[0];
 
           convs.push({
             id: otherMember.id,
@@ -335,25 +341,34 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             lastMessageTime: lastMsg ? new Date(lastMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
             unreadCount: 0
           });
+          seenUserIds.add(otherMember.id);
         } else {
-          // Future group chat support
+           // Vérifier le nombre de messages pour les groupes aussi
+          const messagesCountRes = await pb.collection('messages').getList(1, 2, {
+            filter: `chat="${chat.id}"`,
+            sort: '-created'
+          });
+          if (messagesCountRes.totalItems < 2) continue;
+
+          if (seenUserIds.has(chat.id)) continue;
+
           convs.push({
             id: chat.id,
             chatId: chat.id,
             username: chat.name,
             display_name: chat.name,
-            lastMessage: '',
-            lastMessageTime: '',
+            lastMessage: messagesCountRes.items[0]?.text || '',
+            lastMessageTime: messagesCountRes.items[0] ? new Date(messagesCountRes.items[0].created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
             unreadCount: 0,
             isGroup: true
           });
+          seenUserIds.add(chat.id);
         }
       }
 
       setConversations(convs);
     } catch (err: any) {
       console.warn("Erreur chargement conversations (chats non activés ou vide):", err.message);
-      // Fallback à l'ancienne méthode si la collection chats n'existe pas encore ou erreur
     }
   }, [user]);
 
@@ -1463,16 +1478,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         </div>
 
         <div className="flex-1 overflow-y-auto no-scrollbar relative pt-4">
-          {/* Nouveau Message FAB pour Mobile */}
-          {isMobileDevice() && (
-            <button 
-              onClick={() => setIsSearchingUsers(true)}
-              className="fixed bottom-24 right-6 w-14 h-14 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center z-50 active:scale-95 transition-all animate-in zoom-in duration-300"
-            >
-              <Plus size={28} />
-            </button>
-          )}
-
           {/* Gemini List Item */}
           <div onClick={() => handleSelectChat('gemini')} className={`flex items-center gap-4 px-6 py-4 cursor-pointer transition-all ${selectedId === 'gemini' ? 'bg-white/5' : 'hover:bg-white/5'}`}>
             <div className="w-10 h-10 rounded-full overflow-hidden relative flex-shrink-0 flex items-center justify-center">
