@@ -40,7 +40,7 @@ import { Preferences } from '@capacitor/preferences';
 
 // Utility to check if we are in a native Capacitor environment
 const isNative = () => {
-  return window.hasOwnProperty('Capacitor') && (window as any).Capacitor.getPlatform() !== 'web';
+  return (window.hasOwnProperty('Capacitor') && (window as any).Capacitor.getPlatform() !== 'web') || (window as any).isNativeApp;
 };
 
 const ringtoneAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3');
@@ -1003,6 +1003,10 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     console.log('[App] AppContent mounted. Current location:', location.pathname);
+    // Initialize global native flag if not already set
+    if (window.hasOwnProperty('Capacitor') && (window as any).Capacitor.getPlatform() !== 'web') {
+      (window as any).isNativeApp = true;
+    }
     console.log('[App] isApp:', (window as any).isNativeApp, 'userAgent:', navigator.userAgent);
     // Mark app as mounted for index.html health check
     (window as any).__APP_MOUNTED__ = true;

@@ -20,7 +20,7 @@ function createWindow() {
   
   // CHARGEMENT EN DIRECT (Pour les mises à jour automatiques du contenu)
   // On charge l'URL de production par défaut
-  const productionUrl = 'https://wexo-test.vercel.app';
+  const productionUrl = 'https://wexo-steel.vercel.app';
   const url = process.env.VITE_DEV_SERVER_URL || productionUrl;
   
   if (process.env.VITE_DEV_SERVER_URL) {
