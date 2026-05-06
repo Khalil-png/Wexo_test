@@ -315,18 +315,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       seenUserIds.add('gemini');
 
       for (const chat of resultList.items) {
-        // Pour les chats directs, on récupère l'autre membre
+        // Skip if we already have this chat or member
         if (chat.type === 'direct') {
           const otherMember = chat.expand?.members?.find((m: any) => m.id !== user.uid);
-          if (!otherMember || seenUserIds.has(otherMember.id)) continue;
+          if (!otherMember || seenUserIds.has(otherMember.id) || seenUserIds.has(chat.id)) continue;
           
-          // Vérifier le nombre de messages (doit être >= 2)
+          // Vérifier le nombre de messages (doit être >= 2 pour apparaître dans la liste des discussions actives)
           const messagesCountRes = await pb.collection('messages').getList(1, 2, {
             filter: `chat="${chat.id}"`,
             sort: '-created'
           });
 
-          // Si moins de 2 messages, on ne l'affiche pas dans la liste
+          // Si moins de 2 messages, on ne l'affiche pas dans la liste des colonnes
           if (messagesCountRes.totalItems < 2) continue;
 
           const lastMsg = messagesCountRes.items[0];
@@ -342,15 +342,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             unreadCount: 0
           });
           seenUserIds.add(otherMember.id);
+          seenUserIds.add(chat.id);
         } else {
-           // Vérifier le nombre de messages pour les groupes aussi
+          // Group chats
+          if (seenUserIds.has(chat.id)) continue;
+
           const messagesCountRes = await pb.collection('messages').getList(1, 2, {
             filter: `chat="${chat.id}"`,
             sort: '-created'
           });
+          
+          // Même logique pour les groupes
           if (messagesCountRes.totalItems < 2) continue;
-
-          if (seenUserIds.has(chat.id)) continue;
 
           convs.push({
             id: chat.id,
@@ -1821,7 +1824,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     onTouchStart={() => handleMessageTouchStart(msg.id)}
                     onTouchEnd={() => handleMessageTouchEnd(msg.id)}
                     onClick={(e) => handleMessageClick(msg.id, e)}
-                    className={`flex group relative w-full px-4 sm:px-8 transition-all ${msg.is_own ? 'justify-end' : 'justify-start'} mt-0.5 ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
+                    className={`flex group relative w-full px-4 sm:px-8 transition-all ${msg.is_own ? 'justify-end' : 'justify-start'} ${hasPrevSameSender ? 'mt-0.5' : 'mt-1.5'} ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
                   >
                     {/* Sélection visuelle par background uniquement, comme demandé */}
                     <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${msg.is_own ? 'flex-row-reverse' : 'flex-row'} ${isSelected ? 'scale-[0.98]' : ''} transition-transform duration-200`}>
