@@ -494,7 +494,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                               console.warn(err);
                             }
                           }}
-                          className="text-[9px] font-black text-primary hover:opacity-80 transition-colors uppercase"
+                          className="text-[9px] font-black text-white hover:opacity-80 transition-colors uppercase"
                         >
                           Tout lire
                         </button>
@@ -502,7 +502,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                       {notifications.length > 0 && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleDeleteAllNotifications(); }}
-                          className="text-[9px] font-black text-red-500/70 hover:text-red-400 transition-colors uppercase"
+                          className="text-[9px] font-black text-white/50 hover:text-white transition-colors uppercase"
                         >
                           Vider
                         </button>
@@ -545,13 +545,13 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                               <div className="w-11 h-11 rounded-full overflow-hidden border border-white/10">
                                 <img src={n.sender_avatar || DEFAULT_AVATAR} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
                               </div>
-                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#1a1a1a] rounded-full flex items-center justify-center border border-white/10 text-primary">
+                              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#1a1a1a] rounded-full flex items-center justify-center border border-white/10 text-slate-300">
                                 <MessageCircle size={10} fill="currentColor" />
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 mb-0.5">
-                                <span className="text-[11px] font-bold text-primary truncate">{n.sender_name}</span>
+                                <span className="text-[11px] font-bold text-white truncate">{n.sender_name}</span>
                                 <span className="text-slate-500 text-[10px]">•</span>
                                 <span className="text-slate-400 text-[10px] font-medium">message</span>
                               </div>
@@ -667,7 +667,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                       }}
                       className="w-full flex items-center gap-4 p-3 hover:bg-white/5 rounded-2xl transition-all group mb-1"
                     >
-                      <div className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors">
+                      <div className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-white transition-colors">
                         <Camera size={20} />
                       </div>
                       <span className="text-sm font-bold text-white">Paramètres</span>
