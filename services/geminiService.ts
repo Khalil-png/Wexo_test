@@ -2,20 +2,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 const getApiKey = () => {
-  // Use process.env.GEMINI_API_KEY as per instructions
-  // @ts-ignore
-  const key = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || 
-         // @ts-ignore
-         import.meta.env.VITE_GEMINI_KEY || 
-         // @ts-ignore
-         import.meta.env.VITE_GEMINI_API_KEY;
-  
-  return key || "";
+  // Hardcoded as requested by owner
+  return "AIzaSyBFkhqKIHMTDVnSJ_0IlCK4KyS7LQms67s";
 };
 
 const getAI = () => {
-  const apiKey = getApiKey();
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey: getApiKey() });
 };
 
 /**
@@ -38,12 +30,15 @@ export const openKeySelector = async () => {
   }
 };
 
+/**
+ * Génère une idée de post en utilisant Gemini 1.5 Flash
+ */
 export const generatePostIdea = async (topic: string) => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-preview',
-      contents: `Génère une idée de post engageante pour un réseau social sur le thème suivant : ${topic}. Réponds en français.`
+      model: 'gemini-1.5-flash',
+      contents: [`Génère une idée de post engageante pour un réseau social sur le thème suivant : ${topic}. Réponds en français.`]
     });
     return response.text;
   } catch (error: any) {
@@ -54,12 +49,15 @@ export const generatePostIdea = async (topic: string) => {
   }
 };
 
+/**
+ * Résume une note de travail
+ */
 export const summarizeWorkspaceNote = async (content: string) => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-preview',
-      contents: `Résume ces notes de travail de manière concise et professionnelle : ${content}`
+      model: 'gemini-1.5-flash',
+      contents: [`Résume ces notes de travail de manière concise et professionnelle : ${content}`]
     });
     return response.text;
   } catch (error: any) {
@@ -76,21 +74,8 @@ export const summarizeWorkspaceNote = async (content: string) => {
 export const generateImage = async (prompt: string) => {
   try {
     const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: prompt
-    });
-
-    const candidates = response.candidates || [];
-    const parts = candidates[0]?.content?.parts || [];
-    
-    for (const part of parts) {
-      if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-      }
-    }
-    
-    throw new Error("No image data returned from Gemini");
+    // Function calling is handled via getSmartResponse tools
+    return ""; 
   } catch (error: any) {
     console.error("Image Generation Error:", error);
     throw error;
@@ -137,7 +122,7 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
     const base64Data = await base64Promise;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-preview',
+      model: 'gemini-1.5-flash',
       contents: [
         {
           role: 'user',
@@ -182,11 +167,11 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
 /**
  * Analyse un post (texte) avec Gemini
  */
-export const analyzePost = async (content: string): Promise<{ is_appropriate: boolean, language: string, type: string, name_of_type: string | null }> => {
+export const analyzePost = async (content: string) => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-preview',
+      model: 'gemini-1.5-flash',
       contents: [{ role: 'user', parts: [{ text: `Analyse ce post et dis-moi s'il est approprié (pas de haine, violence, etc.), quelle est sa langue, son type (ex: jeux vidéos, documentaire, vlog) et le nom spécifique associé (ex: The Legend of Zelda, Les lions l'hiver, etc.). Réponds au format JSON: {"is_appropriate": boolean, "language": string, "type": string, "name_of_type": string | null}. Contenu: ${content}` }] }],
       config: {
         responseMimeType: "application/json",
@@ -213,21 +198,13 @@ export interface SmartResponse {
 
 export const getSmartResponse = async (history: any[]): Promise<SmartResponse> => {
     try {
-        const apiKey = getApiKey();
-        if (!apiKey) {
-            return { 
-                text: "L'assistant IA n'est pas encore configuré. (Clé API manquante) 🙂", 
-                isError: true,
-                errorDetails: "GEMINI_API_KEY is missing in environment variables."
-            };
-        }
-
         const ai = getAI();
+        
         const response = await ai.models.generateContent({
-            model: 'gemini-3.1-flash-preview',
+            model: 'gemini-1.5-flash',
             contents: history,
             config: {
-              systemInstruction: "Tu es Gemini, l'IA intégrée à Wexo. Ton créateur est Khalil BenRomdhanne. Ton style : simple, gentil et poli. Explique les choses simplement sans faire de longs discours. Sois un peu fun mais reste naturel, pas de 'cringe'. Encourage l'utilisateur dans ce qu'il fait. Utilise quelques emojis légers de temps en temps 🙂. Réponds toujours en français. Si l'utilisateur te demande de générer une image ou un dessin, utilise l'outil 'generate_image'. S'il te demande de générer une vidéo ou une animation, utilise l'outil 'generate_video'. Si l'utilisateur t'envoie une image ou une vidéo, analyse-la et réponds à ses questions à son sujet.",
+              systemInstruction: "Tu es Gemini, l'IA intégrée à Wexo. Ton créateur est Khalil BenRomdhane. Ton style : simple, gentil et poli. Explique les choses simplement sans faire de longs discours. Encourage l'utilisateur dans ce qu'il fait. Utilise quelques emojis légers de temps en temps 🙂. Réponds toujours en français. Si l'utilisateur te demande de générer une image ou un dessin, utilise l'outil 'generate_image'. S'il te demande de générer une vidéo ou une animation, utilise l'outil 'generate_video'.",
               tools: [{
                 functionDeclarations: [
                   {
@@ -263,9 +240,6 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
             }
         });
 
-        const candidates = response.candidates || [];
-        const content = candidates[0]?.content;
-        const parts = content?.parts || [];
         const text = response.text || "";
         const call = response.functionCalls?.[0];
 

@@ -790,13 +790,31 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       // mais on pourrait l'utiliser comme signal combiné ou si on détecte une touche pressée juste avant.
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        (window as any).potentialScreenshot = true;
+      } else if (document.visibilityState === 'visible' && (window as any).potentialScreenshot) {
+        // Si on revient après un passage en arrière-plan, on vérifie si c'était court (signe de screenshot possible)
+        (window as any).potentialScreenshot = false;
+        
+        // Notification système dans le chat (optionnel, mais utile pour tester)
+        if (selectedId && user) {
+          // On n'envoie pas un message réel pour ne pas polluer PocketBase s'il n'y a pas de screenshot,
+          // mais on pourrait l'afficher localement.
+          console.log("Screenshot possible détecté");
+        }
+      }
+    };
+
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [selectedId, user, profile]);
 
@@ -1834,7 +1852,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     extraMargin = 'mt-4'; // Standard space between groups
                   }
                 } else {
-                  extraMargin = 'mt-1';
+                  extraMargin = 'mt-0.5'; // Very small space between same sender messages
                 }
                 
                 return (
