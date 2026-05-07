@@ -1,13 +1,13 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-const getApiKey = () => {
-  // Hardcoded as requested by owner
-  return "AIzaSyBFkhqKIHMTDVnSJ_0IlCK4KyS7LQms67s";
+const API_KEYS = {
+  analysis: "AIzaSyBFkhqKIHMTDVnSJ_0IlCK4KyS7LQms67s",
+  chat: "AIzaSyAs6XB3NsJY0hxCM-XqzScq8zu3tFvXADg"
 };
 
-const getAI = () => {
-  return new GoogleGenAI({ apiKey: getApiKey() });
+const getAI = (type: 'analysis' | 'chat' = 'analysis') => {
+  return new GoogleGenAI({ apiKey: API_KEYS[type] });
 };
 
 /**
@@ -168,7 +168,7 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
     try {
         const systemInstruction = "Tu es Gemini, l'IA intégrée à Wexo. Ton créateur est Khalil BenRomdhane. Ton style : simple, gentil et poli. Explique les choses simplement. Encourage l'utilisateur. Utilise des emojis 🙂. Réponds toujours en français. Pour les images, utilise 'generate_image'. Pour les vidéos, utilise 'generate_video'.";
         
-        const ai = getAI();
+        const ai = getAI('chat');
         const result = await ai.models.generateContent({
           model: "gemini-1.5-flash",
           contents: history.map(h => ({
