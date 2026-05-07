@@ -38,7 +38,7 @@ export const generatePostIdea = async (topic: string) => {
   try {
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "models/gemini-1.5-flash",
       contents: prompt
     });
     return result.text;
@@ -58,7 +58,7 @@ export const summarizeWorkspaceNote = async (content: string) => {
   try {
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "models/gemini-1.5-flash",
       contents: prompt
     });
     return result.text;
@@ -110,7 +110,7 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
 
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "models/gemini-1.5-flash",
       contents: [{
         role: 'user',
         parts: [
@@ -145,11 +145,11 @@ export const analyzePost = async (content: string) => {
     
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "models/gemini-1.5-flash",
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
-    return JSON.parse(result.text || "{}");
+    return result.text ? JSON.parse(result.text) : {};
   } catch (error: any) {
     console.error("Post Analysis Error:", error);
     throw error;
@@ -170,7 +170,7 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
         
         const ai = getAI('chat');
         const result = await ai.models.generateContent({
-          model: "gemini-1.5-flash",
+          model: "models/gemini-1.5-flash",
           contents: history.map(h => ({
             role: (h.role === 'model' ? 'model' : 'user') as "user" | "model",
             parts: h.parts.map((p: any) => {
