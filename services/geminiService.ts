@@ -243,6 +243,10 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
         const text = response.text || "";
         const call = response.functionCalls?.[0];
 
+        if (!text && !call) {
+            throw new Error("Gemini returned an empty response. Please check if the API key is active and correctly configured.");
+        }
+
         if (call) {
           if (call.name === 'generate_image') {
             return { 

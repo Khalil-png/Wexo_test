@@ -753,13 +753,36 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   };
 
   const sendScreenshotAlert = async () => {
-    // Éviter les alertes multiples en peu de temps
+    if (!user || !selectedId || selectedId === 'gemini') return;
+    
+    // Throttle alert to every 5s
     const now = Date.now();
     const lastAlert = (window as any).lastScreenshotAlert || 0;
     if (now - lastAlert < 5000) return;
     (window as any).lastScreenshotAlert = now;
 
-    await addMessageInfo('screenshot');
+    try {
+      let chatIdToUse = activeChatId;
+      if (!chatIdToUse) {
+         const chatList = await pb.collection('chats').getList(1, 1, {
+           filter: `type="direct" && members ~ "${user.uid}" && members ~ "${selectedId}"`
+         });
+         if (chatList.items.length > 0) chatIdToUse = chatList.items[0].id;
+         else return;
+      }
+
+      await pb.collection('messages').create({
+        sender_id: user.uid,
+        receiver_id: selectedId,
+        chat: chatIdToUse,
+        type: 'info',
+        info_type: 'screenshot',
+        text: profile?.username || user.displayName || 'Utilisateur',
+        created: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Screenshot notification failed", e);
+    }
   };
 
   useEffect(() => {
@@ -792,16 +815,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        (window as any).potentialScreenshot = true;
+        (window as any).potentialScreenshot = Date.now();
       } else if (document.visibilityState === 'visible' && (window as any).potentialScreenshot) {
-        // Si on revient après un passage en arrière-plan, on vérifie si c'était court (signe de screenshot possible)
-        (window as any).potentialScreenshot = false;
+        const timeHidden = Date.now() - (window as any).potentialScreenshot;
+        (window as any).potentialScreenshot = null;
         
-        // Notification système dans le chat (optionnel, mais utile pour tester)
-        if (selectedId && user) {
-          // On n'envoie pas un message réel pour ne pas polluer PocketBase s'il n'y a pas de screenshot,
-          // mais on pourrait l'afficher localement.
-          console.log("Screenshot possible détecté");
+        // Mobile screenshot heuristic: app backgrounded for 0.5s to 4s
+        if (timeHidden > 500 && timeHidden < 4000) {
+          sendScreenshotAlert();
         }
       }
     };
@@ -1843,16 +1864,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 
                 const isSelected = selectedMessageIds.has(msg.id);
 
-                // Spacing logic: more space when switching between AI and user
+                // Normal spacing logic: consistent for AI and regular users
                 let extraMargin = 'mt-1.5';
                 if (!hasPrevSameSender) {
-                  if (idx > 0 && (isAI !== prevWasAI)) {
-                    extraMargin = 'mt-8'; // More space between Gemini and others
-                  } else {
-                    extraMargin = 'mt-4'; // Standard space between groups
-                  }
+                  extraMargin = 'mt-1'; // Even tighter gap between different users (4px)
                 } else {
-                  extraMargin = 'mt-0.5'; // Very small space between same sender messages
+                  extraMargin = 'mt-0.5'; // Very tight gap between same sender messages (2px)
                 }
                 
                 return (
