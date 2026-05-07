@@ -1,5 +1,5 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { getVertexAI, getGenerativeModel, SchemaType } from "@firebase/vertexai";
 import { app } from "./firebase";
 
@@ -12,12 +12,20 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey: getApiKey() });
 };
 
+/**
+ * Tente d'obtenir un modèle Vertex AI, sinon retourne null
+ */
 const getVertexModel = (modelName: string = 'gemini-1.5-flash', systemInstruction?: string) => {
-  const vertex = getVertexAI(app);
-  return getGenerativeModel(vertex, { 
-    model: modelName,
-    systemInstruction: systemInstruction
-  });
+  try {
+    const vertex = getVertexAI(app);
+    return getGenerativeModel(vertex, { 
+      model: modelName,
+      systemInstruction: systemInstruction ? { role: 'system', parts: [{ text: systemInstruction }] } : undefined
+    });
+  } catch (e) {
+    console.warn("Vertex AI not initialized or enabled in Firebase Console. Falling back to GoogleGenAI.", e);
+    return null;
+  }
 };
 
 /**
@@ -41,14 +49,24 @@ export const openKeySelector = async () => {
 };
 
 /**
- * Génère une idée de post en utilisant Gemini 1.5 Flash via Vertex AI
+ * Génère une idée de post en utilisant Gemini 1.5 Flash via Vertex AI (avec fallback)
  */
 export const generatePostIdea = async (topic: string) => {
   try {
-    const model = getVertexModel('gemini-1.5-flash');
-    const result = await model.generateContent(`Génère une idée de post engageante pour un réseau social sur le thème suivant : ${topic}. Réponds en français.`);
-    return result.response.text();
+    const vertexModel = getVertexModel('gemini-1.5-flash');
+    if (vertexModel) {
+      const result = await vertexModel.generateContent(`Génère une idée de post engageante pour un réseau social sur le thème suivant : ${topic}. Réponds en français.`);
+      return result.response.text();
+    }
+    
+    const ai = getAI();
+    const result = await ai.models.generateContent({
+      model: "gemini-1.5-flash",
+      contents: `Génère une idée de post engageante pour un réseau social sur le thème suivant : ${topic}. Réponds en français.`
+    });
+    return result.text;
   } catch (error: any) {
+    console.error("Generate Post Idea Error:", error);
     if (error?.message?.includes('429') || error?.status === 429) {
       throw new Error("QUOTA_EXCEEDED");
     }
@@ -61,10 +79,20 @@ export const generatePostIdea = async (topic: string) => {
  */
 export const summarizeWorkspaceNote = async (content: string) => {
   try {
-    const model = getVertexModel('gemini-1.5-flash');
-    const result = await model.generateContent(`Résume ces notes de travail de manière concise et professionnelle : ${content}`);
-    return result.response.text();
+    const vertexModel = getVertexModel('gemini-1.5-flash');
+    if (vertexModel) {
+      const result = await vertexModel.generateContent(`Résume ces notes de travail de manière concise et professionnelle : ${content}`);
+      return result.response.text();
+    }
+
+    const ai = getAI();
+    const result = await ai.models.generateContent({
+      model: "gemini-1.5-flash",
+      contents: `Résume ces notes de travail de manière concise et professionnelle : ${content}`
+    });
+    return result.text;
   } catch (error: any) {
+    console.error("Summarize Note Error:", error);
     if (error?.message?.includes('429') || error?.status === 429) {
       throw new Error("QUOTA_EXCEEDED");
     }
@@ -77,7 +105,6 @@ export const summarizeWorkspaceNote = async (content: string) => {
  */
 export const generateImage = async (prompt: string) => {
   try {
-    const ai = getAI();
     // Function calling is handled via getSmartResponse tools
     return ""; 
   } catch (error: any) {
@@ -112,8 +139,6 @@ export interface VideoAnalysis {
  */
 export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
   try {
-    const model = getVertexModel('gemini-1.5-flash');
-    
     // Convert Blob to base64
     const reader = new FileReader();
     const base64Promise = new Promise<string>((resolve) => {
@@ -125,42 +150,57 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
     });
     const base64Data = await base64Promise;
 
-    const result = await model.generateContent({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: videoBlob.type
-              }
-            },
-            {
-              text: `Analyse cette vidéo et fournis les informations suivantes au format JSON :
-              {
-                "type": "le type de vidéo (ex: jeux vidéos, vlog, documentaire, etc.)",
-                "name_of_type": "le nom du type (ex: The Legend of Zelda, Les lions l'hiver, etc.) si c'en est un, sinon null",
-                "is_appropriate": boolean (est-ce que la vidéo respecte les règles de communauté, pas de contenu inapproprié),
-                "language": "la langue parlée dans la vidéo",
-                "thumbnail_timestamp": number (le meilleur moment en secondes pour capturer une miniature représentative),
-                "transcription": [
-                  {"start": 0.0, "end": 2.0, "text": "Bonjour tout le monde"},
-                  {"start": 2.5, "end": 5.0, "text": "Bienvenue dans cette vidéo"}
-                ]
-              }
-              IMPORTANT : Pour la transcription, ne détecte QUE les paroles ORALES (ce que les gens disent). Ignore totalement le texte écrit à l'écran. Si personne ne parle, renvoie une liste vide [].`
+    const contents = [
+      {
+        role: 'user',
+        parts: [
+          {
+            inlineData: {
+              data: base64Data,
+              mimeType: videoBlob.type
             }
-          ]
-        }
-      ],
-      generationConfig: {
-        responseMimeType: "application/json",
+          },
+          {
+            text: `Analyse cette vidéo et fournis les informations suivantes au format JSON :
+            {
+              "type": "le type de vidéo (ex: jeux vidéos, vlog, documentaire, etc.)",
+              "name_of_type": "le nom du type (ex: The Legend of Zelda, Les lions l'hiver, etc.) si c'en est un, sinon null",
+              "is_appropriate": boolean (est-ce que la vidéo respecte les règles de communauté, pas de contenu inapproprié),
+              "language": "la langue parlée dans la vidéo",
+              "thumbnail_timestamp": number (le meilleur moment en secondes pour capturer une miniature représentative),
+              "transcription": [
+                {"start": 0.0, "end": 2.0, "text": "Bonjour tout le monde"},
+                {"start": 2.5, "end": 5.0, "text": "Bienvenue dans cette vidéo"}
+              ]
+            }
+            IMPORTANT : Pour la transcription, ne détecte QUE les paroles ORALES (ce que les gens disent). Ignore totalement le texte écrit à l'écran. Si personne ne parle, renvoie une liste vide [].`
+          }
+        ]
       }
-    });
+    ];
 
-    const text = result.response.text() || "{}";
-    return JSON.parse(text);
+    const vertexModel = getVertexModel('gemini-1.5-flash');
+    if (vertexModel) {
+      const result = await vertexModel.generateContent({
+        contents: contents as any,
+        generationConfig: { responseMimeType: "application/json" }
+      });
+      return JSON.parse(result.response.text() || "{}");
+    } else {
+      const ai = getAI();
+      const result = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: contents.map(c => ({
+          role: c.role as any,
+          parts: c.parts.map(p => {
+            if (p.inlineData) return { inlineData: p.inlineData };
+            return { text: p.text || "" };
+          })
+        })),
+        config: { responseMimeType: "application/json" }
+      });
+      return JSON.parse(result.text || "{}");
+    }
   } catch (error: any) {
     console.error("Video Analysis Error:", error);
     throw error;
@@ -172,15 +212,24 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
  */
 export const analyzePost = async (content: string) => {
   try {
-    const model = getVertexModel('gemini-1.5-flash');
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: `Analyse ce post et dis-moi s'il est approprié (pas de haine, violence, etc.), quelle est sa langue, son type (ex: jeux vidéos, documentaire, vlog) et le nom spécifique associé (ex: The Legend of Zelda, Les lions l'hiver, etc.). Réponds au format JSON: {"is_appropriate": boolean, "language": string, "type": string, "name_of_type": string | null}. Contenu: ${content}` }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-      }
-    });
-    const text = result.response.text() || "{}";
-    return JSON.parse(text);
+    const prompt = `Analyse ce post et dis-moi s'il est approprié (pas de haine, violence, etc.), quelle est sa langue, son type (ex: jeux vidéos, documentaire, vlog) et le nom spécifique associé (ex: The Legend of Zelda, Les lions l'hiver, etc.). Réponds au format JSON: {"is_appropriate": boolean, "language": string, "type": string, "name_of_type": string | null}. Contenu: ${content}`;
+    
+    const vertexModel = getVertexModel('gemini-1.5-flash');
+    if (vertexModel) {
+      const result = await vertexModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      });
+      return JSON.parse(result.response.text() || "{}");
+    } else {
+      const ai = getAI();
+      const result = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: { responseMimeType: "application/json" }
+      });
+      return JSON.parse(result.text || "{}");
+    }
   } catch (error: any) {
     console.error("Post Analysis Error:", error);
     throw error;
@@ -202,61 +251,118 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
     try {
         const systemInstruction = "Tu es Gemini, l'IA intégrée à Wexo. Ton créateur est Khalil BenRomdhane. Ton style : simple, gentil et poli. Explique les choses simplement sans faire de longs discours. Encourage l'utilisateur dans ce qu'il fait. Utilise quelques emojis légers de temps en temps 🙂. Réponds toujours en français. Si l'utilisateur te demande de générer une image ou un dessin, utilise l'outil 'generate_image'. S'il te demande de générer une vidéo ou une animation, utilise l'outil 'generate_video'.";
         
-        const model = getVertexModel('gemini-1.5-flash', systemInstruction);
-        
-        const result = await model.generateContent({
-            contents: history,
-            tools: [{
-              functionDeclarations: [
-                {
-                  name: "generate_image",
-                  description: "Génère une image à partir d'une description textuelle.",
-                  parameters: {
-                    type: SchemaType.OBJECT,
-                    properties: {
-                      prompt: {
-                        type: SchemaType.STRING,
-                        description: "Description détaillée de l'image à générer (en anglais)."
-                      }
-                    },
-                    required: ["prompt"]
+        const tools = [{
+          functionDeclarations: [
+            {
+              name: "generate_image",
+              description: "Génère une image à partir d'une description textuelle.",
+              parameters: {
+                type: SchemaType.OBJECT as SchemaType.OBJECT,
+                properties: {
+                  prompt: {
+                    type: SchemaType.STRING as SchemaType.STRING,
+                    description: "Description détaillée de l'image à générer (en anglais)."
                   }
                 },
-                {
-                  name: "generate_video",
-                  description: "Génère une courte vidéo à partir d'une description textuelle.",
-                  parameters: {
-                    type: SchemaType.OBJECT,
-                    properties: {
-                      prompt: {
-                        type: SchemaType.STRING,
-                        description: "Description détaillée de la vidéo à générer (en anglais)."
-                      }
-                    },
-                    required: ["prompt"]
+                required: ["prompt"]
+              }
+            },
+            {
+              name: "generate_video",
+              description: "Génère une courte vidéo à partir d'une description textuelle.",
+              parameters: {
+                type: SchemaType.OBJECT as SchemaType.OBJECT,
+                properties: {
+                  prompt: {
+                    type: SchemaType.STRING as SchemaType.STRING,
+                    description: "Description détaillée de la vidéo à générer (en anglais)."
                   }
-                }
-              ]
-            }]
-        });
+                },
+                required: ["prompt"]
+              }
+            }
+          ]
+        }];
 
-        const response = result.response;
-        const text = response.text() || "";
-        const call = response.functionCalls()?.[0];
-
-        if (!text && !call) {
-            throw new Error("Gemini returned an empty response. Please check if Vertex AI is properly enabled in Firebase.");
+        let responseText = "";
+        let functionCall = null;
+        
+        const vertexModel = getVertexModel('gemini-1.5-flash', systemInstruction);
+        
+        if (vertexModel) {
+          const result = await vertexModel.generateContent({
+            contents: history,
+            tools: tools
+          });
+          const response = result.response;
+          responseText = response.text() || "";
+          functionCall = response.functionCalls ? response.functionCalls()[0] : null;
+        } else {
+          // Fallback to GoogleGenAI
+          const ai = getAI();
+          const result = await ai.models.generateContent({
+            model: "gemini-1.5-flash",
+            contents: history.map(h => ({
+              role: (h.role === 'model' ? 'model' : 'user') as "user" | "model",
+              parts: h.parts.map((p: any) => {
+                if (p.inlineData) return { inlineData: p.inlineData };
+                return { text: p.text || "" };
+              })
+            })),
+            config: {
+              systemInstruction: systemInstruction,
+              tools: [{
+                functionDeclarations: [
+                  {
+                    name: "generate_image",
+                    description: "Génère une image à partir d'une description textuelle.",
+                    parameters: {
+                      type: Type.OBJECT as any,
+                      properties: {
+                        prompt: {
+                          type: Type.STRING as any,
+                          description: "Description détaillée de l'image à générer (en anglais)."
+                        }
+                      },
+                      required: ["prompt"]
+                    }
+                  },
+                  {
+                    name: "generate_video",
+                    description: "Génère une courte vidéo à partir d'une description textuelle.",
+                    parameters: {
+                      type: Type.OBJECT as any,
+                      properties: {
+                        prompt: {
+                          type: Type.STRING as any,
+                          description: "Description détaillée de la vidéo à générer (en anglais)."
+                        }
+                      },
+                      required: ["prompt"]
+                    }
+                  }
+                ]
+              }] as any
+            }
+          });
+          
+          responseText = result.text || "";
+          functionCall = result.functionCalls ? result.functionCalls[0] : null;
         }
 
-        if (call) {
-          const args = call.args as any;
-          if (call.name === 'generate_image') {
+        if (!responseText && !functionCall) {
+            throw new Error("Gemini returned an empty response. Verify API settings.");
+        }
+
+        if (functionCall) {
+          const args = functionCall.args as any;
+          if (functionCall.name === 'generate_image') {
             return { 
               text: "Bien sûr ! Je m'occupe de générer cette image pour toi... 🙂", 
               imagePrompt: args.prompt
             };
           }
-          if (call.name === 'generate_video') {
+          if (functionCall.name === 'generate_video') {
             return { 
               text: "C'est parti ! Je génère une vidéo pour toi, cela peut prendre une minute... 🙂", 
               videoPrompt: args.prompt
@@ -264,22 +370,24 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
           }
         }
 
-        return { text };
+        return { text: responseText };
     } catch (error: any) {
         console.error("Gemini API Error:", error);
         
-        if (error?.message?.includes('429') || error?.status === 429 || error?.code === 429) {
+        const errorMessage = error?.message || String(error);
+        
+        if (errorMessage.includes('429')) {
             return { 
                 text: "Désolé, j'ai atteint ma limite de messages pour le moment. Peux-tu réessayer plus tard ? 🙂", 
                 isError: true, 
-                errorDetails: "QUOTA_EXCEEDED: 429 Too Many Requests" 
+                errorDetails: "QUOTA_EXCEEDED" 
             };
         }
         
         return { 
-            text: "Désolé, j'ai rencontré un petit problème technique. Peux-tu réessayer dans un instant ? 🙂", 
+            text: `Désolé, j'ai rencontré une erreur (${errorMessage}). Peux-tu réessayer dans un instant ? 🙂`, 
             isError: true,
-            errorDetails: error?.message || String(error)
+            errorDetails: errorMessage
         };
     }
 };

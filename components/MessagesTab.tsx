@@ -1867,7 +1867,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 // Normal spacing logic: consistent for AI and regular users
                 let extraMargin = 'mt-1.5';
                 if (!hasPrevSameSender) {
-                  extraMargin = 'mt-6'; // More space between different users (24px)
+                  extraMargin = 'mt-10'; // Professional group gap (40px)
                 } else {
                   extraMargin = 'mt-0.5'; // Very tight gap between same sender messages (2px)
                 }
