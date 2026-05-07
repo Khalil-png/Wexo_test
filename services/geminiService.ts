@@ -39,7 +39,7 @@ export const generatePostIdea = async (topic: string) => {
     const ai = getAI();
     const result = await ai.models.generateContent({
       model: "gemini-1.5-flash",
-      contents: [{ role: 'user', parts: [{ text: prompt }] }]
+      contents: prompt
     });
     return result.text;
   } catch (error: any) {
@@ -59,7 +59,7 @@ export const summarizeWorkspaceNote = async (content: string) => {
     const ai = getAI();
     const result = await ai.models.generateContent({
       model: "gemini-1.5-flash",
-      contents: [{ role: 'user', parts: [{ text: prompt }] }]
+      contents: prompt
     });
     return result.text;
   } catch (error: any) {
@@ -146,7 +146,7 @@ export const analyzePost = async (content: string) => {
     const ai = getAI();
     const result = await ai.models.generateContent({
       model: "gemini-1.5-flash",
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      contents: prompt,
       config: { responseMimeType: "application/json" }
     });
     return JSON.parse(result.text || "{}");
