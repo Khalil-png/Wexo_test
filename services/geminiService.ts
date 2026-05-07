@@ -31,14 +31,14 @@ export const openKeySelector = async () => {
 };
 
 /**
- * Génère une idée de post en utilisant Gemini 1.5 Flash
+ * Génère une idée de post en utilisant Gemini 3 Flash
  */
 export const generatePostIdea = async (topic: string) => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [`Génère une idée de post engageante pour un réseau social sur le thème suivant : ${topic}. Réponds en français.`]
+      model: 'gemini-3-flash-preview',
+      contents: `Génère une idée de post engageante pour un réseau social sur le thème suivant : ${topic}. Réponds en français.`
     });
     return response.text;
   } catch (error: any) {
@@ -56,8 +56,8 @@ export const summarizeWorkspaceNote = async (content: string) => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [`Résume ces notes de travail de manière concise et professionnelle : ${content}`]
+      model: 'gemini-3-flash-preview',
+      contents: `Résume ces notes de travail de manière concise et professionnelle : ${content}`
     });
     return response.text;
   } catch (error: any) {
@@ -122,7 +122,7 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
     const base64Data = await base64Promise;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: [
         {
           role: 'user',
@@ -171,7 +171,7 @@ export const analyzePost = async (content: string) => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: [{ role: 'user', parts: [{ text: `Analyse ce post et dis-moi s'il est approprié (pas de haine, violence, etc.), quelle est sa langue, son type (ex: jeux vidéos, documentaire, vlog) et le nom spécifique associé (ex: The Legend of Zelda, Les lions l'hiver, etc.). Réponds au format JSON: {"is_appropriate": boolean, "language": string, "type": string, "name_of_type": string | null}. Contenu: ${content}` }] }],
       config: {
         responseMimeType: "application/json",
@@ -201,7 +201,7 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
         const ai = getAI();
         
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: history,
             config: {
               systemInstruction: "Tu es Gemini, l'IA intégrée à Wexo. Ton créateur est Khalil BenRomdhane. Ton style : simple, gentil et poli. Explique les choses simplement sans faire de longs discours. Encourage l'utilisateur dans ce qu'il fait. Utilise quelques emojis légers de temps en temps 🙂. Réponds toujours en français. Si l'utilisateur te demande de générer une image ou un dessin, utilise l'outil 'generate_image'. S'il te demande de générer une vidéo ou une animation, utilise l'outil 'generate_video'.",
