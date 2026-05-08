@@ -1304,19 +1304,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
         try {
           // PocketBase Notification (Backup for the Bell)
-          // Exact fields: user_id, sender_id, sender_avatar, type, title, content, status, read
-          await pb.collection('notifications').create({
+          // Exact fields from screenshot: user_id, sender_id, type, title, content, status, read
+          // We use profile?.id for sender_id to ensure it's a valid PocketBase relation ID if field is relation
+          const pbNotifData = {
             user_id: selectedId,
-            sender_id: user.uid,
-            sender_avatar: profile?.avatar_url || '',
+            sender_id: profile?.id || user.uid,
             type: 'message',
             title: profile?.display_name || user.displayName || 'Wexo',
             content: encryptedContent,
-            status: 'unread',
+            status: 'pending',
             read: false
-          });
+          };
+          
+          await pb.collection('notifications').create(pbNotifData);
         } catch (pbNotifErr) {
-          console.warn("PocketBase side notification failed:", pbNotifErr);
+          console.error("PocketBase notification failed:", pbNotifErr);
         }
 
         // --- ENVOI DE LA NOTIFICATION PUSH FIREBASE (FCM) VIA LE SERVEUR ---

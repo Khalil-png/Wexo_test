@@ -129,7 +129,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
       try {
         // Migration NAS : Récupération des vraies notifications de PocketBase
         const records = await pb.collection('notifications').getList(1, 20, {
-          filter: `user_id="${user.uid}"`,
+          filter: `user_id="${user.uid}" || user_id="${profile?.id || ''}"`,
           sort: '-created'
         });
         
@@ -166,7 +166,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
     let pbUnsub: any;
     try {
       pb.collection('notifications').subscribe('*', (e) => {
-        if (e.record.user_id === user.uid) {
+        if (e.record.user_id === user.uid || (profile && e.record.user_id === profile.id)) {
            fetchNotifications();
            
            if (e.action === 'create') {
