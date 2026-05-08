@@ -666,6 +666,7 @@ const AppContent: React.FC = () => {
         receiver_id: record.receiver_id,
         source: source,
         profiles: {
+          id: record.caller_id,
           username: callerName,
           avatar_url: avatar
         }
@@ -936,6 +937,7 @@ const AppContent: React.FC = () => {
   const handleAcceptCall = async () => {
     if (!incomingCall) return;
     log('User clicked Accept button in overlay');
+    setIncomingCall((prev: any) => ({ ...prev, isProcessing: true }));
     handleAcceptCallFromNotification(incomingCall.id, incomingCall.source);
   };
 
@@ -946,8 +948,10 @@ const AppContent: React.FC = () => {
       let callerData: any = null;
 
       if (source === 'pb') {
+        log('Accepting PocketBase call...');
         await pb.collection('calls').update(callId, { status: 'ongoing' });
         const record = await pb.collection('calls').getOne(callId, { expand: 'caller_id' });
+        log('Call record updated in PB');
         callerData = {
           id: record.id,
           caller_id: record.caller_id,
@@ -956,15 +960,15 @@ const AppContent: React.FC = () => {
           avatar: record.expand?.caller_id?.avatar ? pb.files.getUrl(record.expand.caller_id, record.expand.caller_id.avatar) : (record.expand?.caller_id?.avatar_url || DEFAULT_AVATAR)
         };
       } else {
-        // Firebase call
+        log('Accepting Firebase call...');
         await updateDoc(doc(db, 'calls', callId), { status: 'accepted', lastUpdate: new Date() });
+        log('Call record updated in Firebase');
         
-        // If incomingCall is null (background), we might need to fetch caller info
         let callerId = incomingCall?.caller_id;
         let receiverId = incomingCall?.receiver_id || pbUser.id;
 
         if (!callerId) {
-          // Attempt to get callerId from Firebase if not in state
+          log('Missing callerId in state, fetching from doc...');
           try {
             const callSnap = await getDoc(doc(db, 'calls', callId));
             if (callSnap.exists()) { 
@@ -976,12 +980,12 @@ const AppContent: React.FC = () => {
           }
         }
 
-        // Fallback or use state
         const senderId = callerId || incomingCall?.caller_id;
         
         if (!senderId) {
           log('Aborting accept: No sender ID found');
           setNotification({ message: "Échec de l'appel: Expéditeur introuvable", show: true });
+          setIncomingCall((prev: any) => prev ? { ...prev, isProcessing: false } : null);
           return;
         }
 
@@ -995,11 +999,12 @@ const AppContent: React.FC = () => {
         };
       }
       
+      log('Setting active call data:', callerData);
       setActiveCall({
         id: callerData.id,
         caller_id: callerData.caller_id,
         receiver_id: callerData.receiver_id,
-        isOngoing: true, // Mark as ongoing immediately for receiver
+        isOngoing: true,
         profiles: {
           username: callerData.username,
           avatar_url: callerData.avatar
@@ -1022,6 +1027,7 @@ const AppContent: React.FC = () => {
   const handleDeclineCall = async () => {
     if (!incomingCall) return;
     log('User clicked Decline button in overlay');
+    setIncomingCall((prev: any) => ({ ...prev, isProcessing: true }));
     handleDeclineCallFromNotification(incomingCall.id, incomingCall.source);
   };
 
@@ -1454,6 +1460,7 @@ const AppContent: React.FC = () => {
             onAccept={handleAcceptCall}
             onDecline={handleDeclineCall}
             onSendMessage={handleSendQuickMessage}
+            isProcessing={incomingCall.isProcessing}
           />
         )}
         {activeCall && (

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Phone, PhoneOff, MessageSquare, ChevronUp, X, User, Lock as LockIcon, Video } from 'lucide-react';
+import { Phone, PhoneOff, MessageSquare, ChevronUp, X, User, Lock as LockIcon, Video, Loader2 } from 'lucide-react';
 import { DEFAULT_AVATAR } from '../constants';
 
 interface IncomingCallOverlayProps {
@@ -13,6 +13,7 @@ interface IncomingCallOverlayProps {
   onAccept: () => void;
   onDecline: () => void;
   onSendMessage: (text: string) => void;
+  isProcessing?: boolean;
 }
 
 const QUICK_MESSAGES = [
@@ -26,7 +27,8 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
   caller, 
   onAccept, 
   onDecline, 
-  onSendMessage 
+  onSendMessage,
+  isProcessing = false
 }) => {
   const [showQuickMessages, setShowQuickMessages] = useState(false);
   const ringtoneRef = useRef<HTMLAudioElement | null>(null);
@@ -178,35 +180,37 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
         <div className="w-full flex justify-around items-end">
           <div className="flex flex-col items-center gap-3">
              <motion.button
-               drag="y"
+               drag={isProcessing ? false : "y"}
                dragConstraints={{ top: -100, bottom: 0 }}
                dragElastic={0.2}
                onDragEnd={(e, info) => {
                  if (info.offset.y < -60) onDecline();
                }}
-               whileTap={{ scale: 0.9 }}
-               onClick={onDecline}
-               className="w-16 h-16 rounded-full bg-[#ff3b30] flex items-center justify-center shadow-lg cursor-pointer"
+               whileTap={{ scale: isProcessing ? 1 : 0.9 }}
+               onTap={isProcessing ? undefined : onDecline}
+               disabled={isProcessing}
+               className={`w-16 h-16 rounded-full bg-[#ff3b30] flex items-center justify-center shadow-lg ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
              >
-               <PhoneOff size={28} className="text-white" />
+               {isProcessing ? <Loader2 size={28} className="text-white animate-spin" /> : <PhoneOff size={28} className="text-white" />}
              </motion.button>
              <span className="text-xs text-white/60 shadow-sm font-medium">Décliner</span>
           </div>
 
           <div className="flex flex-col items-center gap-3">
              <motion.button
-               drag="y"
+               drag={isProcessing ? false : "y"}
                dragConstraints={{ top: -100, bottom: 0 }}
                dragElastic={0.2}
                onDragEnd={(e, info) => {
                  if (info.offset.y < -60) onAccept();
                }}
-               whileTap={{ scale: 0.9 }}
-               onClick={onAccept}
-               className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg cursor-pointer"
-               style={{ backgroundColor: '#25D366' }} // WhatsApp Green
+               whileTap={{ scale: isProcessing ? 1 : 0.9 }}
+               onTap={isProcessing ? undefined : onAccept}
+               disabled={isProcessing}
+               className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+               style={{ backgroundColor: isProcessing ? '#1a9d4b' : '#25D366' }} // WhatsApp Green
              >
-               <Phone size={28} className="text-white fill-current" />
+               {isProcessing ? <Loader2 size={28} className="text-white animate-spin" /> : <Phone size={28} className="text-white fill-current" />}
              </motion.button>
              <span className="text-xs text-white/60 shadow-sm font-medium">Répondre</span>
           </div>
