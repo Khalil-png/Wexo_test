@@ -284,11 +284,51 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
   const longPressTimer = useRef<any>(null);
   const isLongPressing = useRef(false);
+  const touchStartPos = useRef<{ x: number, y: number } | null>(null);
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
+  const typingTimeoutRef = useRef<any>(null);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const initialHeight = useRef(window.innerHeight);
 
   const isAndroidDevice = () => {
     return /Android/i.test(navigator.userAgent);
+  };
+
+  const updateTypingStatus = async (typing: boolean) => {
+    if (!user || !activeChatId || selectedId === 'gemini') return;
+    try {
+      // On utilise message_info pour signaler le statut
+      await pb.collection('message_info').create({
+        chat: activeChatId,
+        user: user.uid,
+        type: 'typing',
+        payload: { isTyping: typing }
+      });
+    } catch (e) {
+      // On ignore silencieusement les erreurs d'indicateur pour ne pas polluer l'UI
+    }
+  };
+
+  const handleInputFocus = () => {
+    updateTypingStatus(true);
+  };
+
+  const handleInputBlur = () => {
+    // Petit délai pour éviter que ça clignote entre deux clics
+    setTimeout(() => updateTypingStatus(false), 500);
+  };
+
+  const handleInputChange = (val: string) => {
+    setMessageText(val);
+    
+    // Si l'utilisateur tape, on s'assure que le statut est "true"
+    updateTypingStatus(true);
+    
+    // On réinitialise un timer pour mettre le statut à "false" après 3s d'inactivité
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      updateTypingStatus(false);
+    }, 3000);
   };
 
   const fetchConversations = useCallback(async () => {
@@ -700,6 +740,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           const isRelated = i.chat === activeChatId;
 
           if (isRelated) {
+             if (i.type === 'typing') {
+               // Si c'est un signal d'écriture et que ce n'est pas NOUS
+               if (i.user !== user.uid) {
+                 setIsOtherTyping(i.payload?.isTyping || false);
+                 
+                 // Auto-hide après 5s au cas où on rate l'événement "false"
+                 if (i.payload?.isTyping) {
+                   setTimeout(() => setIsOtherTyping(false), 5000);
+                 }
+               }
+               return;
+             }
+
              const u = i.expand?.user || await pb.collection('users').getOne(i.user).catch(() => null);
              const newInfo = {
                 id: i.id,
@@ -964,20 +1017,45 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     });
   };
 
-  const handleMessageTouchStart = (id: string) => {
+  const handleMessageTouchStart = (id: string, e: React.TouchEvent) => {
     if (!isMobileDevice()) return;
     isLongPressing.current = false;
+    touchStartPos.current = { 
+      x: e.touches[0].clientX, 
+      y: e.touches[0].clientY 
+    };
+    
     longPressTimer.current = setTimeout(() => {
       isLongPressing.current = true;
       toggleMessageSelection(id);
-    }, 500); // 500ms for long press as requested
+    }, 500); 
+  };
+
+  const handleMessageTouchMove = (e: React.TouchEvent) => {
+    if (!isMobileDevice() || !touchStartPos.current || !longPressTimer.current) return;
+    
+    const currentX = e.touches[0].clientX;
+    const currentY = e.touches[0].clientY;
+    
+    const distX = Math.abs(currentX - touchStartPos.current.x);
+    const distY = Math.abs(currentY - touchStartPos.current.y);
+    
+    // Si on a bougé de plus de 10px, c'est probablement un scroll, donc on annule la pression longue
+    if (distX > 10 || distY > 10) {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+    }
   };
 
   const handleMessageTouchEnd = (id: string) => {
     if (!isMobileDevice()) return;
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
     }
+    touchStartPos.current = null;
   };
 
   const handleMessageClick = (id: string, e: React.MouseEvent) => {
@@ -1894,7 +1972,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 return (
                   <div 
                     key={msg.id} 
-                    onTouchStart={() => handleMessageTouchStart(msg.id)}
+                    onTouchStart={(e) => handleMessageTouchStart(msg.id, e)}
+                    onTouchMove={handleMessageTouchMove}
                     onTouchEnd={() => handleMessageTouchEnd(msg.id)}
                     onClick={(e) => handleMessageClick(msg.id, e)}
                     className={`flex group relative w-full px-4 sm:px-8 transition-all ${msg.is_own ? 'justify-end' : 'justify-start'} ${extraMargin} ${isSelected ? 'bg-[var(--primary-color-dark)]' : !isMobileDevice() ? 'hover:bg-white/[0.03]' : ''}`}
@@ -2169,6 +2248,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
             {/* Pied de page Messagerie (Barre + Zone Noire) */}
             <div className={`flex flex-col bg-[#0f0f0f] flex-shrink-0 z-[110] relative`}>
+              {/* Indicateur d'écriture (Typing Indicator) */}
+              {isOtherTyping && (
+                <div className="absolute -top-6 left-4 flex items-center gap-1.5 px-3 py-1 bg-white/5 backdrop-blur-md rounded-t-xl border-x border-t border-white/10 animate-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex gap-1">
+                    <div className="w-1 h-1 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-1 h-1 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-1 h-1 bg-primary rounded-full animate-bounce"></div>
+                  </div>
+                  <span className="text-[9px] font-bold text-white/50 uppercase tracking-wider">En train d'écrire</span>
+                </div>
+              )}
+
               {/* Barre de Saisie */}
               <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1' : 'py-4'} bg-[#0f0f0f] border-t border-white/10`}>
                 {isOwnerAccount && localUploadError && (
@@ -2215,8 +2306,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                     <input 
                       type="text" 
                       value={messageText} 
-                      onChange={(e) => setMessageText(e.target.value)} 
-                      onKeyDown={(e) => e.key === 'Enter' && sendMessage(messageText)} 
+                      onChange={(e) => handleInputChange(e.target.value)}
+                      onFocus={handleInputFocus}
+                      onBlur={handleInputBlur}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          sendMessage(messageText);
+                          updateTypingStatus(false);
+                        }
+                      }} 
                       placeholder="Message" 
                       className="flex-1 bg-transparent border-none text-base text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1 h-full pl-0 min-w-0" 
                     />
