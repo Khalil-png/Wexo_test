@@ -109,9 +109,12 @@ const AppContent: React.FC = () => {
       let hapticsInterval: any = null;
       
       if (isNative()) {
-        hapticsInterval = setInterval(() => {
-          Haptics.vibrate({ duration: 800 });
-        }, 1500);
+        const haptics = async () => {
+          hapticsInterval = setInterval(() => {
+            Haptics.vibrate({ duration: 800 });
+          }, 1500);
+        };
+        haptics();
       } else if (navigator.vibrate) {
         // Pattern: Vibrate 800ms, Pause 400ms, repeat
         navigator.vibrate([800, 400, 800, 400, 800, 400, 800, 400]);
@@ -291,7 +294,7 @@ const AppContent: React.FC = () => {
             description: 'Alertes lors d\'un appel entrant',
             importance: 5, // High importance
             visibility: 1, // Public/Lockscreen
-            sound: 'ringtone.mp3', // Note: Needs to be in res/raw to work, otherwise default
+            sound: 'ringtone.mp3', 
             vibration: true,
             lights: true,
             lightColor: '#10b981'
@@ -678,14 +681,15 @@ const AppContent: React.FC = () => {
           await LocalNotifications.schedule({
             notifications: [
               {
-                title: `APPEL ENTRANT: ${callerName}`,
-                body: "Appuyez pour répondre",
+                title: `APPEL: ${callerName}`,
+                body: "Faites glisser pour répondre ou refusez",
                 id: 999,
                 schedule: { at: new Date(Date.now() + 100) },
-                sound: 'ringtone.mp3', // Utilisez le canal 'calls' créé
+                sound: 'ringtone.mp3',
                 channelId: 'calls',
-                ongoing: true,
+                ongoing: true, // Persistant
                 autoCancel: false,
+                smallIcon: 'ic_stat_phone', // Use system phone icon if available
                 extra: {
                   type: 'call',
                   callId: record.id,

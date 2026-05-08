@@ -184,16 +184,33 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
                dragConstraints={{ top: -100, bottom: 0 }}
                dragElastic={0.2}
                onDragEnd={(e, info) => {
-                 if (info.offset.y < -60) onDecline();
+                 if (info.offset.y < -60) {
+                   console.log("Decline via drag");
+                   onDecline();
+                 }
                }}
                whileTap={{ scale: isProcessing ? 1 : 0.9 }}
-               onTap={isProcessing ? undefined : onDecline}
+               onTap={() => {
+                 if (!isProcessing) {
+                   console.log("Decline via tap");
+                   onDecline();
+                 }
+               }}
+               onClick={() => {
+                 if (!isProcessing) {
+                   console.log("Decline via click");
+                   onDecline();
+                 }
+               }}
                disabled={isProcessing}
-               className={`w-16 h-16 rounded-full bg-[#ff3b30] flex items-center justify-center shadow-lg ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+               className={`w-16 h-16 rounded-full bg-[#ff3b30] flex items-center justify-center shadow-lg ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-red-600'}`}
              >
                {isProcessing ? <Loader2 size={28} className="text-white animate-spin" /> : <PhoneOff size={28} className="text-white" />}
              </motion.button>
-             <span className="text-xs text-white/60 shadow-sm font-medium">Décliner</span>
+             <div className="flex flex-col items-center">
+               <span className="text-xs text-white/80 shadow-sm font-medium">Décliner</span>
+               <ChevronUp size={12} className="text-white/40 animate-pulse" />
+             </div>
           </div>
 
           <div className="flex flex-col items-center gap-3">
@@ -202,17 +219,34 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
                dragConstraints={{ top: -100, bottom: 0 }}
                dragElastic={0.2}
                onDragEnd={(e, info) => {
-                 if (info.offset.y < -60) onAccept();
+                 if (info.offset.y < -60) {
+                   console.log("Accept via drag");
+                   onAccept();
+                 }
                }}
                whileTap={{ scale: isProcessing ? 1 : 0.9 }}
-               onTap={isProcessing ? undefined : onAccept}
+               onTap={() => {
+                 if (!isProcessing) {
+                   console.log("Accept via tap");
+                   onAccept();
+                 }
+               }}
+               onClick={() => {
+                 if (!isProcessing) {
+                   console.log("Accept via click");
+                   onAccept();
+                 }
+               }}
                disabled={isProcessing}
-               className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+               className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-90'}`}
                style={{ backgroundColor: isProcessing ? '#1a9d4b' : '#25D366' }} // WhatsApp Green
              >
                {isProcessing ? <Loader2 size={28} className="text-white animate-spin" /> : <Phone size={28} className="text-white fill-current" />}
              </motion.button>
-             <span className="text-xs text-white/60 shadow-sm font-medium">Répondre</span>
+             <div className="flex flex-col items-center">
+               <span className="text-xs text-white/80 shadow-sm font-medium">Répondre</span>
+               <ChevronUp size={12} className="text-white/40 animate-pulse" />
+             </div>
           </div>
         </div>
       </div>
