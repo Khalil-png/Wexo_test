@@ -27,8 +27,6 @@ import remarkGfm from 'remark-gfm';
 import { generateSnowflake } from '@/utils/snowflake';
 import Username from './Username';
 
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
-
 // Avatar Gemini avec coins moins arrondis
 const GeminiAvatarIcon = ({ size = 16 }: { size?: number }) => (
   <div className="w-full h-full flex items-center justify-center overflow-hidden rounded-md">
@@ -620,16 +618,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   }, [searchParams, selectedId]);
 
   const handleSelectChat = (id: string | null) => {
-    if (id) {
-      if (isMobileDevice()) {
-        Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
-      } else {
-        const popAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3');
-        popAudio.volume = 0.2;
-        popAudio.play().catch(() => {});
-      }
-    }
-
     setSelectedId(id);
     setSelectedMessageIds(new Set());
     if (id) {
@@ -1054,11 +1042,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     
     longPressTimer.current = setTimeout(() => {
       isLongPressing.current = true;
-      if (isMobileDevice()) {
-        Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {});
-      }
       toggleMessageSelection(id);
-    }, 300); 
+    }, 500); 
   };
 
   const handleMessageTouchMove = (e: React.TouchEvent) => {
