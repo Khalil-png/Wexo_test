@@ -1302,6 +1302,22 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         } catch (pbNotifErr) {
           console.warn("PocketBase side notification failed:", pbNotifErr);
         }
+
+        // --- ENVOI DE LA NOTIFICATION PUSH FIREBASE (FCM) VIA LE SERVEUR ---
+        fetch('/api/notifications/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            receiverId: selectedId,
+            title: notifData.title,
+            body: notifData.content,
+            data: {
+              type: 'message',
+              senderId: user.uid,
+              chatId: chatIdToUse || ''
+            }
+          })
+        }).catch(err => console.error("Erreur envoi FCM Push:", err));
       }
 
       fetchConversations();

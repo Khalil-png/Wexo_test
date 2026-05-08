@@ -31,7 +31,8 @@ import { generateSnowflake } from '@/utils/snowflake';
 import { AnimatePresence } from 'framer-motion';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
 import { decryptMessage } from '@/services/encryptionService';
-import { db, auth } from '@/services/firebase';
+import { db, auth, getMessagingInstance } from '@/services/firebase';
+import { getToken, onMessage } from 'firebase/messaging';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -804,6 +805,53 @@ const AppContent: React.FC = () => {
     return () => {
       pb.collection('notifications').unsubscribe('*');
     };
+  }, [pbUser?.id]);
+
+  // Firebase Cloud Messaging (FCM) Token Registration
+  useEffect(() => {
+    if (!pbUser?.id) return;
+
+    const registerFCM = async () => {
+      try {
+        const messaging = await getMessagingInstance();
+        if (!messaging) return;
+
+        if (typeof Notification !== 'undefined') {
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+            const token = await getToken(messaging).catch(e => {
+              log('Failed to get FCM token:', e);
+              return null;
+            });
+            
+            if (token) {
+              log('FCM Token generated:', token);
+              await fetch('/api/notifications/register-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: pbUser.id, token })
+              });
+            }
+          }
+        }
+
+        onMessage(messaging, (payload) => {
+          log('Foreground message received:', payload);
+          if (payload.notification) {
+            setInAppNotice({
+              title: payload.notification.title || 'Notification',
+              content: payload.notification.body || '',
+              senderId: payload.data?.senderId || '',
+              show: true
+            });
+          }
+        });
+      } catch (err) {
+        log('Error registering for push notifications:', err);
+      }
+    };
+
+    registerFCM();
   }, [pbUser?.id]);
 
   // Global Messages Subscription for Notifications

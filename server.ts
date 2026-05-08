@@ -71,6 +71,76 @@ async function startServer() {
     }
   });
 
+// Route pour enregistrer un token FCM
+app.post("/api/notifications/register-token", async (req, res) => {
+  const { userId, token } = req.body;
+  if (!userId || !token) return res.status(400).json({ error: "Missing userId or token" });
+
+  try {
+    const tokenRef = db.collection("fcm_tokens").doc(userId);
+    await tokenRef.set({
+      tokens: admin.firestore.FieldValue.arrayUnion(token),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Route pour envoyer une notification
+app.post("/api/notifications/send", async (req, res) => {
+  const { receiverId, title, body, data } = req.body;
+  if (!receiverId || !title || !body) return res.status(400).json({ error: "Missing parameters" });
+
+  try {
+    const tokenDoc = await db.collection("fcm_tokens").doc(receiverId).get();
+    if (!tokenDoc.exists) {
+      return res.json({ success: false, message: "No tokens found for user" });
+    }
+
+    const tokens = tokenDoc.data()?.tokens || [];
+    if (tokens.length === 0) {
+      return res.json({ success: false, message: "Empty tokens for user" });
+    }
+
+    const message = {
+      notification: { title, body },
+      data: data || {},
+      tokens: tokens,
+    };
+
+    const response = await admin.messaging().sendEachForMulticast(message);
+    
+    // Nettoyage des tokens invalides (optionnel mais recommandé)
+    if (response.failureCount > 0) {
+      const failedTokens: string[] = [];
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          const error = resp.error?.code;
+          if (error === 'messaging/invalid-registration-token' || error === 'messaging/registration-token-not-registered') {
+            failedTokens.push(tokens[idx]);
+          }
+        }
+      });
+      if (failedTokens.length > 0) {
+        await db.collection("fcm_tokens").doc(receiverId).update({
+          tokens: admin.firestore.FieldValue.arrayRemove(...failedTokens)
+        });
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      successCount: response.successCount, 
+      failureCount: response.failureCount 
+    });
+  } catch (err: any) {
+    console.error("Erreur envoi notification:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
   // Route pour recevoir les logs du navigateur dans le terminal
   app.post("/api/log", (req, res) => {
     const { message, level, details } = req.body;

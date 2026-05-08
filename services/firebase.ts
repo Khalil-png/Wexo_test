@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer, serverTimestamp, setDoc, arrayUnion } from 'firebase/firestore';
+import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -55,7 +56,21 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-export { serverTimestamp };
+export { serverTimestamp, setDoc, arrayUnion };
+
+// Initialize Messaging lazily
+export const getMessagingInstance = async () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const supported = await isSupported();
+    if (supported) {
+      return getMessaging(app);
+    }
+  } catch (e) {
+    console.warn("Firebase Messaging not supported in this environment", e);
+  }
+  return null;
+};
 
 // Test connection as required by instructions
 async function testConnection() {
