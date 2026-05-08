@@ -15,6 +15,7 @@ import { DEFAULT_AVATAR } from '../constants';
 import { Message } from '@/types';
 import { getSmartResponse, generateImage, generateVideo, checkApiKey, openKeySelector, analyzeVideo } from '@/services/geminiService';
 import { pb, uploadToPocketBase } from '@/services/pocketbaseService';
+import { encryptMessage, decryptMessage } from '@/services/encryptionService';
 import { db, serverTimestamp, handleFirestoreError, OperationType } from '@/services/firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { isMobileDevice } from '@/src/utils/device';
@@ -338,7 +339,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             username: otherMember.username,
             avatar_url: otherMember.avatar_url,
             display_name: otherMember.name || otherMember.username,
-            lastMessage: lastMsg?.text || '',
+            lastMessage: decryptMessage(lastMsg?.text || ''),
             lastMessageTime: lastMsg ? new Date(lastMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
             unreadCount: 0
           });
@@ -361,7 +362,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             chatId: chat.id,
             username: chat.name,
             display_name: chat.name,
-            lastMessage: messagesCountRes.items[0]?.text || '',
+            lastMessage: decryptMessage(messagesCountRes.items[0]?.text || ''),
             lastMessageTime: messagesCountRes.items[0] ? new Date(messagesCountRes.items[0].created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
             unreadCount: 0,
             isGroup: true
@@ -415,7 +416,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         sender_id: m.sender_id,
         receiver_id: m.receiver_id,
         chat_id: m.chat,
-        text: m.text,
+        text: decryptMessage(m.text),
         created_at: m.created,
         is_own: m.sender_id === user.uid,
         isAI: m.sender_id === 'gemini',
@@ -659,14 +660,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               const isDuplicate = prev.some(msg => 
                 msg.id === m.id || 
                 ((msg.is_own || msg.sender_id === 'gemini') && 
-                 msg.text === m.text && 
+                 msg.text === decryptMessage(m.text) && 
                  msg.sender_id === m.sender_id &&
                  Math.abs(new Date(msg.created_at).getTime() - new Date(m.created).getTime()) < 10000)
               );
 
               if (isDuplicate) {
                 return prev.map(msg => {
-                  if ((msg.is_own || msg.sender_id === 'gemini') && msg.text === m.text && !msg.id.startsWith('rec')) {
+                  if ((msg.is_own || msg.sender_id === 'gemini') && msg.text === decryptMessage(m.text) && !msg.id.startsWith('rec')) {
                     return { ...msg, id: m.id, created_at: m.created };
                   }
                   return msg;
@@ -677,7 +678,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 id: m.id,
                 sender_id: m.sender_id,
                 receiver_id: m.receiver_id,
-                text: m.text,
+                text: decryptMessage(m.text),
                 created_at: m.created,
                 is_own: m.sender_id === user.uid,
                 isAI: m.sender_id === 'gemini',
@@ -1154,6 +1155,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
       const pbData = {
         ...newMsg,
+        text: encryptMessage(newMsg.text),
         chat: chatIdToUse,
         created: now 
       };
@@ -1290,7 +1292,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             await pb.collection('messages').create({
               sender_id: 'gemini',
               receiver_id: user.uid,
-              text: responseText,
+              text: encryptMessage(responseText),
               is_ai: true,
               created: new Date().toISOString()
             });
@@ -1365,7 +1367,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             await pb.collection('messages').create({
               sender_id: 'gemini',
               receiver_id: user.uid,
-              text: responseText,
+              text: encryptMessage(responseText),
               file_url: aiMsg.file_url,
               file_name: aiMsg.file_name,
               file_type: aiMsg.file_type,
@@ -1392,7 +1394,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             await pb.collection('messages').create({
               sender_id: 'gemini',
               receiver_id: user.uid,
-              text: responseText,
+              text: encryptMessage(responseText),
               created: new Date().toISOString()
             });
             fetchConversations();
