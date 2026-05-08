@@ -1886,9 +1886,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 // Normal spacing logic: consistent for AI and regular users
                 let extraMargin = 'mt-0.5';
                 if (!hasPrevSameSender) {
-                  extraMargin = 'mt-5'; // Professional group gap halved (20px)
+                  extraMargin = 'mt-[18.2px]'; // Professional group gap / 1.10
                 } else {
-                  extraMargin = 'mt-[1px]'; // Very tight gap halved (1px)
+                  extraMargin = 'mt-[1.1px]'; // Very tight gap * 1.10
                 }
                 
                 return (
