@@ -763,13 +763,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     (window as any).lastScreenshotAlert = now;
 
     try {
+      if (profile?.username === 'khalil') {
+        console.log("[SCREENSHOT DEBUG] Tentative d'envoi d'alerte...");
+      }
       let chatIdToUse = activeChatId;
       if (!chatIdToUse) {
          const chatList = await pb.collection('chats').getList(1, 1, {
            filter: `type="direct" && members ~ "${user.uid}" && members ~ "${selectedId}"`
          });
          if (chatList.items.length > 0) chatIdToUse = chatList.items[0].id;
-         else return;
+         else {
+           if (profile?.username === 'khalil') console.error("[SCREENSHOT DEBUG] Pas de chat trouvé entre", user.uid, "et", selectedId);
+           return;
+         }
       }
 
       await pb.collection('messages').create({
@@ -781,8 +787,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         text: profile?.username || user.displayName || 'Utilisateur',
         created: new Date().toISOString()
       });
+      if (profile?.username === 'khalil') console.log("[SCREENSHOT DEBUG] Alerte envoyée avec succès !");
     } catch (e) {
       console.error("Screenshot notification failed", e);
+      if (profile?.username === 'khalil') alert("Erreur screenshot: " + (e as any).message);
     }
   };
 
@@ -790,6 +798,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     if (!selectedId || selectedId === 'gemini') return;
 
     const handleKeyUp = (e: KeyboardEvent) => {
+      if (profile?.username === 'khalil') console.log("[SCREENSHOT DEBUG] KeyUp:", e.key);
       // Detect PrintScreen key
       if (e.key === 'PrintScreen' || e.code === 'PrintScreen') {
         sendScreenshotAlert();
@@ -797,6 +806,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (profile?.username === 'khalil') {
+        if (e.metaKey || e.ctrlKey || e.shiftKey) {
+           console.log("[SCREENSHOT DEBUG] KeyDown combination:", (e.metaKey?'Meta+':'') + (e.ctrlKey?'Ctrl+':'') + (e.shiftKey?'Shift+':'') + e.key);
+        }
+      }
       // Mac shortcuts: Cmd+Shift+3, Cmd+Shift+4, Cmd+Shift+5
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '3' || e.key === '4' || e.key === '5')) {
         sendScreenshotAlert();
@@ -817,12 +831,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         (window as any).potentialScreenshot = Date.now();
+        if (profile?.username === 'khalil') console.log("[SCREENSHOT DEBUG] App cachée (détection potentielle lancée)");
       } else if (document.visibilityState === 'visible' && (window as any).potentialScreenshot) {
         const timeHidden = Date.now() - (window as any).potentialScreenshot;
         (window as any).potentialScreenshot = null;
+        if (profile?.username === 'khalil') console.log("[SCREENSHOT DEBUG] App visible, temps caché:", timeHidden, "ms");
         
         // Mobile screenshot heuristic: app backgrounded for 0.5s to 4s
         if (timeHidden > 500 && timeHidden < 4000) {
+          if (profile?.username === 'khalil') console.log("[SCREENSHOT DEBUG] Heuristique mobile validée (0.5s-4s)");
           sendScreenshotAlert();
         }
       }
