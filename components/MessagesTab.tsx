@@ -296,6 +296,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   };
 
   useEffect(() => {
+    const chatFromUrl = searchParams.get('chat');
+    if (chatFromUrl !== selectedId) {
+      setSelectedId(chatFromUrl);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
 
@@ -1273,7 +1280,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
       // CRÉATION DE LA NOTIFICATION POUR LE DESTINATAIRE (via Firebase et PocketBase)
       if (selectedId && selectedId !== 'gemini') {
-        const notifData = {
+        // Firebase payload
+        const firestoreNotif = {
           user_id: selectedId,
           sender_id: user.uid,
           sender_avatar: profile?.avatar_url || '',
@@ -1286,18 +1294,22 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
         try {
           // Firebase Notification
-          await addDoc(collection(db, 'notifications'), notifData);
+          await addDoc(collection(db, 'notifications'), firestoreNotif);
         } catch (notifErr: any) {
           handleFirestoreError(notifErr, OperationType.WRITE, 'notifications');
         }
 
         try {
           // PocketBase Notification (Backup for the Bell)
+          // Exact fields from screenshot: user_id, sender_id, type, title, content, status, read
           await pb.collection('notifications').create({
-            ...notifData,
+            user_id: selectedId,
+            sender_id: profile?.id || user?.uid,
+            type: 'message',
+            title: profile?.display_name || user?.displayName || 'Wexo',
+            content: text || (finalFileData ? 'Pièce jointe reçue' : 'Nouveau message'),
             status: 'pending',
-            read: false,
-            created_at: null // Let PB handle it or use JS date
+            read: false
           });
         } catch (pbNotifErr) {
           console.warn("PocketBase side notification failed:", pbNotifErr);
@@ -1309,8 +1321,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             receiverId: selectedId,
-            title: notifData.title,
-            body: notifData.content,
+            title: firestoreNotif.title,
+            body: firestoreNotif.content,
             data: {
               type: 'message',
               senderId: user.uid,

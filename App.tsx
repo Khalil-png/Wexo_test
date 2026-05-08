@@ -819,7 +819,9 @@ const AppContent: React.FC = () => {
         if (typeof Notification !== 'undefined') {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
-            const token = await getToken(messaging).catch(e => {
+            const token = await getToken(messaging, { 
+              vapidKey: 'BBHRV2L9IBy8HYZh35V1xtfNAAOM_utK_w-tu0qwwva25FTYbBmCgjuGqp480x31ZodNEjPvhHlHaWK5W_ZjSzk' 
+            }).catch(e => {
               log('Failed to get FCM token:', e);
               return null;
             });
