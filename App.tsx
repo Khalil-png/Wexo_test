@@ -515,31 +515,6 @@ const AppContent: React.FC = () => {
 
             // Auto-hide after 5s
             setTimeout(() => setInAppNotice(prev => prev?.senderId === m.sender_id ? { ...prev, show: false } : prev), 5000);
-
-            // Browser System Notification
-            if (typeof window !== 'undefined' && 'Notification' in window && (window as any).Notification.permission === 'granted') {
-              new (window as any).Notification(title, {
-                body: decryptedText,
-                icon: sender.avatar_url || DEFAULT_AVATAR
-              });
-            }
-
-            // Mobile Native Notification
-            if (isNative()) {
-              LocalNotifications.schedule({
-                notifications: [{
-                  id: Math.floor(Math.random() * 1000000),
-                  title: title,
-                  body: decryptedText,
-                  largeBody: decryptedText,
-                  summaryText: 'Message',
-                  schedule: { at: new Date(Date.now() + 100) },
-                  sound: 'default',
-                  channelId: 'messages',
-                  extra: { type: 'message', sender_id: m.sender_id }
-                }]
-              });
-            }
           } catch (err) {
             console.error('Error handling notification:', err);
           }
