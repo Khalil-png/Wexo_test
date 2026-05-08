@@ -127,7 +127,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
 
       try {
         // Migration NAS : Récupération des vraies notifications de PocketBase
-        const records = await pb.collection('notifications').getList(1, 20, {
+        const records = await pb.collection('notifications').getList(1, 40, {
           filter: `user_id="${user.uid}"`,
           sort: '-created'
         });
@@ -150,7 +150,10 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
         
         setNotifications(prev => {
           const others = prev.filter(n => n.source !== 'pb');
-          return [...mappedNotifs, ...others].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+          const combined = [...mappedNotifs, ...others];
+          // Remove duplicates by ID and sort
+          const unique = Array.from(new Map(combined.map(n => [n.id, n])).values());
+          return unique.sort((a, b) => b.id.localeCompare(a.id));
         });
       } catch (err: any) {
          if (err.status !== 404) {

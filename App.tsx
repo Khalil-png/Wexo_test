@@ -482,22 +482,16 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (!pbUser?.id) return;
 
-    pb.collection('messages').subscribe('*', async (e) => {
+    const unsubPromise = pb.collection('messages').subscribe('*', async (e) => {
       if (e.action === 'create') {
         const m = e.record;
         
         // Uniquement si c'est pour nous et pas de nous
         if (m.receiver_id === pbUser.id && m.sender_id !== pbUser.id) {
           // Si on est déjà dans le chat avec cette personne, pas de notif
-          if (location.pathname === '/message') {
-            const searchParams = new URLSearchParams(location.search);
-            const currentChatWith = searchParams.get('chat');
-            
-            // Si c'est un chat personnel (direct)
-            if (m.sender_id === currentChatWith) return;
-            
-            // Note: Pour les chats de groupe, il faudrait vérifier chat_id, 
-            // mais l'URL actuelle utilise selectedId comme receiver_id pour les directs.
+          if (activeChatIdRef.current === m.sender_id) {
+            log('Message received in active chat, skipping notification');
+            return;
           }
 
           try {
@@ -515,6 +509,34 @@ const AppContent: React.FC = () => {
 
             // Auto-hide after 5s
             setTimeout(() => setInAppNotice(prev => prev?.senderId === m.sender_id ? { ...prev, show: false } : prev), 5000);
+
+            // GESTION DES DOUBLONS : Si FCM (pushToken) est actif, on laisse le serveur/FCM gérer la notification système.
+            // Sinon (pas de token ou erreur FCM), on affiche nous-mêmes une notification locale/navigateur.
+            if (!pushToken && document.visibilityState === 'visible') {
+              if (typeof window !== 'undefined' && 'Notification' in window && (window as any).Notification.permission === 'granted') {
+                new (window as any).Notification(title, {
+                  body: decryptedText,
+                  icon: sender.avatar_url || DEFAULT_AVATAR
+                });
+              }
+  
+              if (isNative()) {
+                LocalNotifications.schedule({
+                  notifications: [{
+                    id: Math.floor(Math.random() * 1000000),
+                    title: title,
+                    body: decryptedText,
+                    largeBody: decryptedText,
+                    summaryText: 'Message',
+                    schedule: { at: new Date(Date.now() + 100) },
+                    sound: 'default',
+                    channelId: 'messages',
+                    extra: { type: 'message', sender_id: m.sender_id }
+                  }]
+                });
+              }
+            }
+
           } catch (err) {
             console.error('Error handling notification:', err);
           }
@@ -523,9 +545,9 @@ const AppContent: React.FC = () => {
     });
 
     return () => {
-      pb.collection('messages').unsubscribe('*').catch(() => {});
+      unsubPromise.then(() => pb.collection('messages').unsubscribe('*').catch(() => {}));
     };
-  }, [pbUser?.id, location.pathname, location.search]);
+  }, [pbUser?.id]);
 
   useEffect(() => {
     if (!pbUser?.id) return;
@@ -831,64 +853,7 @@ const AppContent: React.FC = () => {
     registerFCM();
   }, [pbUser?.id]);
 
-  // Global Messages Subscription for Notifications
-  useEffect(() => {
-    if (!pbUser?.id) return;
-
-    const setupMessageSubscription = async () => {
-      await pb.collection('messages').subscribe('*', async ({ action, record }) => {
-        if (action === 'create' && record.receiver_id === pbUser.id) {
-          // Check if user is currently in this specific chat
-          if (activeChatIdRef.current === record.sender_id) {
-            log('Message received in active chat, skipping system notification');
-            return;
-          }
-
-          // New message received
-          try {
-            const sender = await pb.collection('users').getOne(record.sender_id);
-            
-            log('Triggering notification for message from:', sender.username);
-            
-            if (isMobileDevice()) {
-              LocalNotifications.schedule({
-                notifications: [
-                  {
-                    title: `${sender.username}`,
-                    body: record.text || (record.media ? "Média reçu" : "Nouveau message"),
-                    id: Math.floor(Math.random() * 10000),
-                    schedule: { at: new Date(Date.now() + 100) },
-                    sound: 'default',
-                    channelId: 'messages',
-                    extra: {
-                      senderId: record.sender_id,
-                      type: 'message'
-                    }
-                  }
-                ]
-              });
-            } else {
-              // Notification Interne Desktop pour Message
-              setNotification({
-                message: `Message de ${sender.username}: ${record.text || (record.media ? "Média reçu" : "Nouveau message")}`,
-                show: true,
-                type: 'success'
-              });
-              setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 6000);
-            }
-          } catch (err) {
-            console.error("Error creating message notification:", err);
-          }
-        }
-      });
-    };
-
-    setupMessageSubscription();
-
-    return () => {
-      pb.collection('messages').unsubscribe('*');
-    };
-  }, [pbUser?.id]);
+  // L'abonnement global était en double, supprimé pour éviter les conflits et les notifications chiffrées
 
   useEffect(() => {
     let interval: any;

@@ -28,8 +28,9 @@ interface SettingsTabProps {
 
 const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) => {
   const { mode, setMode, primaryColor, setPrimaryColor } = useTheme();
-  const [activeSection, setActiveSection] = useState<'main' | 'compte' | 'profil' | 'theme' | 'onglets'>('main');
+  const [activeSection, setActiveSection] = useState<'main' | 'compte' | 'profil' | 'theme' | 'onglets' | 'notifications'>('main');
   const [displayName, setDisplayName] = useState(profile?.name || profile?.display_name || '');
+  const [notifPerm, setNotifPerm] = useState<string>('unknown');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +51,30 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
   const maskRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (typeof Notification !== 'undefined') {
+      setNotifPerm(Notification.permission);
+    }
+  }, []);
+
+  const requestNotifPerm = async () => {
+    if (typeof Notification !== 'undefined') {
+      const resp = await Notification.requestPermission();
+      setNotifPerm(resp);
+    }
+  };
+
+  const testNotif = () => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      new Notification("Wexo Test", {
+        body: "Ceci est une notification de test !",
+        icon: profile?.avatar_url || 'https://wexo.social/icon.png'
+      });
+    } else {
+      alert("Permission non accordée");
+    }
+  };
 
   const startCamera = async () => {
     try {
@@ -284,6 +309,49 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
       <ChevronRight size={20} className="text-white/20 group-hover:text-white/60 transition-all" />
     </button>
   );
+
+  if (activeSection === 'notifications') {
+    return (
+      <div className="p-6 max-w-2xl mx-auto h-full overflow-y-auto">
+        {renderHeader('Notifications')}
+        <div className="space-y-6">
+          <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
+            <h3 className="text-sm font-bold text-white/40 mb-4">Statut des alertes</h3>
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl">
+                <span className="text-sm font-bold">Permission</span>
+                <span className={`text-xs font-black uppercase px-3 py-1 rounded-full ${notifPerm === 'granted' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                  {notifPerm}
+                </span>
+              </div>
+              
+              {notifPerm !== 'granted' && (
+                <button 
+                  onClick={requestNotifPerm}
+                  className="w-full p-4 bg-white text-black font-bold rounded-2xl hover:bg-slate-200 transition-all text-sm"
+                >
+                  Activer les notifications
+                </button>
+              )}
+              
+              <button 
+                onClick={testNotif}
+                className="w-full p-4 bg-white/5 border border-white/10 text-white font-bold rounded-2xl hover:bg-white/10 transition-all text-sm"
+              >
+                Envoyer un test
+              </button>
+            </div>
+          </div>
+          
+          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl">
+            <p className="text-xs text-blue-400 italic">
+              Note: Si vous ne recevez rien, vérifiez que l'application "Wexo" est autorisée dans les réglages de votre système/navigateur.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (activeSection === 'compte') {
     return (
@@ -547,6 +615,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
           label="Thème & Apparence" 
           description="Mode sombre, couleurs et interface"
           onClick={() => setActiveSection('theme')}
+        />
+
+        <SectionButton 
+          icon={Smartphone} 
+          label="Notifications" 
+          description="Gérer les alertes et permissions"
+          onClick={() => setActiveSection('notifications')}
         />
         
         <SectionButton 
