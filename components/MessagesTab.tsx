@@ -258,6 +258,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('chat'));
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const activeChatIdRef = useRef<string | null>(null);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
   const [messageText, setMessageText] = useState('');
   const [isTypingAI, setIsTypingAI] = useState(false);
@@ -293,6 +294,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const isAndroidDevice = () => {
     return /Android/i.test(navigator.userAgent);
   };
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
 
   const updateTypingStatus = async (typing: boolean) => {
     if (!user || !activeChatId || selectedId === 'gemini') return;
@@ -691,7 +696,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       pb.collection('messages').subscribe('*', (e) => {
         if (e.action === 'create') {
           const m = e.record;
-          const isRelated = (m.chat && m.chat === activeChatId) || 
+          const currentActiveChatId = activeChatIdRef.current;
+          
+          const isRelated = (m.chat && m.chat === currentActiveChatId) || 
                             (!m.chat && ((m.sender_id === user.uid && m.receiver_id === selectedId) || 
                                          (m.sender_id === selectedId && m.receiver_id === user.uid)));
           
@@ -737,7 +744,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       pb.collection('message_info').subscribe('*', async (e) => {
         if (e.action === 'create') {
           const i = e.record;
-          const isRelated = i.chat === activeChatId;
+          const currentActiveChatId = activeChatIdRef.current;
+          const isRelated = i.chat === currentActiveChatId;
 
           if (isRelated) {
              if (i.type === 'typing') {

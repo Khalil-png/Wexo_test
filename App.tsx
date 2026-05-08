@@ -26,10 +26,11 @@ import PocketBaseStatus from '@/components/PocketBaseStatus';
 import { isMobileDevice } from '@/src/utils/device';
 import { TabId, Workspace as WorkspaceType } from '@/types';
 import { DEFAULT_AVATAR, NAV_ITEMS } from '@/constants';
-import { HelpCircle, TriangleAlert, X, Construction, CheckCircle } from 'lucide-react';
+import { HelpCircle, TriangleAlert, X, Construction, CheckCircle, MessageSquarePlus } from 'lucide-react';
 import { generateSnowflake } from '@/utils/snowflake';
 import { AnimatePresence } from 'framer-motion';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
+import { decryptMessage } from '@/services/encryptionService';
 import { db, auth } from '@/services/firebase';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
@@ -89,6 +90,7 @@ const AppContent: React.FC = () => {
   const [showCamera, setShowCamera] = useState(false);
   const [isKeyboardActive, setIsKeyboardActive] = useState(false);
   const [isRinging, setIsRinging] = useState(false);
+  const [inAppNotice, setInAppNotice] = useState<{title: string, content: string, senderId: string, show: boolean} | null>(null);
 
   // Track active chat for notification filtering
   const activeChatIdRef = useRef<string | null>(null);
@@ -474,6 +476,80 @@ const AppContent: React.FC = () => {
 
     return () => unsubscribe();
   }, [pbUser?.id]);
+
+  // PocketBase Global Messages Listener for Notifications
+  useEffect(() => {
+    if (!pbUser?.id) return;
+
+    pb.collection('messages').subscribe('*', async (e) => {
+      if (e.action === 'create') {
+        const m = e.record;
+        
+        // Uniquement si c'est pour nous et pas de nous
+        if (m.receiver_id === pbUser.id && m.sender_id !== pbUser.id) {
+          // Si on est déjà dans le chat avec cette personne, pas de notif
+          if (location.pathname === '/message') {
+            const searchParams = new URLSearchParams(location.search);
+            const currentChatWith = searchParams.get('chat');
+            
+            // Si c'est un chat personnel (direct)
+            if (m.sender_id === currentChatWith) return;
+            
+            // Note: Pour les chats de groupe, il faudrait vérifier chat_id, 
+            // mais l'URL actuelle utilise selectedId comme receiver_id pour les directs.
+          }
+
+          try {
+            const sender = await pb.collection('users').getOne(m.sender_id);
+            const decryptedText = decryptMessage(m.text);
+            const title = sender.name || sender.username || 'Nouveau message';
+            
+            // In-App Notification (Toast)
+            setInAppNotice({
+              title,
+              content: decryptedText.length > 60 ? decryptedText.substring(0, 57) + '...' : decryptedText,
+              senderId: m.sender_id,
+              show: true
+            });
+
+            // Auto-hide after 5s
+            setTimeout(() => setInAppNotice(prev => prev?.senderId === m.sender_id ? { ...prev, show: false } : prev), 5000);
+
+            // Browser System Notification
+            if (typeof window !== 'undefined' && 'Notification' in window && (window as any).Notification.permission === 'granted') {
+              new (window as any).Notification(title, {
+                body: decryptedText,
+                icon: sender.avatar_url || DEFAULT_AVATAR
+              });
+            }
+
+            // Mobile Native Notification
+            if (isNative()) {
+              LocalNotifications.schedule({
+                notifications: [{
+                  id: Math.floor(Math.random() * 1000000),
+                  title: title,
+                  body: decryptedText,
+                  largeBody: decryptedText,
+                  summaryText: 'Message',
+                  schedule: { at: new Date(Date.now() + 100) },
+                  sound: 'default',
+                  channelId: 'messages',
+                  extra: { type: 'message', sender_id: m.sender_id }
+                }]
+              });
+            }
+          } catch (err) {
+            console.error('Error handling notification:', err);
+          }
+        }
+      }
+    });
+
+    return () => {
+      pb.collection('messages').unsubscribe('*').catch(() => {});
+    };
+  }, [pbUser?.id, location.pathname, location.search]);
 
   useEffect(() => {
     if (!pbUser?.id) return;
@@ -1188,6 +1264,37 @@ const AppContent: React.FC = () => {
           <button onClick={() => setNotification(prev => ({ ...prev, show: false }))} className="text-slate-500 hover:text-white transition-colors p-1"><X size={18} /></button>
         </div>
       </div>
+
+      {/* In-App Notification Toast for Messages */}
+      <AnimatePresence>
+        {inAppNotice && inAppNotice.show && (
+          <div 
+            key="in-app-notice"
+            onClick={() => {
+              navigate(`/message?chat=${inAppNotice.senderId}`);
+              setInAppNotice(null);
+            }}
+            className="fixed top-24 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-[1000] bg-[#1a1a1a]/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-2xl cursor-pointer ring-1 ring-white/10 animate-in slide-in-from-top-4 duration-300 hover:bg-[#252525]/90 transition-all"
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-sky-500 flex items-center justify-center text-white shadow-lg shrink-0">
+                <MessageSquarePlus size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-white text-sm tracking-tight mb-0.5">{inAppNotice.title}</h4>
+                <p className="text-white/70 text-[13px] leading-tight truncate">{inAppNotice.content}</p>
+              </div>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setInAppNotice(null); }}
+                className="p-1.5 hover:bg-white/10 rounded-lg text-white/50 transition-colors"
+                title="Fermer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {!(isMobileDevice() && (activeTab === 'message' && location.search.includes('chat='))) && !(isMobileDevice() && activeTab === 'youtube') && (
         <Header 
