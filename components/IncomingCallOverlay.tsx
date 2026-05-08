@@ -178,25 +178,37 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
         <div className="w-full flex justify-around items-end">
           <div className="flex flex-col items-center gap-3">
              <motion.button
+               drag="y"
+               dragConstraints={{ top: -100, bottom: 0 }}
+               dragElastic={0.2}
+               onDragEnd={(e, info) => {
+                 if (info.offset.y < -60) onDecline();
+               }}
                whileTap={{ scale: 0.9 }}
                onClick={onDecline}
-               className="w-16 h-16 rounded-full bg-[#ff3b30] flex items-center justify-center shadow-lg"
+               className="w-16 h-16 rounded-full bg-[#ff3b30] flex items-center justify-center shadow-lg cursor-pointer"
              >
                <PhoneOff size={28} className="text-white" />
              </motion.button>
-             <span className="text-xs text-white shadow-sm font-medium">Décliner</span>
+             <span className="text-xs text-white/60 shadow-sm font-medium">Décliner</span>
           </div>
 
           <div className="flex flex-col items-center gap-3">
              <motion.button
+               drag="y"
+               dragConstraints={{ top: -100, bottom: 0 }}
+               dragElastic={0.2}
+               onDragEnd={(e, info) => {
+                 if (info.offset.y < -60) onAccept();
+               }}
                whileTap={{ scale: 0.9 }}
                onClick={onAccept}
-               className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg"
+               className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg cursor-pointer"
                style={{ backgroundColor: '#25D366' }} // WhatsApp Green
              >
                <Phone size={28} className="text-white fill-current" />
              </motion.button>
-             <span className="text-xs text-white shadow-sm font-medium">Répondre</span>
+             <span className="text-xs text-white/60 shadow-sm font-medium">Répondre</span>
           </div>
         </div>
       </div>

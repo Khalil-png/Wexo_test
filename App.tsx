@@ -33,7 +33,7 @@ import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
 import { decryptMessage } from '@/services/encryptionService';
 import { db, auth, getMessagingInstance } from '@/services/firebase';
 import { getToken, onMessage } from 'firebase/messaging';
-import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
@@ -110,10 +110,14 @@ const AppContent: React.FC = () => {
       
       if (isNative()) {
         hapticsInterval = setInterval(() => {
-          Haptics.vibrate({ duration: 500 });
-        }, 1200);
+          Haptics.vibrate({ duration: 800 });
+        }, 1500);
       } else if (navigator.vibrate) {
-        navigator.vibrate([500, 500, 500, 500, 500]);
+        // Pattern: Vibrate 800ms, Pause 400ms, repeat
+        navigator.vibrate([800, 400, 800, 400, 800, 400, 800, 400]);
+        hapticsInterval = setInterval(() => {
+           navigator.vibrate([800, 400, 800, 400]);
+        }, 3000);
       }
 
       return () => {
@@ -588,10 +592,11 @@ const AppContent: React.FC = () => {
           const { notification, actionId } = action;
           if (notification.extra?.type === 'call') {
             const callId = notification.extra.callId;
+            const source = notification.extra.source || 'pb';
             if (actionId === 'accept') {
-              handleAcceptCallFromNotification(callId);
+              handleAcceptCallFromNotification(callId, source);
             } else if (actionId === 'decline') {
-              handleDeclineCallFromNotification(callId);
+              handleDeclineCallFromNotification(callId, source);
             }
           }
         });
@@ -678,7 +683,7 @@ const AppContent: React.FC = () => {
                 schedule: { at: new Date(Date.now() + 100) },
                 sound: 'ringtone.mp3', // Utilisez le canal 'calls' créé
                 channelId: 'calls',
-                ongoing: true, // Non suppressible par swipe
+                ongoing: true,
                 autoCancel: false,
                 extra: {
                   type: 'call',
@@ -930,12 +935,14 @@ const AppContent: React.FC = () => {
 
   const handleAcceptCall = async () => {
     if (!incomingCall) return;
-    handleAcceptCallFromNotification(incomingCall.id);
+    log('User clicked Accept button in overlay');
+    handleAcceptCallFromNotification(incomingCall.id, incomingCall.source);
   };
 
-  const handleAcceptCallFromNotification = async (callId: string) => {
+  const handleAcceptCallFromNotification = async (callId: string, providedSource?: 'pb' | 'firebase') => {
+    log('Handling accept call:', callId, 'Source:', providedSource);
     try {
-      const source = incomingCall?.source || 'pb';
+      const source = providedSource || incomingCall?.source || 'pb';
       let callerData: any = null;
 
       if (source === 'pb') {
@@ -949,12 +956,40 @@ const AppContent: React.FC = () => {
           avatar: record.expand?.caller_id?.avatar ? pb.files.getUrl(record.expand.caller_id, record.expand.caller_id.avatar) : (record.expand?.caller_id?.avatar_url || DEFAULT_AVATAR)
         };
       } else {
+        // Firebase call
         await updateDoc(doc(db, 'calls', callId), { status: 'accepted', lastUpdate: new Date() });
-        const sender = await pb.collection('users').getOne(incomingCall.caller_id);
+        
+        // If incomingCall is null (background), we might need to fetch caller info
+        let callerId = incomingCall?.caller_id;
+        let receiverId = incomingCall?.receiver_id || pbUser.id;
+
+        if (!callerId) {
+          // Attempt to get callerId from Firebase if not in state
+          try {
+            const callSnap = await getDoc(doc(db, 'calls', callId));
+            if (callSnap.exists()) { 
+              const data = callSnap.data();
+              callerId = data.callerId || data.caller_id;
+            }
+          } catch (e) {
+            log('Failed to fetch call data from Firestore:', e);
+          }
+        }
+
+        // Fallback or use state
+        const senderId = callerId || incomingCall?.caller_id;
+        
+        if (!senderId) {
+          log('Aborting accept: No sender ID found');
+          setNotification({ message: "Échec de l'appel: Expéditeur introuvable", show: true });
+          return;
+        }
+
+        const sender = await pb.collection('users').getOne(senderId);
         callerData = {
           id: callId,
-          caller_id: incomingCall.caller_id,
-          receiver_id: incomingCall.receiver_id,
+          caller_id: senderId,
+          receiver_id: receiverId,
           username: sender.username,
           avatar: sender.avatar ? pb.files.getUrl(sender, sender.avatar) : (sender.avatar_url || DEFAULT_AVATAR)
         };
@@ -964,6 +999,7 @@ const AppContent: React.FC = () => {
         id: callerData.id,
         caller_id: callerData.caller_id,
         receiver_id: callerData.receiver_id,
+        isOngoing: true, // Mark as ongoing immediately for receiver
         profiles: {
           username: callerData.username,
           avatar_url: callerData.avatar
@@ -973,26 +1009,34 @@ const AppContent: React.FC = () => {
       setActiveTab('appel');
       navigate('/appel');
       LocalNotifications.cancel({ notifications: [{ id: 999 }] });
+      
+      // Stop vibration immediately
+      if (navigator.vibrate) navigator.vibrate(0);
+      
     } catch (err) {
       console.error("Error accepting call:", err);
+      setNotification({ message: "Échec de la connexion à l'appel", show: true });
     }
   };
 
   const handleDeclineCall = async () => {
     if (!incomingCall) return;
-    handleDeclineCallFromNotification(incomingCall.id);
+    log('User clicked Decline button in overlay');
+    handleDeclineCallFromNotification(incomingCall.id, incomingCall.source);
   };
 
-  const handleDeclineCallFromNotification = async (callId: string) => {
+  const handleDeclineCallFromNotification = async (callId: string, providedSource?: 'pb' | 'firebase') => {
+    log('Handling decline call:', callId, 'Source:', providedSource);
     try {
-      const source = incomingCall?.source || 'pb';
+      const source = providedSource || incomingCall?.source || 'pb';
       if (source === 'pb') {
-        await pb.collection('calls').update(callId, { status: 'missed' });
+        await pb.collection('calls').update(callId, { status: 'rejected' }); // status was missed, but if user explicitly declines, rejected is better
       } else {
         await updateDoc(doc(db, 'calls', callId), { status: 'rejected', lastUpdate: new Date() });
       }
       setIncomingCall(null);
       LocalNotifications.cancel({ notifications: [{ id: 999 }] });
+      if (navigator.vibrate) navigator.vibrate(0);
     } catch (err) {
       console.error("Error declining call:", err);
     }
