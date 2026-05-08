@@ -1043,7 +1043,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     longPressTimer.current = setTimeout(() => {
       isLongPressing.current = true;
       toggleMessageSelection(id);
-    }, 500); 
+    }, 300); 
   };
 
   const handleMessageTouchMove = (e: React.TouchEvent) => {
@@ -1280,6 +1280,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
       // CRÉATION DE LA NOTIFICATION POUR LE DESTINATAIRE (via Firebase et PocketBase)
       if (selectedId && selectedId !== 'gemini') {
+        const notificationContent = text || (finalFileData ? 'Pièce jointe reçue' : 'Nouveau message');
+        const encryptedContent = encryptMessage(notificationContent);
+
         // Firebase payload
         const firestoreNotif = {
           user_id: selectedId,
@@ -1287,7 +1290,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           sender_avatar: profile?.avatar_url || '',
           type: 'message',
           title: profile?.display_name || user.displayName || 'Wexo',
-          content: text || (finalFileData ? 'Pièce jointe reçue' : 'Nouveau message'),
+          content: encryptedContent,
           status: 'unread',
           created_at: serverTimestamp()
         };
@@ -1301,14 +1304,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
         try {
           // PocketBase Notification (Backup for the Bell)
-          // Exact fields from screenshot: user_id, sender_id, type, title, content, status, read
+          // Exact fields: user_id, sender_id, sender_avatar, type, title, content, status, read
           await pb.collection('notifications').create({
             user_id: selectedId,
-            sender_id: profile?.id || user?.uid,
+            sender_id: user.uid,
+            sender_avatar: profile?.avatar_url || '',
             type: 'message',
-            title: profile?.display_name || user?.displayName || 'Wexo',
-            content: text || (finalFileData ? 'Pièce jointe reçue' : 'Nouveau message'),
-            status: 'pending',
+            title: profile?.display_name || user.displayName || 'Wexo',
+            content: encryptedContent,
+            status: 'unread',
             read: false
           });
         } catch (pbNotifErr) {
@@ -1322,7 +1326,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           body: JSON.stringify({
             receiverId: selectedId,
             title: firestoreNotif.title,
-            body: firestoreNotif.content,
+            body: notificationContent,
             data: {
               type: 'message',
               senderId: user.uid,

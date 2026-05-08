@@ -455,12 +455,13 @@ const AppContent: React.FC = () => {
             log('Nouvelle notification reçue via Firebase:', notification.title);
             
             if (isMobileDevice()) {
+              const bodyText = decryptMessage(notification.content || '');
               LocalNotifications.schedule({
                 notifications: [{
                   id: Math.floor(Math.random() * 1000000),
                   title: notification.title || 'Wexo',
-                  body: notification.content || '',
-                  largeBody: notification.content,
+                  body: bodyText,
+                  largeBody: bodyText,
                   summaryText: notification.title,
                   schedule: { at: new Date(Date.now() + 100) },
                   sound: 'default',

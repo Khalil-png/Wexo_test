@@ -10,6 +10,7 @@ import { useClickOutside } from '../utils/hooks';
 import { pb } from '../services/pocketbaseService';
 import { Preferences } from '@capacitor/preferences';
 import { db } from '../services/firebase';
+import { decryptMessage } from '../services/encryptionService';
 import { collection, query, where, onSnapshot, orderBy, limit, updateDoc, doc } from 'firebase/firestore';
 
 interface Notification {
@@ -138,7 +139,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
           sender_id: record.sender_id,
           sender_name: record.title || 'Inconnu',
           sender_avatar: record.sender_avatar || '',
-          content: record.content || '',
+          content: decryptMessage(record.content || ''),
           timestamp: new Date(record.created).toLocaleTimeString('fr-FR', { 
             hour: '2-digit', 
             minute: '2-digit' 
@@ -176,7 +177,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                sender_id: record.sender_id,
                sender_name: record.title || 'Inconnu',
                sender_avatar: record.sender_avatar || '',
-               content: record.content || '',
+               content: decryptMessage(record.content || ''),
                timestamp: new Date(record.created).toLocaleTimeString('fr-FR', { 
                  hour: '2-digit', 
                  minute: '2-digit' 
@@ -209,7 +210,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
           sender_id: data.sender_id || '',
           sender_name: data.title || 'Inconnu',
           sender_avatar: data.sender_avatar || '',
-          content: data.content || '',
+          content: decryptMessage(data.content || ''),
           timestamp: data.created_at?.toDate?.() ? data.created_at.toDate().toLocaleTimeString('fr-FR', { 
             hour: '2-digit', 
             minute: '2-digit' 
@@ -238,7 +239,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
               sender_id: data.sender_id || '',
               sender_name: data.title || 'Inconnu',
               sender_avatar: data.sender_avatar || '',
-              content: data.content || '',
+              content: decryptMessage(data.content || ''),
               timestamp: 'Maintenant',
               read: false,
               source: 'firebase'
