@@ -569,24 +569,29 @@ const AppContent: React.FC = () => {
       try {
         if (isNative()) {
           // Setup CallKeep
-          await CallKeep.setup({
-            ios: {
-              appName: 'Wexo',
-            },
-            android: {
-              alertTitle: 'Permissions requises',
-              alertDescription: 'L\'app a besoin des permissions pour les appels',
-              cancelButton: 'Annuler',
-              okButton: 'OK',
-              imageName: 'phone_account_icon',
-              foregroundService: {
-                channelId: 'calls',
-                channelName: 'Appels',
-                notificationTitle: 'Appel en cours',
-                notificationIcon: 'ic_launcher',
+          try {
+            await CallKeep.setup({
+              ios: {
+                appName: 'Wexo',
               },
-            },
-          });
+              android: {
+                alertTitle: 'Permissions requises',
+                alertDescription: 'L\'app a besoin des permissions pour les appels',
+                cancelButton: 'Annuler',
+                okButton: 'OK',
+                imageName: 'phone_account_icon',
+                foregroundService: {
+                  channelId: 'calls',
+                  channelName: 'Appels',
+                  notificationTitle: 'Appel en cours',
+                  notificationIcon: 'ic_launcher',
+                },
+              },
+            });
+            log('CallKeep setup success');
+          } catch (callKeepError) {
+            log('CallKeep setup warning (User might need to enable Phone Account in settings):', callKeepError);
+          }
 
           // Listen for CallKeep actions
           CallKeep.addListener('answerCall', ({ uuid }) => {
@@ -1004,22 +1009,37 @@ const AppContent: React.FC = () => {
     try {
       // Ensure we have at least partial auth ready
       if (!pb.authStore.model) {
-        log('Auth not ready, waiting 2s...');
-        // Try to load from Preferences if available
+        log('Auth not ready, waiting...');
         const savedAuth = await Preferences.get({ key: 'pb_auth' });
         if (savedAuth.value) {
           const authData = JSON.parse(savedAuth.value);
           pb.authStore.save(authData.token, authData.model);
-          log('Restored auth from preferences for call acceptance');
         } else {
-          // Wait a bit for normal init
-          await new Promise(r => setTimeout(r, 2000));
+          await new Promise(r => setTimeout(r, 1500));
         }
       }
 
-      const source = providedSource || incomingCall?.source || 'pb';
-      let callerData: any = null;
+      // If we don't have the call data yet (e.g. app launched from notification)
+      let currentCall = incomingCall;
+      if (!currentCall || currentCall.id !== callId) {
+        log('Fetching call data for ID:', callId);
+        try {
+          // Fetch from your backend or direct PB
+          const callData = await pb.collection('calls').getOne(callId, { expand: 'caller_id' });
+          currentCall = {
+            id: callData.id,
+            partner: callData.expand?.caller_id,
+            type: callData.type,
+            source: 'pb'
+          };
+        } catch (e) {
+          log('Could not fetch call data, might be too early', e);
+        }
+      }
 
+      const source = providedSource || currentCall?.source || 'pb';
+      let callerData: any = currentCall?.partner;
+      
       if (source === 'pb') {
         log('Accepting PocketBase call...');
         await pb.collection('calls').update(callId, { status: 'ongoing' });
@@ -1153,13 +1173,30 @@ const AppContent: React.FC = () => {
       // Initiation de l'appel via l'API Serveur (Firebase + Notifications)
       console.log("Initiation d'un appel vers:", receiver.username);
       
+      const callUuid = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      if (isNative()) {
+        try {
+          await CallKeep.startCall({
+            uuid: callUuid,
+            handle: receiver.username || receiver.name,
+            contactIdentifier: receiver.id,
+            handleType: 'generic',
+            hasVideo: true
+          });
+        } catch (e) {
+          log('CallKeep startCall error:', e);
+        }
+      }
+
       const response = await fetch('/api/calls/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           callerId: pbUser.id,
           receiverId: receiver.id,
-          type: 'video'
+          type: 'video',
+          callId: callUuid
         })
       });
 
