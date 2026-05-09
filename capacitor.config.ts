@@ -5,9 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Wexo',
   webDir: 'dist',
   server: {
-    androidScheme: 'https',
-    url: 'https://wexo-steel.vercel.app',
-    allowNavigation: ['wexo-steel.vercel.app']
+    androidScheme: 'https'
   },
   ios: {
     contentInset: 'always'

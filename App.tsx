@@ -37,6 +37,7 @@ import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, g
 import { signInAnonymously } from 'firebase/auth';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { CallKeep } from 'capacitor-call-keep';
 import { App as CapApp } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
 
@@ -566,16 +567,48 @@ const AppContent: React.FC = () => {
     // Écouter les actions sur les notifications (clic sur les boutons Répondre/Décliner)
     const setupNotificationListeners = async () => {
       try {
-        // Créer le canal de notification avec importance maximale (Android)
-        if (isMobileDevice()) {
+        if (isNative()) {
+          // Setup CallKeep
+          await CallKeep.setup({
+            ios: {
+              appName: 'Wexo',
+            },
+            android: {
+              alertTitle: 'Permissions requises',
+              alertDescription: 'L\'app a besoin des permissions pour les appels',
+              cancelButton: 'Annuler',
+              okButton: 'OK',
+              imageName: 'phone_account_icon',
+              foregroundService: {
+                channelId: 'calls',
+                channelName: 'Appels',
+                notificationTitle: 'Appel en cours',
+                notificationIcon: 'ic_launcher',
+              },
+            },
+          });
+
+          // Listen for CallKeep actions
+          CallKeep.addListener('answerCall', ({ uuid }) => {
+            log('CallKeep answerCall:', uuid);
+            // We need to determine the source. Usually we can store it or derive it
+            handleAcceptCallFromNotification(uuid);
+          });
+
+          CallKeep.addListener('endCall', ({ uuid }) => {
+            log('CallKeep endCall:', uuid);
+            handleDeclineCallFromNotification(uuid);
+          });
+
+          // Standard LocalNotifications setup (backup)
           await LocalNotifications.createChannel({
             id: 'calls',
             name: 'Appels Entrants',
             description: 'Canal pour les appels audio et vidéo',
-            importance: 5, // Importance MAX
-            visibility: 1, // Public
+            importance: 5,
+            visibility: 1,
             vibration: true,
-            sound: 'ringtone.mp3' // Assurez-vous d'avoir un son dans android/app/src/main/res/raw
+            sound: 'ringtone.mp3'
           });
         }
 
@@ -675,21 +708,32 @@ const AppContent: React.FC = () => {
         }
       });
 
-      // 2. Déclencher une notification système
-      if (isMobileDevice()) {
+      // 2. Déclencher une notification système + CallKeep
+      if (isNative()) {
         try {
+          // Display system call UI
+          await CallKeep.displayIncomingCall({
+            uuid: record.id,
+            handle: callerName,
+            localizedCallerName: callerName,
+            hasVideo: record.type === 'video',
+            supportsHolding: false,
+            supportsDTMF: false,
+            supportsGrouping: false,
+            supportsUngrouping: false,
+          });
+
           await LocalNotifications.schedule({
             notifications: [
               {
                 title: `APPEL: ${callerName}`,
-                body: "Faites glisser pour répondre ou refusez",
+                body: "Appuyez pour répondre",
                 id: 999,
                 schedule: { at: new Date(Date.now() + 100) },
                 sound: 'ringtone.mp3',
                 channelId: 'calls',
-                ongoing: true, // Persistant
+                ongoing: true,
                 autoCancel: false,
-                smallIcon: 'ic_stat_phone', // Use system phone icon if available
                 extra: {
                   type: 'call',
                   callId: record.id,
@@ -700,14 +744,24 @@ const AppContent: React.FC = () => {
             ]
           });
         } catch (e) {
-          console.warn("Notification error:", e);
+          console.warn("Call handling error:", e);
         }
         if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
+      } else if (isMobileDevice()) {
+        // Fallback for non-native mobile (PWA)
+        setNotification({ 
+          message: `APPEL ENTRANT: ${callerName}`, 
+          show: true,
+          type: 'success'
+        });
       }
     };
 
     const handleCallUpdate = (record: any) => {
       if (record.status === 'completed' || record.status === 'missed' || record.status === 'rejected' || record.status === 'ended') {
+        if (isNative()) {
+          CallKeep.endCall(record.id).catch(() => {});
+        }
         if (incomingCall?.id === record.id) {
           if (record.status === 'missed' && record.receiver_id === pbUser.id) {
             LocalNotifications.cancel({ notifications: [{ id: 999 }] });
@@ -948,6 +1002,21 @@ const AppContent: React.FC = () => {
   const handleAcceptCallFromNotification = async (callId: string, providedSource?: 'pb' | 'firebase') => {
     log('Handling accept call:', callId, 'Source:', providedSource);
     try {
+      // Ensure we have at least partial auth ready
+      if (!pb.authStore.model) {
+        log('Auth not ready, waiting 2s...');
+        // Try to load from Preferences if available
+        const savedAuth = await Preferences.get({ key: 'pb_auth' });
+        if (savedAuth.value) {
+          const authData = JSON.parse(savedAuth.value);
+          pb.authStore.save(authData.token, authData.model);
+          log('Restored auth from preferences for call acceptance');
+        } else {
+          // Wait a bit for normal init
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+
       const source = providedSource || incomingCall?.source || 'pb';
       let callerData: any = null;
 
@@ -1063,6 +1132,9 @@ const AppContent: React.FC = () => {
       }
     }
     setActiveCall(null);
+    if (isNative()) {
+      CallKeep.endAllCalls().catch(() => {});
+    }
   };
 
   const handleStartCall = async (receiver: any) => {

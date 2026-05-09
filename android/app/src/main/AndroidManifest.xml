@@ -28,6 +28,15 @@
 
         </activity>
 
+        <service android:name="io.github.manisuecasa.capacitor.callkeep.VoiceConnectionService"
+            android:label="Wexo"
+            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.CONNECTION_SERVICE" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -52,6 +61,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
     <!-- Necessary for Android 13+ Notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- For file sharing/storage if needed -->

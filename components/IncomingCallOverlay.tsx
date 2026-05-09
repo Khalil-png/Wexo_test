@@ -190,15 +190,10 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
                  }
                }}
                whileTap={{ scale: isProcessing ? 1 : 0.9 }}
-               onTap={() => {
+               onTap={(e) => {
+                 e.stopPropagation();
                  if (!isProcessing) {
                    console.log("Decline via tap");
-                   onDecline();
-                 }
-               }}
-               onClick={() => {
-                 if (!isProcessing) {
-                   console.log("Decline via click");
                    onDecline();
                  }
                }}
@@ -225,15 +220,10 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
                  }
                }}
                whileTap={{ scale: isProcessing ? 1 : 0.9 }}
-               onTap={() => {
+               onTap={(e) => {
+                 e.stopPropagation();
                  if (!isProcessing) {
                    console.log("Accept via tap");
-                   onAccept();
-                 }
-               }}
-               onClick={() => {
-                 if (!isProcessing) {
-                   console.log("Accept via click");
                    onAccept();
                  }
                }}
