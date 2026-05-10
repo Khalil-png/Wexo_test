@@ -30,16 +30,18 @@ import { HelpCircle, TriangleAlert, X, Construction, CheckCircle, MessageSquareP
 import { generateSnowflake } from '@/utils/snowflake';
 import { AnimatePresence } from 'framer-motion';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
-import { decryptMessage } from '@/services/encryptionService';
 import { db, auth, getMessagingInstance } from '@/services/firebase';
 import { getToken, onMessage } from 'firebase/messaging';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { CallKeep } from 'capacitor-call-keep';
 import { App as CapApp } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
+import { Device } from '@capacitor/device';
+import { NativeSettings, AndroidSettings } from 'capacitor-native-settings';
 
 // Utility to check if we are in a native Capacitor environment
 const isNative = () => {
@@ -454,16 +456,17 @@ const AppContent: React.FC = () => {
           const isNew = (now - createdAt) < 30000; // Moins de 30 secondes pour être sûr de capturer les nouvelles
 
           if (isNew && notification.status === 'unread') {
-            // Filter out if currently in the specific chat for message notifications
+            // Filtrer si on est déjà dans le chat spécifique pour les notifications de messages
             if (notification.type === 'message' && notification.sender_id === activeChatIdRef.current) {
-              log('Firebase message notification ignored (active chat)');
+              log('Firebase message notification ignorée (chat actif)');
               return;
             }
 
             log('Nouvelle notification reçue via Firebase:', notification.title);
             
             if (isMobileDevice()) {
-              const bodyText = decryptMessage(notification.content || '');
+              // On utilise le contenu tel quel (pas besoin de décryptage selon la demande utilisateur)
+              const bodyText = notification.content || 'Nouveau message';
               LocalNotifications.schedule({
                 notifications: [{
                   id: Math.floor(Math.random() * 1000000),
@@ -511,13 +514,14 @@ const AppContent: React.FC = () => {
 
           try {
             const sender = await pb.collection('users').getOne(m.sender_id);
-            const decryptedText = decryptMessage(m.text);
+            // On affiche le message en clair (pas besoin de décryptage selon la demande utilisateur)
+            const plainText = m.text; 
             const title = sender.name || sender.username || 'Nouveau message';
             
-            // In-App Notification (Toast)
+            // Notification In-App (Toast)
             setInAppNotice({
               title,
-              content: decryptedText.length > 60 ? decryptedText.substring(0, 57) + '...' : decryptedText,
+              content: plainText.length > 60 ? plainText.substring(0, 57) + '...' : plainText,
               senderId: m.sender_id,
               show: true
             });
@@ -525,22 +529,22 @@ const AppContent: React.FC = () => {
             // Auto-hide after 5s
             setTimeout(() => setInAppNotice(prev => prev?.senderId === m.sender_id ? { ...prev, show: false } : prev), 5000);
 
-            // Browser System Notification
+            // Notification Système (Navigateur)
             if (typeof window !== 'undefined' && 'Notification' in window && (window as any).Notification.permission === 'granted') {
               new (window as any).Notification(title, {
-                body: decryptedText,
+                body: plainText,
                 icon: sender.avatar_url || DEFAULT_AVATAR
               });
             }
 
-            // Mobile Native Notification
+            // Notification Native Mobile
             if (isNative()) {
               LocalNotifications.schedule({
                 notifications: [{
                   id: Math.floor(Math.random() * 1000000),
                   title: title,
-                  body: decryptedText,
-                  largeBody: decryptedText,
+                  body: plainText,
+                  largeBody: plainText,
                   summaryText: 'Message',
                   schedule: { at: new Date(Date.now() + 100) },
                   sound: 'default',
@@ -591,13 +595,27 @@ const AppContent: React.FC = () => {
             });
             log('CallKeep setup success');
             
-            // Check if Phone Account is enabled (required for Telecom Manager on Android)
+            // Vérifier si le compte téléphonique est activé (requis pour Telecom Manager sur Android)
             const hasAccount = await CallKeep.hasPhoneAccount();
             if (!hasAccount) {
-              log('CallKeep: Phone Account NOT enabled. User might need to enable it in Phone App settings.');
+              log('CallKeep: Compte téléphonique NON activé. Tentative d\'ouverture des paramètres...');
+              setNotification({
+                message: "Veuillez activer 'Wexo' dans les comptes téléphoniques pour recevoir les appels comme sur un vrai téléphone.",
+                show: true,
+                type: 'success'
+              });
+              // Tentative d'ouvrir les paramètres spécifiques aux comptes téléphoniques
+              if ((window as any).Capacitor.getPlatform() === 'android') {
+                try {
+                  // Sur Android, on peut utiliser CallKeep ou NativeSettings
+                  await CallKeep.displayPhoneAccount();
+                } catch (e) {
+                  log('Erreur CallKeep.displayPhoneAccount:', e);
+                }
+              }
             }
           } catch (callKeepError) {
-            log('CallKeep setup warning (User might need to enable Phone Account in settings):', callKeepError);
+            log('CallKeep setup warning:', callKeepError);
           }
 
           // Listen for CallKeep actions
@@ -891,43 +909,82 @@ const AppContent: React.FC = () => {
 
     const registerFCM = async () => {
       try {
-        const messaging = await getMessagingInstance();
-        if (!messaging) return;
+        if (isNative()) {
+          // Utiliser les notifications Push natives de Capacitor
+          let perm = await PushNotifications.checkPermissions();
+          if (perm.receive !== 'granted') {
+            perm = await PushNotifications.requestPermissions();
+          }
 
-        if (typeof Notification !== 'undefined') {
-          const permission = await Notification.requestPermission();
-          if (permission === 'granted') {
-            const token = await getToken(messaging, { 
-              vapidKey: 'BBHRV2L9IBy8HYZh35V1xtfNAAOM_utK_w-tu0qwwva25FTYbBmCgjuGqp480x31ZodNEjPvhHlHaWK5W_ZjSzk' 
-            }).catch(e => {
-              log('Failed to get FCM token:', e);
-              return null;
-            });
+          if (perm.receive === 'granted') {
+            await PushNotifications.register();
             
-            if (token) {
-              log('FCM Token generated:', token);
+            PushNotifications.addListener('registration', async (token) => {
+              log('Token FCM natif reçu:', token.value);
               await fetch('/api/notifications/register-token', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: pbUser.id, token })
+                body: JSON.stringify({ userId: pbUser.id, token: token.value })
               });
-            }
-          }
-        }
+            });
 
-        onMessage(messaging, (payload) => {
-          log('Foreground message received:', payload);
-          if (payload.notification) {
-            setInAppNotice({
-              title: payload.notification.title || 'Notification',
-              content: payload.notification.body || '',
-              senderId: payload.data?.senderId || '',
-              show: true
+            PushNotifications.addListener('pushNotificationReceived', (notification) => {
+              log('Notification Push reçue en premier plan:', notification);
+              setInAppNotice({
+                title: notification.title || 'Wexo',
+                content: notification.body || '',
+                senderId: notification.data?.senderId || '',
+                show: true
+              });
+            });
+
+            PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+              log('Action sur notification Push:', action);
+              if (action.notification.data?.senderId) {
+                navigate(`/message?chat=${action.notification.data.senderId}`);
+              }
             });
           }
-        });
+        } else {
+          // Fallback Web SDK pour Firebase Messaging
+          const messaging = await getMessagingInstance();
+          if (!messaging) return;
+
+          if (typeof Notification !== 'undefined') {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+              const token = await getToken(messaging, { 
+                vapidKey: 'BBHRV2L9IBy8HYZh35V1xtfNAAOM_utK_w-tu0qwwva25FTYbBmCgjuGqp480x31ZodNEjPvhHlHaWK5W_ZjSzk' 
+              }).catch(e => {
+                log('Failed to get FCM token:', e);
+                return null;
+              });
+              
+              if (token) {
+                log('FCM Token généré via Web SDK:', token);
+                await fetch('/api/notifications/register-token', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userId: pbUser.id, token })
+                });
+              }
+            }
+          }
+
+          onMessage(messaging, (payload) => {
+            log('Foreground message received via Web SDK:', payload);
+            if (payload.notification) {
+              setInAppNotice({
+                title: payload.notification.title || 'Notification',
+                content: payload.notification.body || '',
+                senderId: payload.data?.senderId || '',
+                show: true
+              });
+            }
+          });
+        }
       } catch (err) {
-        log('Error registering for push notifications:', err);
+        log('Erreur enregistrement Push:', err);
       }
     };
 
