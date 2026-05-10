@@ -5,31 +5,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Wexo Social</title>
-    <link rel="icon" type="image/png" href="https://wexo-steel.vercel.app/w_1_removebg_preview_1_vbjej008kd.png">
+    <link rel="icon" type="image/png" href="/manifest.json">
     <link rel="manifest" href="/manifest.json">
     
     <!-- iOS Support -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Wexo">
-    <link rel="apple-touch-icon" href="https://wexo-steel.vercel.app/w_1_removebg_preview_1_vbjej008kd.png">
+    <link rel="apple-touch-icon" href="/manifest.json">
     
     <meta name="theme-color" content="#0f0f0f">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script>
-        // REDIRECTION APK -> WEB pour mises à jour automatiques
-        (function() {
-            const isCapacitor = window.hasOwnProperty('Capacitor');
-            const isLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.');
-            const prodUrl = 'https://wexo-steel.vercel.app';
-
-            if (isCapacitor && isLocal) {
-                console.log('[Wexo] Detection APK sur environnement local, redirection vers le web pour mise à jour...');
-                // On garde le hash s'il y en a un pour ne pas perdre la page actuelle
-                window.location.href = prodUrl + window.location.hash;
-            }
-        })();
-    </script>
     <style>
         :root {
             --bg-main: #0f0f0f;

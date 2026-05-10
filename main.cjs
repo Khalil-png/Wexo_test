@@ -20,15 +20,10 @@ function createWindow() {
   
   // CHARGEMENT EN DIRECT (Pour les mises à jour automatiques du contenu)
   // On charge l'URL de production par défaut
-  const productionUrl = 'https://wexo-steel.vercel.app';
-  const url = process.env.VITE_DEV_SERVER_URL || productionUrl;
-  
   if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(url);
+    win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    // En production Electron, on peut charger le fichier local s'il existe
-    // Sinon on fallback sur l'URL de secours
-    win.loadURL(url);
+    win.loadFile(path.join(__dirname, 'dist/index.html'));
   }
 }
 
