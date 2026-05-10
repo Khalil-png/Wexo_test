@@ -5,7 +5,8 @@ const config: CapacitorConfig = {
   appName: 'Wexo',
   webDir: 'dist',
   server: {
-    androidScheme: 'https'
+    androidScheme: 'https',
+    hostname: 'localhost'
   },
   ios: {
     contentInset: 'always'
