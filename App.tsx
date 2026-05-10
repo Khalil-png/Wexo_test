@@ -580,6 +580,7 @@ const AppContent: React.FC = () => {
                 cancelButton: 'Annuler',
                 okButton: 'OK',
                 imageName: 'phone_account_icon',
+                selfManaged: true, // IMPORTANT for Telecom Manager
                 foregroundService: {
                   channelId: 'calls',
                   channelName: 'Appels',
@@ -589,6 +590,12 @@ const AppContent: React.FC = () => {
               },
             });
             log('CallKeep setup success');
+            
+            // Check if Phone Account is enabled (required for Telecom Manager on Android)
+            const hasAccount = await CallKeep.hasPhoneAccount();
+            if (!hasAccount) {
+              log('CallKeep: Phone Account NOT enabled. User might need to enable it in Phone App settings.');
+            }
           } catch (callKeepError) {
             log('CallKeep setup warning (User might need to enable Phone Account in settings):', callKeepError);
           }
@@ -721,6 +728,7 @@ const AppContent: React.FC = () => {
             uuid: record.id,
             handle: callerName,
             localizedCallerName: callerName,
+            handleType: 'generic',
             hasVideo: record.type === 'video',
             supportsHolding: false,
             supportsDTMF: false,
@@ -1181,7 +1189,7 @@ const AppContent: React.FC = () => {
             uuid: callUuid,
             handle: receiver.username || receiver.name,
             contactIdentifier: receiver.id,
-            handleType: 'generic',
+            handleType: 'generic', // More compatible for Telegram/WhatsApp style calls
             hasVideo: true
           });
         } catch (e) {
