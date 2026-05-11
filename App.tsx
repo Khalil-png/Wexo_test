@@ -199,9 +199,10 @@ const AppContent: React.FC = () => {
         }
 
         if (path === '/' || path === '/accueil') {
-          // Sur l'accueil : on laisse le système quitter l'app (on ne peut plus revenir en arrière)
+          // Sur l'accueil : on évite de quitter l'appli brutalement sauf si c'est vraiment nécessaire
+          // On préfère laisser le système gérer le bouton retour s'il n'y a plus d'historique
           if (!canGoBack) {
-            CapApp.exitApp();
+            // CapApp.exitApp(); // Désactivé pour le moment pour tester la stabilité
           } else {
             window.history.back();
           }
@@ -272,13 +273,19 @@ const AppContent: React.FC = () => {
     const requestPermissions = async () => {
       if (!isMobileDevice()) return;
 
+      log('Démarrage de la requête des permissions...');
+      // Attendre un peu pour laisser l'appli respirer au démarrage
+      await new Promise(r => setTimeout(r, 2000));
+
       try {
+        log('Demande des permissions LocalNotifications...');
         // Request Notification Permissions (Android 13+)
         const perm = await LocalNotifications.requestPermissions();
-        console.log('Notification permissions status:', perm.display);
+        log('Statut permissions notifications:', perm.display);
 
         // Create specialized notification channels for Android
         try {
+          log('Création des canaux de notification...');
           // General messages channel
           await LocalNotifications.createChannel({
             id: 'messages',
@@ -303,16 +310,7 @@ const AppContent: React.FC = () => {
             lightColor: '#10b981'
           });
           
-          // Default channel for backward compatibility
-          await LocalNotifications.createChannel({
-            id: 'default',
-            name: 'Général',
-            description: 'Autres notifications',
-            importance: 3,
-            visibility: 1
-          });
-
-          console.log('Notification channels created');
+          log('Canaux créés avec succès');
 
           // Register Action Types (Buttons in notifications)
           await LocalNotifications.registerActionTypes({
@@ -320,51 +318,29 @@ const AppContent: React.FC = () => {
               {
                 id: 'INCOMING_CALL',
                 actions: [
-                  {
-                    id: 'accept',
-                    title: 'Répondre',
-                    foreground: true
-                  },
-                  {
-                    id: 'decline',
-                    title: 'Décliner',
-                    destructive: true,
-                    foreground: false
-                  }
+                  { id: 'accept', title: 'Répondre', foreground: true },
+                  { id: 'decline', title: 'Décliner', destructive: true, foreground: false }
                 ]
               }
             ]
           });
         } catch (err) {
-          console.error('Failed to create notification channels:', err);
-        }
-
-        // Standard browser/webview permission request as fallback/complement
-        // Use window.Notification to avoid ReferenceError
-        if (typeof window !== 'undefined' && 'Notification' in window) {
-           const winNotif = (window as any).Notification;
-           if (winNotif && winNotif.permission !== 'granted') {
-             try {
-               await winNotif.requestPermission();
-             } catch (e) {
-               console.warn('Fallback Notification.requestPermission failed', e);
-             }
-           }
+          log('Échec création canaux notifications:', err);
         }
 
         // Proactive Camera/Mic permission request
-        // This ensures the OS sees the app as "using" these features
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           try {
+            log('Tentative proactive accès Caméra/Micro...');
             const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             stream.getTracks().forEach(track => track.stop());
-            console.log('Camera/Mic permissions granted proactively');
+            log('Accès Caméra/Micro accordé proactivement');
           } catch (err) {
-            console.warn('Initial camera/mic permission request failed or was denied:', err);
+            log('Refus ou échec accès Caméra/Micro proactif:', err);
           }
         }
       } catch (err) {
-        console.error('Error requesting permissions:', err);
+        log('Erreur générale lors de la requête des permissions:', err);
       }
     };
 
@@ -584,7 +560,7 @@ const AppContent: React.FC = () => {
                 cancelButton: 'Annuler',
                 okButton: 'OK',
                 imageName: 'phone_account_icon',
-                selfManaged: true, // IMPORTANT for Telecom Manager
+                selfManaged: false, // Passer à false pour laisser le système gérer l'appel nativement si possible
                 foregroundService: {
                   channelId: 'calls',
                   channelName: 'Appels',
@@ -596,23 +572,15 @@ const AppContent: React.FC = () => {
             log('CallKeep setup success');
             
             // Vérifier si le compte téléphonique est activé (requis pour Telecom Manager sur Android)
-            const hasAccount = await CallKeep.hasPhoneAccount();
-            if (!hasAccount) {
-              log('CallKeep: Compte téléphonique NON activé. Tentative d\'ouverture des paramètres...');
-              setNotification({
-                message: "Veuillez activer 'Wexo' dans les comptes téléphoniques pour recevoir les appels comme sur un vrai téléphone.",
-                show: true,
-                type: 'success'
-              });
-              // Tentative d'ouvrir les paramètres spécifiques aux comptes téléphoniques
-              if ((window as any).Capacitor.getPlatform() === 'android') {
-                try {
-                  // Sur Android, on peut utiliser CallKeep ou NativeSettings
-                  await CallKeep.displayPhoneAccount();
-                } catch (e) {
-                  log('Erreur CallKeep.displayPhoneAccount:', e);
-                }
+            try {
+              const hasAccount = await CallKeep.hasPhoneAccount();
+              if (!hasAccount) {
+                log('CallKeep: Compte téléphonique NON activé.');
+                // On ne force plus l'ouverture des paramètres ici, on laisse l'utilisateur le faire via les réglages si besoin
+                // car cela peut perturber le lancement sur certains appareils
               }
+            } catch (e) {
+              log('Erreur vérification Phone Account:', e);
             }
           } catch (callKeepError) {
             log('CallKeep setup warning:', callKeepError);
@@ -910,13 +878,16 @@ const AppContent: React.FC = () => {
     const registerFCM = async () => {
       try {
         if (isNative()) {
-          // Utiliser les notifications Push natives de Capacitor
+          // Attendre un peu avant d'enregistrer pour éviter de surcharger le démarrage
+          await new Promise(r => setTimeout(r, 3000));
+          
           let perm = await PushNotifications.checkPermissions();
           if (perm.receive !== 'granted') {
             perm = await PushNotifications.requestPermissions();
           }
 
           if (perm.receive === 'granted') {
+            log('Enregistrement PushNotifications...');
             await PushNotifications.register();
             
             PushNotifications.addListener('registration', async (token) => {
@@ -928,8 +899,17 @@ const AppContent: React.FC = () => {
               });
             });
 
+            PushNotifications.addListener('registrationError', (error) => {
+              log('Erreur enregistrement Push:', error);
+            });
+
             PushNotifications.addListener('pushNotificationReceived', (notification) => {
               log('Notification Push reçue en premier plan:', notification);
+              // Si c'est un message et qu'on est déjà dans le chat, on ignore
+              if (notification.data?.type === 'message' && notification.data?.senderId === activeChatIdRef.current) {
+                return;
+              }
+              
               setInAppNotice({
                 title: notification.title || 'Wexo',
                 content: notification.body || '',
