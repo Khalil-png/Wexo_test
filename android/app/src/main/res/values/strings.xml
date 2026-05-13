@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Wexo</string>
-    <string name="title_activity_main">Wexo</string>
-    <string name="package_name">com.wexo.app</string>
-    <string name="custom_url_scheme">com.wexo.app</string>
+    <string name="app_name">Wixo</string>
+    <string name="title_activity_main">Wixo</string>
+    <string name="package_name">com.wixo.app</string>
+    <string name="custom_url_scheme">com.wixo.app</string>
 </resources>

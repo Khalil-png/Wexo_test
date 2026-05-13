@@ -10,11 +10,11 @@ repositories {
 }
 
 android {
-    namespace 'com.wexo.app'
+    namespace 'com.wixo.app'
     compileSdk rootProject.ext.compileSdkVersion
 
     defaultConfig {
-        applicationId 'com.wexo.app'
+        applicationId 'com.wixo.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2
