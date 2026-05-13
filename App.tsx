@@ -95,9 +95,135 @@ const AppContent: React.FC = () => {
   const [isKeyboardActive, setIsKeyboardActive] = useState(false);
   const [isRinging, setIsRinging] = useState(false);
   const [inAppNotice, setInAppNotice] = useState<{title: string, content: string, senderId: string, show: boolean} | null>(null);
-
-  // Track active chat for notification filtering
+  const [isAppReady, setIsAppReady] = useState(false);
+  const listenersInitialized = useRef(false);
   const activeChatIdRef = useRef<string | null>(null);
+  const handleIncomingCall = async (record: any, source: 'pb' | 'firebase') => {
+    let callerName = "Utilisateur inconnu";
+    let avatar = DEFAULT_AVATAR;
+
+    if (source === 'pb' && record.expand?.caller_id) {
+      const caller = record.expand.caller_id;
+      callerName = caller.username;
+      avatar = caller.avatar ? pb.files.getUrl(caller, caller.avatar) : (caller.avatar_url || DEFAULT_AVATAR);
+    } else {
+      try {
+        const sender = await pb.collection('users').getOne(record.caller_id);
+        callerName = sender.username;
+        avatar = sender.avatar ? pb.files.getUrl(sender, sender.avatar) : (sender.avatar_url || DEFAULT_AVATAR);
+      } catch (e) {}
+    }
+
+    setIncomingCall({
+      id: record.id,
+      caller_id: record.caller_id,
+      receiver_id: record.receiver_id,
+      source: source,
+      profiles: {
+        id: record.caller_id,
+        username: callerName,
+        avatar_url: avatar
+      }
+    });
+
+    if (isNative()) {
+      try {
+        await (CallKeep as any).displayIncomingCall({
+          uuid: record.id,
+          callerName: callerName,
+          handleType: 'generic',
+          hasVideo: record.type === 'video',
+        });
+
+        await LocalNotifications.schedule({
+          notifications: [{
+            title: `APPEL: ${callerName}`,
+            body: "Appuyez pour répondre",
+            id: 999,
+            schedule: { at: new Date(Date.now() + 100) },
+            channelId: 'calls',
+            ongoing: true,
+            autoCancel: false,
+            extra: { type: 'call', callId: record.id, source: source },
+            actionTypeId: 'INCOMING_CALL'
+          }]
+        });
+      } catch (e) {
+        console.warn("Call handling error:", e);
+      }
+      if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
+    } else if (isMobileDevice()) {
+      setNotification({ message: `APPEL ENTRANT: ${callerName}`, show: true, type: 'success' });
+    }
+  };
+
+  const handleCallUpdate = (record: any) => {
+    if (['completed', 'missed', 'rejected', 'ended'].includes(record.status)) {
+      if (isNative()) CallKeep.endCall(record.id).catch(() => {});
+      if (incomingCall?.id === record.id) {
+        if (record.status === 'missed' && record.receiver_id === pbUser.id) {
+          LocalNotifications.cancel({ notifications: [{ id: 999 }] });
+          LocalNotifications.schedule({
+            notifications: [{
+              title: "Appel manqué",
+              body: `Vous avez manqué un appel de ${incomingCall?.profiles.username || 'un utilisateur'}`,
+              id: Math.floor(Math.random() * 10000),
+              schedule: { at: new Date(Date.now() + 100) },
+              sound: 'default'
+            }]
+          });
+        } else {
+          LocalNotifications.cancel({ notifications: [{ id: 999 }] });
+        }
+        setIncomingCall(null);
+      }
+      if (activeCall?.id === record.id) setActiveCall(null);
+    }
+    
+    if ((record.status === 'ongoing' || record.status === 'accepted') && record.caller_id === pbUser.id) {
+       if (activeCall && activeCall.id === record.id && !activeCall.isOngoing) {
+          setActiveCall((prev: any) => ({ ...prev, isOngoing: true }));
+       }
+    }
+  };
+
+  const handleAcceptCallFromNotification = async (callId: string, source: 'pb' | 'firebase' = 'pb') => {
+    try {
+      if (source === 'pb') {
+        const callerId = incomingCall?.caller_id;
+        await pb.collection('calls').update(callId, { status: 'ongoing' });
+        log('Call accepted (PB):', callId);
+        if (isNative()) (CallKeep as any).answerIncomingCall({ uuid: callId });
+        navigate(`/appel?id=${callId}&source=pb&caller=${callerId}`);
+      } else {
+        await updateDoc(doc(db, 'calls', callId), { status: 'accepted', updatedAt: new Date().toISOString() });
+        log('Call accepted (Firebase):', callId);
+        if (isNative()) (CallKeep as any).answerIncomingCall({ uuid: callId });
+        navigate(`/appel?id=${callId}&source=firebase`);
+      }
+      setIncomingCall(null);
+      LocalNotifications.cancel({ notifications: [{ id: 999 }] });
+    } catch (e) {
+      log('Error accepting call:', e);
+    }
+  };
+
+  const handleDeclineCallFromNotification = async (callId: string, source: 'pb' | 'firebase' = 'pb') => {
+    try {
+      if (source === 'pb') {
+        await pb.collection('calls').update(callId, { status: 'rejected' });
+        log('Call rejected (PB):', callId);
+      } else {
+        await updateDoc(doc(db, 'calls', callId), { status: 'rejected', updatedAt: new Date().toISOString() });
+        log('Call rejected (Firebase):', callId);
+      }
+      if (isNative()) (CallKeep as any).endCall({ uuid: callId }).catch(() => {});
+      setIncomingCall(null);
+      LocalNotifications.cancel({ notifications: [{ id: 999 }] });
+    } catch (e) {
+      log('Error declining call:', e);
+    }
+  };
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     activeChatIdRef.current = location.pathname === '/message' ? searchParams.get('chat') : null;
@@ -267,85 +393,6 @@ const AppContent: React.FC = () => {
     show: false,
     type: 'error'
   });
-
-  // Check Permissions on Startup (Mobile)
-  useEffect(() => {
-    const requestPermissions = async () => {
-      if (!isMobileDevice()) return;
-
-      log('Démarrage de la requête des permissions...');
-      // Attendre un peu pour laisser l'appli respirer au démarrage
-      await new Promise(r => setTimeout(r, 2000));
-
-      try {
-        log('Demande des permissions LocalNotifications...');
-        // Request Notification Permissions (Android 13+)
-        const perm = await LocalNotifications.requestPermissions();
-        log('Statut permissions notifications:', perm.display);
-
-        // Create specialized notification channels for Android
-        try {
-          log('Création des canaux de notification...');
-          // General messages channel
-          await LocalNotifications.createChannel({
-            id: 'messages',
-            name: 'Messages',
-            description: 'Notifications pour les nouveaux messages',
-            importance: 5, 
-            visibility: 1, 
-            sound: 'default',
-            vibration: true
-          });
-
-          // High priority calls channel
-          await LocalNotifications.createChannel({
-            id: 'calls',
-            name: 'Appels entrants',
-            description: 'Alertes lors d\'un appel entrant',
-            importance: 5, // High importance
-            visibility: 1, // Public/Lockscreen
-            sound: 'ringtone.mp3', 
-            vibration: true,
-            lights: true,
-            lightColor: '#10b981'
-          });
-          
-          log('Canaux créés avec succès');
-
-          // Register Action Types (Buttons in notifications)
-          await LocalNotifications.registerActionTypes({
-            types: [
-              {
-                id: 'INCOMING_CALL',
-                actions: [
-                  { id: 'accept', title: 'Répondre', foreground: true },
-                  { id: 'decline', title: 'Décliner', destructive: true, foreground: false }
-                ]
-              }
-            ]
-          });
-        } catch (err) {
-          log('Échec création canaux notifications:', err);
-        }
-
-        // Proactive Camera/Mic permission request
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          try {
-            log('Tentative proactive accès Caméra/Micro...');
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            stream.getTracks().forEach(track => track.stop());
-            log('Accès Caméra/Micro accordé proactivement');
-          } catch (err) {
-            log('Refus ou échec accès Caméra/Micro proactif:', err);
-          }
-        }
-      } catch (err) {
-        log('Erreur générale lors de la requête des permissions:', err);
-      }
-    };
-
-    requestPermissions();
-  }, []);
 
   // Check NAS Connection
   useEffect(() => {
@@ -541,85 +588,59 @@ const AppContent: React.FC = () => {
     };
   }, [pbUser?.id, location.pathname, location.search]);
 
+  // Native Plugin Initialisation & Call/Message Subscriptions
   useEffect(() => {
-    if (!pbUser?.id) return;
+    if (!pbUser?.id || listenersInitialized.current) return;
+    listenersInitialized.current = true;
 
-    // Écouter les actions sur les notifications (clic sur les boutons Répondre/Décliner)
-    const setupNotificationListeners = async () => {
+    const setupNative = async () => {
+      if (!isNative()) return;
+      
+      log('NativeInit: Démarrage séquentiel...');
+      
       try {
-        if (isNative()) {
-          // Setup CallKeep
-          try {
-            await CallKeep.setup({
-              ios: {
-                appName: 'Wexo',
-              },
-              android: {
-                alertTitle: 'Permissions requises',
-                alertDescription: 'L\'app a besoin des permissions pour les appels',
-                cancelButton: 'Annuler',
-                okButton: 'OK',
-                imageName: 'phone_account_icon',
-                selfManaged: false, // Passer à false pour laisser le système gérer l'appel nativement si possible
-                foregroundService: {
-                  channelId: 'calls',
-                  channelName: 'Appels',
-                  notificationTitle: 'Appel en cours',
-                  notificationIcon: 'ic_launcher',
-                },
-              },
-            });
-            log('CallKeep setup success');
-            
-            // Vérifier si le compte téléphonique est activé (requis pour Telecom Manager sur Android)
-            try {
-              const hasAccount = await CallKeep.hasPhoneAccount();
-              if (!hasAccount) {
-                log('CallKeep: Compte téléphonique NON activé.');
-                // On ne force plus l'ouverture des paramètres ici, on laisse l'utilisateur le faire via les réglages si besoin
-                // car cela peut perturber le lancement sur certains appareils
-              }
-            } catch (e) {
-              log('Erreur vérification Phone Account:', e);
-            }
-          } catch (callKeepError) {
-            log('CallKeep setup warning:', callKeepError);
+        // Enregistrement des listeners IMMÉDIATS
+        CallKeep.addListener('answerCall', (data: any) => {
+          const uuid = data.uuid || data.callUUID;
+          log('CallKeep: answerCall reçu:', uuid);
+          handleAcceptCallFromNotification(uuid);
+        });
+
+        CallKeep.addListener('endCall', (data: any) => {
+          const uuid = data.uuid || data.callUUID;
+          log('CallKeep: endCall reçu:', uuid);
+          handleDeclineCallFromNotification(uuid);
+        });
+
+        PushNotifications.addListener('registration', async (token) => {
+          log('PushNotifications: Token reçu:', token.value);
+          await fetch('/api/notifications/register-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: pbUser.id, token: token.value })
+          }).catch(e => log('Error saving token:', e));
+        });
+
+        PushNotifications.addListener('registrationError', (error) => {
+          log('PushNotifications: Erreur d\'enregistrement:', error);
+        });
+
+        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          log('PushNotifications: Reçue:', notification);
+          if (notification.data?.type === 'message' && notification.data?.senderId === activeChatIdRef.current) return;
+          setInAppNotice({
+            title: notification.title || 'Wexo',
+            content: notification.body || '',
+            senderId: notification.data?.senderId || '',
+            show: true
+          });
+        });
+
+        PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+          log('PushNotifications: Action:', action);
+          if (action.notification.data?.senderId) {
+            navigate(`/message?chat=${action.notification.data.senderId}`);
           }
-
-          // Listen for CallKeep actions
-          CallKeep.addListener('answerCall', ({ uuid }) => {
-            log('CallKeep answerCall:', uuid);
-            // We need to determine the source. Usually we can store it or derive it
-            handleAcceptCallFromNotification(uuid);
-          });
-
-          CallKeep.addListener('endCall', ({ uuid }) => {
-            log('CallKeep endCall:', uuid);
-            handleDeclineCallFromNotification(uuid);
-          });
-
-          // Standard LocalNotifications setup (backup)
-          await LocalNotifications.createChannel({
-            id: 'calls',
-            name: 'Appels Entrants',
-            description: 'Canal pour les appels audio et vidéo',
-            importance: 5,
-            visibility: 1,
-            vibration: true,
-            sound: 'ringtone.mp3'
-          });
-        }
-
-        await LocalNotifications.registerActionTypes({
-          types: [
-            {
-              id: 'INCOMING_CALL',
-              actions: [
-                { id: 'accept', title: 'Répondre', foreground: true },
-                { id: 'decline', title: 'Refuser', destructive: true, foreground: false }
-              ]
-            }
-          ]
         });
 
         await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
@@ -627,168 +648,106 @@ const AppContent: React.FC = () => {
           if (notification.extra?.type === 'call') {
             const callId = notification.extra.callId;
             const source = notification.extra.source || 'pb';
-            if (actionId === 'accept') {
-              handleAcceptCallFromNotification(callId, source);
-            } else if (actionId === 'decline') {
-              handleDeclineCallFromNotification(callId, source);
-            }
+            if (actionId === 'accept') handleAcceptCallFromNotification(callId, source);
+            else if (actionId === 'decline') handleDeclineCallFromNotification(callId, source);
           }
         });
+
+        // Tâches de setup une par une avec try/catch individuel
+        log('NativeInit: Début des tâches différées...');
+        
+        const safeRun = async (name: string, fn: () => Promise<any>, delay: number = 2000) => {
+          log(`NativeInit: Tâche [${name}] dans ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          try {
+            log(`NativeInit: Exécution [${name}]...`);
+            await fn();
+            log(`NativeInit: Succès [${name}]`);
+          } catch (e: any) {
+            log(`NativeInit: Échec [${name}]:`, e?.message || e);
+          }
+        };
+
+        // On espace les initialisations pour éviter de saturer le bridge natif
+        await safeRun('LocalNotifications.requestPermissions', () => LocalNotifications.requestPermissions());
+        await safeRun('LocalNotifications.createChannels', async () => {
+          await LocalNotifications.createChannel({ id: 'messages', name: 'Messages', importance: 5, visibility: 1 });
+          await LocalNotifications.createChannel({ id: 'calls', name: 'Appels', importance: 4, visibility: 1, vibration: true });
+          await LocalNotifications.registerActionTypes({
+            types: [{
+              id: 'INCOMING_CALL',
+              actions: [
+                { id: 'accept', title: 'Répondre', foreground: true },
+                { id: 'decline', title: 'Refuser', destructive: true, foreground: false }
+              ]
+            }]
+          });
+        });
+
+        await safeRun('CallKeep.setup', () => 
+          (CallKeep as any).setup({
+            ios: { appName: 'Wexo' },
+            android: {
+              alertTitle: 'Permissions', alertDescription: 'Accès appels requis',
+              cancelButton: 'Annuler', okButton: 'OK',
+              imageName: 'phone_account_icon', selfManaged: false,
+              foregroundService: {
+                channelId: 'calls', channelName: 'Appels',
+                notificationTitle: 'Apple en cours', notificationIcon: 'ic_launcher'
+              }
+            }
+          })
+        );
+
+        await safeRun('PushNotifications.register', async () => {
+          const pushPerm = await PushNotifications.checkPermissions();
+          if (pushPerm.receive === 'granted') {
+            await PushNotifications.register();
+          }
+        });
+
+        setIsAppReady(true);
+        log('NativeInit: Initialisation complète terminée SANS CRASH.');
+
       } catch (e) {
-        console.warn("LocalNotifications error:", e);
+        log('NativeInit Error (Fatal):', e);
       }
     };
-    setupNotificationListeners();
 
-    // Écouter les appels entrants (PocketBase)
+    setupNative();
+
+    // Souscriptions (Appels PocketBase)
     pb.collection('calls').subscribe('*', async ({ action, record }) => {
       if (action === 'create' && record.receiver_id === pbUser.id && record.status === 'incoming') {
         handleIncomingCall(record, 'pb');
       }
-      
       if (action === 'update' && (record.receiver_id === pbUser.id || record.caller_id === pbUser.id)) {
         handleCallUpdate(record);
       }
     }, { expand: 'caller_id' });
 
-    // Écouter les appels entrants (Firebase)
-    const callsQuery = query(
-      collection(db, 'calls'),
-      where('receiverId', '==', pbUser.id),
-      where('status', '==', 'outgoing'), // 'outgoing' means it was sent from server to receiver
-      limit(1)
-    );
-
+    // Souscriptions (Appels Firebase)
+    const callsQuery = query(collection(db, 'calls'), where('receiverId', '==', pbUser.id), where('status', '==', 'outgoing'), limit(1));
     const unsubscribeFirebaseCalls = onSnapshot(callsQuery, (snapshot) => {
       snapshot.docChanges().forEach(async (change) => {
         if (change.type === 'added') {
           const record = change.doc.data();
-          // Map Firebase record to PocketBase-like structure for the UI
-          const mappedRecord = {
-            id: change.doc.id,
-            caller_id: record.callerId,
-            receiver_id: record.receiverId,
-            status: 'incoming', // Switch status for the receiver's UI
-            type: record.type,
-            source: 'firebase'
-          };
-          handleIncomingCall(mappedRecord, 'firebase');
+          handleIncomingCall({ id: change.doc.id, caller_id: record.callerId, receiver_id: record.receiverId, status: 'incoming', type: record.type, source: 'firebase' }, 'firebase');
         }
       });
     });
 
-    const handleIncomingCall = async (record: any, source: 'pb' | 'firebase') => {
-      let callerName = "Utilisateur inconnu";
-      let avatar = DEFAULT_AVATAR;
-
-      if (source === 'pb' && record.expand?.caller_id) {
-        const caller = record.expand.caller_id;
-        callerName = caller.username;
-        avatar = caller.avatar ? pb.files.getUrl(caller, caller.avatar) : (caller.avatar_url || DEFAULT_AVATAR);
-      } else {
-        try {
-          const sender = await pb.collection('users').getOne(record.caller_id);
-          callerName = sender.username;
-          avatar = sender.avatar ? pb.files.getUrl(sender, sender.avatar) : (sender.avatar_url || DEFAULT_AVATAR);
-        } catch (e) {}
-      }
-
-      // 1. Déclencher le Overlay React
-      setIncomingCall({
-        id: record.id,
-        caller_id: record.caller_id,
-        receiver_id: record.receiver_id,
-        source: source,
-        profiles: {
-          id: record.caller_id,
-          username: callerName,
-          avatar_url: avatar
-        }
-      });
-
-      // 2. Déclencher une notification système + CallKeep
-      if (isNative()) {
-        try {
-          // Display system call UI
-          await CallKeep.displayIncomingCall({
-            uuid: record.id,
-            handle: callerName,
-            localizedCallerName: callerName,
-            handleType: 'generic',
-            hasVideo: record.type === 'video',
-            supportsHolding: false,
-            supportsDTMF: false,
-            supportsGrouping: false,
-            supportsUngrouping: false,
-          });
-
-          await LocalNotifications.schedule({
-            notifications: [
-              {
-                title: `APPEL: ${callerName}`,
-                body: "Appuyez pour répondre",
-                id: 999,
-                schedule: { at: new Date(Date.now() + 100) },
-                sound: 'ringtone.mp3',
-                channelId: 'calls',
-                ongoing: true,
-                autoCancel: false,
-                extra: {
-                  type: 'call',
-                  callId: record.id,
-                  source: source
-                },
-                actionTypeId: 'INCOMING_CALL'
-              }
-            ]
-          });
-        } catch (e) {
-          console.warn("Call handling error:", e);
-        }
-        if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
-      } else if (isMobileDevice()) {
-        // Fallback for non-native mobile (PWA)
-        setNotification({ 
-          message: `APPEL ENTRANT: ${callerName}`, 
-          show: true,
-          type: 'success'
-        });
-      }
+    return () => {
+      pb.collection('calls').unsubscribe('*').catch(() => {});
+      unsubscribeFirebaseCalls();
+      // On garde listenersInitialized à true
     };
+  }, [pbUser?.id]);
 
-    const handleCallUpdate = (record: any) => {
-      if (record.status === 'completed' || record.status === 'missed' || record.status === 'rejected' || record.status === 'ended') {
-        if (isNative()) {
-          CallKeep.endCall(record.id).catch(() => {});
-        }
-        if (incomingCall?.id === record.id) {
-          if (record.status === 'missed' && record.receiver_id === pbUser.id) {
-            LocalNotifications.cancel({ notifications: [{ id: 999 }] });
-            LocalNotifications.schedule({
-              notifications: [{
-                title: "Appel manqué",
-                body: `Vous avez manqué un appel de ${incomingCall?.profiles.username || 'un utilisateur'}`,
-                id: Math.floor(Math.random() * 10000),
-                schedule: { at: new Date(Date.now() + 100) },
-                sound: 'default'
-              }]
-            });
-          } else {
-            LocalNotifications.cancel({ notifications: [{ id: 999 }] });
-          }
-          setIncomingCall(null);
-        }
-        if (activeCall?.id === record.id) setActiveCall(null);
-      }
-      
-      if ((record.status === 'ongoing' || record.status === 'accepted') && record.caller_id === pbUser.id) {
-         if (activeCall && activeCall.id === record.id && !activeCall.isOngoing) {
-            setActiveCall((prev: any) => ({ ...prev, isOngoing: true }));
-         }
-      }
-    };
-
-    // Firebase Listener pour l'émetteur (suivi de l'appel actif)
+  // Firebase Listener pour l'émetteur (suivi de l'appel actif)
+  useEffect(() => {
+    if (!pbUser?.id) return;
+    
     let unsubscribeActiveCall: (() => void) | null = null;
     if (activeCall && activeCall.id && !activeCall.isOngoing) {
        unsubscribeActiveCall = onSnapshot(doc(db, 'calls', activeCall.id), (docSnap) => {
@@ -804,12 +763,9 @@ const AppContent: React.FC = () => {
     }
 
     return () => {
-      pb.collection('calls').unsubscribe('*');
-      unsubscribeFirebaseCalls();
       if (unsubscribeActiveCall) unsubscribeActiveCall();
-      pb.collection('notifications').unsubscribe('*');
     };
-  }, [pbUser?.id, incomingCall?.id, activeCall?.id]);
+  }, [pbUser?.id, activeCall?.id]);
 
   // Synchronisation des notifications en attente & Real-time via checkPendingNotifications
   useEffect(() => {
@@ -869,106 +825,6 @@ const AppContent: React.FC = () => {
     return () => {
       pb.collection('notifications').unsubscribe('*');
     };
-  }, [pbUser?.id]);
-
-  // Firebase Cloud Messaging (FCM) Token Registration
-  useEffect(() => {
-    if (!pbUser?.id) return;
-
-    const registerFCM = async () => {
-      try {
-        if (isNative()) {
-          // Attendre un peu avant d'enregistrer pour éviter de surcharger le démarrage
-          await new Promise(r => setTimeout(r, 3000));
-          
-          let perm = await PushNotifications.checkPermissions();
-          if (perm.receive !== 'granted') {
-            perm = await PushNotifications.requestPermissions();
-          }
-
-          if (perm.receive === 'granted') {
-            log('Enregistrement PushNotifications...');
-            await PushNotifications.register();
-            
-            PushNotifications.addListener('registration', async (token) => {
-              log('Token FCM natif reçu:', token.value);
-              await fetch('/api/notifications/register-token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: pbUser.id, token: token.value })
-              });
-            });
-
-            PushNotifications.addListener('registrationError', (error) => {
-              log('Erreur enregistrement Push:', error);
-            });
-
-            PushNotifications.addListener('pushNotificationReceived', (notification) => {
-              log('Notification Push reçue en premier plan:', notification);
-              // Si c'est un message et qu'on est déjà dans le chat, on ignore
-              if (notification.data?.type === 'message' && notification.data?.senderId === activeChatIdRef.current) {
-                return;
-              }
-              
-              setInAppNotice({
-                title: notification.title || 'Wexo',
-                content: notification.body || '',
-                senderId: notification.data?.senderId || '',
-                show: true
-              });
-            });
-
-            PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-              log('Action sur notification Push:', action);
-              if (action.notification.data?.senderId) {
-                navigate(`/message?chat=${action.notification.data.senderId}`);
-              }
-            });
-          }
-        } else {
-          // Fallback Web SDK pour Firebase Messaging
-          const messaging = await getMessagingInstance();
-          if (!messaging) return;
-
-          if (typeof Notification !== 'undefined') {
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') {
-              const token = await getToken(messaging, { 
-                vapidKey: 'BBHRV2L9IBy8HYZh35V1xtfNAAOM_utK_w-tu0qwwva25FTYbBmCgjuGqp480x31ZodNEjPvhHlHaWK5W_ZjSzk' 
-              }).catch(e => {
-                log('Failed to get FCM token:', e);
-                return null;
-              });
-              
-              if (token) {
-                log('FCM Token généré via Web SDK:', token);
-                await fetch('/api/notifications/register-token', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ userId: pbUser.id, token })
-                });
-              }
-            }
-          }
-
-          onMessage(messaging, (payload) => {
-            log('Foreground message received via Web SDK:', payload);
-            if (payload.notification) {
-              setInAppNotice({
-                title: payload.notification.title || 'Notification',
-                content: payload.notification.body || '',
-                senderId: payload.data?.senderId || '',
-                show: true
-              });
-            }
-          });
-        }
-      } catch (err) {
-        log('Erreur enregistrement Push:', err);
-      }
-    };
-
-    registerFCM();
   }, [pbUser?.id]);
 
   // Global Messages Subscription for Notifications
@@ -1049,119 +905,6 @@ const AppContent: React.FC = () => {
     handleAcceptCallFromNotification(incomingCall.id, incomingCall.source);
   };
 
-  const handleAcceptCallFromNotification = async (callId: string, providedSource?: 'pb' | 'firebase') => {
-    log('Handling accept call:', callId, 'Source:', providedSource);
-    try {
-      // Ensure we have at least partial auth ready
-      if (!pb.authStore.model) {
-        log('Auth not ready, waiting...');
-        const savedAuth = await Preferences.get({ key: 'pb_auth' });
-        if (savedAuth.value) {
-          const authData = JSON.parse(savedAuth.value);
-          pb.authStore.save(authData.token, authData.model);
-        } else {
-          await new Promise(r => setTimeout(r, 1500));
-        }
-      }
-
-      // If we don't have the call data yet (e.g. app launched from notification)
-      let currentCall = incomingCall;
-      if (!currentCall || currentCall.id !== callId) {
-        log('Fetching call data for ID:', callId);
-        try {
-          // Fetch from your backend or direct PB
-          const callData = await pb.collection('calls').getOne(callId, { expand: 'caller_id' });
-          currentCall = {
-            id: callData.id,
-            partner: callData.expand?.caller_id,
-            type: callData.type,
-            source: 'pb'
-          };
-        } catch (e) {
-          log('Could not fetch call data, might be too early', e);
-        }
-      }
-
-      const source = providedSource || currentCall?.source || 'pb';
-      let callerData: any = currentCall?.partner;
-      
-      if (source === 'pb') {
-        log('Accepting PocketBase call...');
-        await pb.collection('calls').update(callId, { status: 'ongoing' });
-        const record = await pb.collection('calls').getOne(callId, { expand: 'caller_id' });
-        log('Call record updated in PB');
-        callerData = {
-          id: record.id,
-          caller_id: record.caller_id,
-          receiver_id: record.receiver_id,
-          username: record.expand?.caller_id?.username || 'Utilisateur',
-          avatar: record.expand?.caller_id?.avatar ? pb.files.getUrl(record.expand.caller_id, record.expand.caller_id.avatar) : (record.expand?.caller_id?.avatar_url || DEFAULT_AVATAR)
-        };
-      } else {
-        log('Accepting Firebase call...');
-        await updateDoc(doc(db, 'calls', callId), { status: 'accepted', lastUpdate: new Date() });
-        log('Call record updated in Firebase');
-        
-        let callerId = incomingCall?.caller_id;
-        let receiverId = incomingCall?.receiver_id || pbUser.id;
-
-        if (!callerId) {
-          log('Missing callerId in state, fetching from doc...');
-          try {
-            const callSnap = await getDoc(doc(db, 'calls', callId));
-            if (callSnap.exists()) { 
-              const data = callSnap.data();
-              callerId = data.callerId || data.caller_id;
-            }
-          } catch (e) {
-            log('Failed to fetch call data from Firestore:', e);
-          }
-        }
-
-        const senderId = callerId || incomingCall?.caller_id;
-        
-        if (!senderId) {
-          log('Aborting accept: No sender ID found');
-          setNotification({ message: "Échec de l'appel: Expéditeur introuvable", show: true });
-          setIncomingCall((prev: any) => prev ? { ...prev, isProcessing: false } : null);
-          return;
-        }
-
-        const sender = await pb.collection('users').getOne(senderId);
-        callerData = {
-          id: callId,
-          caller_id: senderId,
-          receiver_id: receiverId,
-          username: sender.username,
-          avatar: sender.avatar ? pb.files.getUrl(sender, sender.avatar) : (sender.avatar_url || DEFAULT_AVATAR)
-        };
-      }
-      
-      log('Setting active call data:', callerData);
-      setActiveCall({
-        id: callerData.id,
-        caller_id: callerData.caller_id,
-        receiver_id: callerData.receiver_id,
-        isOngoing: true,
-        profiles: {
-          username: callerData.username,
-          avatar_url: callerData.avatar
-        }
-      });
-      setIncomingCall(null);
-      setActiveTab('appel');
-      navigate('/appel');
-      LocalNotifications.cancel({ notifications: [{ id: 999 }] });
-      
-      // Stop vibration immediately
-      if (navigator.vibrate) navigator.vibrate(0);
-      
-    } catch (err) {
-      console.error("Error accepting call:", err);
-      setNotification({ message: "Échec de la connexion à l'appel", show: true });
-    }
-  };
-
   const handleDeclineCall = async () => {
     if (!incomingCall) return;
     log('User clicked Decline button in overlay');
@@ -1169,27 +912,10 @@ const AppContent: React.FC = () => {
     handleDeclineCallFromNotification(incomingCall.id, incomingCall.source);
   };
 
-  const handleDeclineCallFromNotification = async (callId: string, providedSource?: 'pb' | 'firebase') => {
-    log('Handling decline call:', callId, 'Source:', providedSource);
-    try {
-      const source = providedSource || incomingCall?.source || 'pb';
-      if (source === 'pb') {
-        await pb.collection('calls').update(callId, { status: 'rejected' }); // status was missed, but if user explicitly declines, rejected is better
-      } else {
-        await updateDoc(doc(db, 'calls', callId), { status: 'rejected', lastUpdate: new Date() });
-      }
-      setIncomingCall(null);
-      LocalNotifications.cancel({ notifications: [{ id: 999 }] });
-      if (navigator.vibrate) navigator.vibrate(0);
-    } catch (err) {
-      console.error("Error declining call:", err);
-    }
-  };
-
   const handleEndCall = async () => {
     if (activeCall) {
       try {
-        if (activeCall.id && activeCall.id !== activeCall.receiver_id) {
+        if (activeCall.id && activeCall.status !== 'completed') {
           await pb.collection('calls').update(activeCall.id, { status: 'completed' });
         }
       } catch (err) {
@@ -1198,7 +924,7 @@ const AppContent: React.FC = () => {
     }
     setActiveCall(null);
     if (isNative()) {
-      CallKeep.endAllCalls().catch(() => {});
+      (CallKeep as any).endAllCalls().catch(() => {});
     }
   };
 
@@ -1220,19 +946,18 @@ const AppContent: React.FC = () => {
       
       const callUuid = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      if (isNative()) {
-        try {
-          await CallKeep.startCall({
-            uuid: callUuid,
-            handle: receiver.username || receiver.name,
-            contactIdentifier: receiver.id,
-            handleType: 'generic', // More compatible for Telegram/WhatsApp style calls
-            hasVideo: true
-          });
-        } catch (e) {
-          log('CallKeep startCall error:', e);
+        if (isNative()) {
+          try {
+            await (CallKeep as any).startCall({
+              uuid: callUuid,
+              callerName: receiver.username || receiver.name,
+              handleType: 'generic',
+              hasVideo: true
+            });
+          } catch (e) {
+            log('CallKeep startCall error:', e);
+          }
         }
-      }
 
       const response = await fetch('/api/calls/initiate', {
         method: 'POST',
