@@ -70,8 +70,8 @@
     "vite": "^6.2.0"
   },
   "build": {
-    "appId": "com.wexo.app",
-    "productName": "Wexo",
+    "appId": "com.wixo.app",
+    "productName": "Wixo",
     "directories": {
       "output": "dist-electron"
     },

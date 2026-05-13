@@ -10,5 +10,5 @@ export const isApp = () => {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent.toLowerCase();
   // Common indicators for Electron or custom WebView wrappers
-  return ua.includes('electron') || ua.includes('wexo-app') || (window as any).isNativeApp;
+  return ua.includes('electron') || ua.includes('wixo-app') || (window as any).isNativeApp;
 };

@@ -37,7 +37,6 @@ import { signInAnonymously } from 'firebase/auth';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
-import { CallKeep } from 'capacitor-call-keep';
 import { App as CapApp } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
 import { Device } from '@capacitor/device';
@@ -128,13 +127,6 @@ const AppContent: React.FC = () => {
 
     if (isNative()) {
       try {
-        await (CallKeep as any).displayIncomingCall({
-          uuid: record.id,
-          callerName: callerName,
-          handleType: 'generic',
-          hasVideo: record.type === 'video',
-        });
-
         await LocalNotifications.schedule({
           notifications: [{
             title: `APPEL: ${callerName}`,
@@ -159,7 +151,6 @@ const AppContent: React.FC = () => {
 
   const handleCallUpdate = (record: any) => {
     if (['completed', 'missed', 'rejected', 'ended'].includes(record.status)) {
-      if (isNative()) CallKeep.endCall(record.id).catch(() => {});
       if (incomingCall?.id === record.id) {
         if (record.status === 'missed' && record.receiver_id === pbUser.id) {
           LocalNotifications.cancel({ notifications: [{ id: 999 }] });
@@ -193,12 +184,10 @@ const AppContent: React.FC = () => {
         const callerId = incomingCall?.caller_id;
         await pb.collection('calls').update(callId, { status: 'ongoing' });
         log('Call accepted (PB):', callId);
-        if (isNative()) (CallKeep as any).answerIncomingCall({ uuid: callId });
         navigate(`/appel?id=${callId}&source=pb&caller=${callerId}`);
       } else {
         await updateDoc(doc(db, 'calls', callId), { status: 'accepted', updatedAt: new Date().toISOString() });
         log('Call accepted (Firebase):', callId);
-        if (isNative()) (CallKeep as any).answerIncomingCall({ uuid: callId });
         navigate(`/appel?id=${callId}&source=firebase`);
       }
       setIncomingCall(null);
@@ -217,7 +206,6 @@ const AppContent: React.FC = () => {
         await updateDoc(doc(db, 'calls', callId), { status: 'rejected', updatedAt: new Date().toISOString() });
         log('Call rejected (Firebase):', callId);
       }
-      if (isNative()) (CallKeep as any).endCall({ uuid: callId }).catch(() => {});
       setIncomingCall(null);
       LocalNotifications.cancel({ notifications: [{ id: 999 }] });
     } catch (e) {
@@ -325,13 +313,10 @@ const AppContent: React.FC = () => {
         }
 
         if (path === '/' || path === '/accueil') {
-          // Sur l'accueil : on évite de quitter l'appli brutalement sauf si c'est vraiment nécessaire
-          // On préfère laisser le système gérer le bouton retour s'il n'y a plus d'historique
-          if (!canGoBack) {
-            // CapApp.exitApp(); // Désactivé pour le moment pour tester la stabilité
-          } else {
-            window.history.back();
-          }
+          // Sur l'accueil : on ne quitte JAMAIS l'appli via le bouton retour (système WhatsApp/Instagram)
+          // On peut éventuellement minimiser l'appli si on veut vraiment, mais exitApp est trop brutal.
+          log('Bouton retour sur accueil ignoré pour la stabilité.');
+          return;
         } else if (path === '/message') {
           if (search.includes('chat=')) {
             navigate('/message', { replace: true });
@@ -493,7 +478,7 @@ const AppContent: React.FC = () => {
               LocalNotifications.schedule({
                 notifications: [{
                   id: Math.floor(Math.random() * 1000000),
-                  title: notification.title || 'Wexo',
+                  title: notification.title || 'Wixo',
                   body: bodyText,
                   largeBody: bodyText,
                   summaryText: notification.title,
@@ -591,28 +576,28 @@ const AppContent: React.FC = () => {
   // Native Plugin Initialisation & Call/Message Subscriptions
   useEffect(() => {
     if (!pbUser?.id || listenersInitialized.current) return;
-    listenersInitialized.current = true;
-
+    
     const setupNative = async () => {
       if (!isNative()) return;
       
-      log('NativeInit: Démarrage séquentiel...');
+      log('NativeInit: Démarrage de l\'initialisation stable (WIXO)...');
       
       try {
-        // Enregistrement des listeners IMMÉDIATS
-        CallKeep.addListener('answerCall', (data: any) => {
-          const uuid = data.uuid || data.callUUID;
-          log('CallKeep: answerCall reçu:', uuid);
-          handleAcceptCallFromNotification(uuid);
-        });
+        // Enregistrement des listeners robustes
+        const addSafeListener = (plugin: any, name: string, cb: any) => {
+          try {
+             if (plugin && typeof plugin.addListener === 'function') {
+                log(`Adding listener: ${name}`);
+                plugin.addListener(name, cb);
+             } else {
+                log(`Plugin or addListener missing for [${name}]`);
+             }
+          } catch (e) {
+             log(`Critical listener error [${name}]:`, e);
+          }
+        };
 
-        CallKeep.addListener('endCall', (data: any) => {
-          const uuid = data.uuid || data.callUUID;
-          log('CallKeep: endCall reçu:', uuid);
-          handleDeclineCallFromNotification(uuid);
-        });
-
-        PushNotifications.addListener('registration', async (token) => {
+        addSafeListener(PushNotifications, 'registration', async (token: any) => {
           log('PushNotifications: Token reçu:', token.value);
           await fetch('/api/notifications/register-token', {
             method: 'POST',
@@ -621,29 +606,29 @@ const AppContent: React.FC = () => {
           }).catch(e => log('Error saving token:', e));
         });
 
-        PushNotifications.addListener('registrationError', (error) => {
+        addSafeListener(PushNotifications, 'registrationError', (error: any) => {
           log('PushNotifications: Erreur d\'enregistrement:', error);
         });
 
-        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        addSafeListener(PushNotifications, 'pushNotificationReceived', (notification: any) => {
           log('PushNotifications: Reçue:', notification);
           if (notification.data?.type === 'message' && notification.data?.senderId === activeChatIdRef.current) return;
           setInAppNotice({
-            title: notification.title || 'Wexo',
+            title: notification.title || 'Wixo',
             content: notification.body || '',
             senderId: notification.data?.senderId || '',
             show: true
           });
         });
 
-        PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+        addSafeListener(PushNotifications, 'pushNotificationActionPerformed', (action: any) => {
           log('PushNotifications: Action:', action);
           if (action.notification.data?.senderId) {
             navigate(`/message?chat=${action.notification.data.senderId}`);
           }
         });
 
-        await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+        addSafeListener(LocalNotifications, 'localNotificationActionPerformed', (action: any) => {
           const { notification, actionId } = action;
           if (notification.extra?.type === 'call') {
             const callId = notification.extra.callId;
@@ -653,64 +638,34 @@ const AppContent: React.FC = () => {
           }
         });
 
-        // Tâches de setup une par une avec try/catch individuel
-        log('NativeInit: Début des tâches différées...');
-        
-        const safeRun = async (name: string, fn: () => Promise<any>, delay: number = 2000) => {
-          log(`NativeInit: Tâche [${name}] dans ${delay}ms...`);
-          await new Promise(r => setTimeout(r, delay));
+        // Exécution protégée des initialisations natives
+        const runNative = async (name: string, fn: () => Promise<any>) => {
           try {
-            log(`NativeInit: Exécution [${name}]...`);
+            log(`Starting: ${name}`);
             await fn();
-            log(`NativeInit: Succès [${name}]`);
+            log(`Success: ${name}`);
           } catch (e: any) {
-            log(`NativeInit: Échec [${name}]:`, e?.message || e);
+            log(`Failed: ${name}`, e?.message || e);
           }
         };
 
-        // On espace les initialisations pour éviter de saturer le bridge natif
-        await safeRun('LocalNotifications.requestPermissions', () => LocalNotifications.requestPermissions());
-        await safeRun('LocalNotifications.createChannels', async () => {
-          await LocalNotifications.createChannel({ id: 'messages', name: 'Messages', importance: 5, visibility: 1 });
-          await LocalNotifications.createChannel({ id: 'calls', name: 'Appels', importance: 4, visibility: 1, vibration: true });
-          await LocalNotifications.registerActionTypes({
-            types: [{
-              id: 'INCOMING_CALL',
-              actions: [
-                { id: 'accept', title: 'Répondre', foreground: true },
-                { id: 'decline', title: 'Refuser', destructive: true, foreground: false }
-              ]
-            }]
-          });
+        // On ne bloque pas tout pour une seule erreur
+        runNative('LocalNotifications.requestPermissions', () => LocalNotifications.requestPermissions());
+        runNative('PushNotifications.checkPermissions', async () => {
+           const res = await PushNotifications.checkPermissions();
+           if (res.receive === 'granted') return PushNotifications.register();
         });
-
-        await safeRun('CallKeep.setup', () => 
-          (CallKeep as any).setup({
-            ios: { appName: 'Wexo' },
-            android: {
-              alertTitle: 'Permissions', alertDescription: 'Accès appels requis',
-              cancelButton: 'Annuler', okButton: 'OK',
-              imageName: 'phone_account_icon', selfManaged: false,
-              foregroundService: {
-                channelId: 'calls', channelName: 'Appels',
-                notificationTitle: 'Apple en cours', notificationIcon: 'ic_launcher'
-              }
-            }
-          })
-        );
-
-        await safeRun('PushNotifications.register', async () => {
-          const pushPerm = await PushNotifications.checkPermissions();
-          if (pushPerm.receive === 'granted') {
-            await PushNotifications.register();
-          }
-        });
+        
+        runNative('LocalNotifications.createChannels', () => LocalNotifications.createChannel({ id: 'messages', name: 'Messages', importance: 5 }));
+        runNative('LocalNotifications.createChannelCalls', () => LocalNotifications.createChannel({ id: 'calls', name: 'Appels', importance: 4, vibration: true }));
 
         setIsAppReady(true);
-        log('NativeInit: Initialisation complète terminée SANS CRASH.');
+        log('NativeInit: Initialisation terminée en mode ultra-sécurisé.');
 
       } catch (e) {
-        log('NativeInit Error (Fatal):', e);
+        log('NativeInit Error (GLOBAL):', e);
+        // Force ready even on partial fail
+        setIsAppReady(true);
       }
     };
 
@@ -736,6 +691,8 @@ const AppContent: React.FC = () => {
         }
       });
     });
+
+    listenersInitialized.current = true;
 
     return () => {
       pb.collection('calls').unsubscribe('*').catch(() => {});
@@ -784,7 +741,7 @@ const AppContent: React.FC = () => {
               await LocalNotifications.schedule({
                 notifications: [
                   {
-                    title: notif.title || 'Wexo',
+                    title: notif.title || 'Wixo',
                     body: notif.content || 'Nouvelle notification',
                     id: Math.floor(Math.random() * 1000000),
                     schedule: { at: new Date(Date.now() + 500) },
@@ -796,7 +753,7 @@ const AppContent: React.FC = () => {
               });
             } else {
               setNotification({
-                message: `${notif.title || 'Wexo'}: ${notif.content || 'Nouvelle notification'}`,
+                message: `${notif.title || 'Wixo'}: ${notif.content || 'Nouvelle notification'}`,
                 show: true,
                 type: 'success'
               });
@@ -923,9 +880,6 @@ const AppContent: React.FC = () => {
       }
     }
     setActiveCall(null);
-    if (isNative()) {
-      (CallKeep as any).endAllCalls().catch(() => {});
-    }
   };
 
   const handleStartCall = async (receiver: any) => {
@@ -945,19 +899,6 @@ const AppContent: React.FC = () => {
       console.log("Initiation d'un appel vers:", receiver.username);
       
       const callUuid = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-        if (isNative()) {
-          try {
-            await (CallKeep as any).startCall({
-              uuid: callUuid,
-              callerName: receiver.username || receiver.name,
-              handleType: 'generic',
-              hasVideo: true
-            });
-          } catch (e) {
-            log('CallKeep startCall error:', e);
-          }
-        }
 
       const response = await fetch('/api/calls/initiate', {
         method: 'POST',

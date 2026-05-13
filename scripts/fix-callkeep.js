@@ -15,4 +15,23 @@ if (fs.existsSync(gradlePath)) {
     }
 } else {
     console.log('capacitor-call-keep build.gradle not found at ' + gradlePath);
+    console.log('Creating a dummy build.gradle to prevent build failures...');
+    const dir = path.dirname(gradlePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    
+    fs.writeFileSync(gradlePath, `
+apply plugin: 'com.android.library'
+android {
+    namespace "com.killer.callkeep.capacitor"
+    compileSdk 34
+    defaultConfig {
+        minSdkVersion 22
+        targetSdkVersion 34
+    }
+}
+dependencies {
+    implementation project(':capacitor-android')
+}
+`);
+    console.log('Dummy build.gradle created.');
 }

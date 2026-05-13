@@ -4,14 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wexo Social</title>
+    <title>Wixo Social</title>
     <link rel="icon" type="image/png" href="/manifest.json">
     <link rel="manifest" href="/manifest.json">
     
     <!-- iOS Support -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Wexo">
+    <meta name="apple-mobile-web-app-title" content="Wixo">
     <link rel="apple-touch-icon" href="/manifest.json">
     
     <meta name="theme-color" content="#0f0f0f">
@@ -55,102 +55,25 @@
 <body>
     <div id="root">
         <div class="loader-container">
-            <div class="loader">WEXO_BOOTING...</div>
+            <div class="loader">WIXO_BOOTING...</div>
             <div id="debug-log" style="font-size:10px;color:#444;margin-top:10px;font-family:monospace;"></div>
         </div>
     </div>
 
     <script>
-        function clearSW() {
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                    for(let registration of registrations) registration.unregister();
-                    window.location.reload(true);
-                });
-            } else {
-                window.location.reload(true);
-            }
-        }
-    </script>
-    
-    <div id="error-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); color:white; padding:40px; font-family:monospace; z-index:9999; overflow:auto;">
-        <h1 style="color:red; margin-bottom:20px;">CRITICAL_RUNTIME_ERROR</h1>
-        <pre id="error-stack" style="white-space:pre-wrap;"></pre>
-        <button onclick="window.location.reload()" style="margin-top:20px; padding:10px 20px; background:white; color:black; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">RELOAD_APP</button>
-    </div>
-
-    <script>
-        const APP_VERSION = '1.1.0_ROBUST';
-        if (localStorage.getItem('WEXO_V') !== APP_VERSION) {
-            localStorage.clear();
-            sessionStorage.clear();
-            localStorage.setItem('WEXO_V', APP_VERSION);
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.getRegistrations().then(rs => {
-                    for(let r of rs) r.unregister();
-                });
-            }
-            setTimeout(() => window.location.reload(), 300);
-        }
-
         window.__APP_MOUNTED__ = false;
 
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(rs => {
-                for(let r of rs) r.unregister();
-            });
-        }
-
-        let isLogging = false;
+        // Diagnostic logger
         async function logToServer(level, message, details) {
-            if (isLogging) return;
-            isLogging = true;
             try {
-                await fetch('/api/log', {
+                fetch('/api/log', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ level, message, details })
-                });
-            } catch (e) {
-                // Don't use console.log here to avoid recursion
-            } finally {
-                isLogging = false;
-            }
+                    body: JSON.stringify({ level, message, details, timestamp: new Date().toISOString() })
+                }).catch(() => {});
+            } catch (e) {}
         }
-
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
-            const errorInfo = `Message: ${msg}\nUrl: ${url}\nLine: ${lineNo}\nColumn: ${columnNo}\nStack: ${error ? error.stack : 'N/A'}`;
-            logToServer('ERROR', msg, errorInfo);
-            
-            const overlay = document.getElementById('error-overlay');
-            const stack = document.getElementById('error-stack');
-            if (overlay && stack) {
-                overlay.style.display = 'block';
-                stack.innerText = errorInfo;
-            }
-            return false;
-        };
-
-        window.onunhandledrejection = function(event) {
-            const reason = event.reason;
-            const stack = reason && reason.stack ? reason.stack : 'N/A';
-            logToServer('PROMISE_REJECTION', String(reason), { stack });
-            
-            const overlay = document.getElementById('error-overlay');
-            const stackEl = document.getElementById('error-stack');
-            if (overlay && stackEl) {
-                overlay.style.display = 'block';
-                stackEl.innerText = `Promise Rejection: ${reason}\n\nStack:\n${stack}`;
-            }
-        };
-
-        // Rediriger les console.log vers le serveur pour debug
-        const originalLog = console.log;
-        console.log = function(...args) {
-            originalLog.apply(console, args);
-            logToServer('INFO', args.join(' '));
-        };
     </script>
-    <script type="module" src="/index.tsx" onerror="document.getElementById('root').innerHTML='<div style=color:red>SCRIPT_LOADING_ERROR: index.tsx failed</div>'"></script>
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>

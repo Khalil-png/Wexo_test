@@ -7,7 +7,7 @@ import { ThemeProvider } from './src/context/ThemeContext';
 // Diagnostic logger for production debugging
 const logToApp = (message: string, level: string = 'INFO', details?: any) => {
   const timestamp = new Date().toISOString();
-  console.log(`[Wexo][${level}][${timestamp}] ${message}`, details || '');
+  console.log(`[Wixo][${level}][${timestamp}] ${message}`, details || '');
   
   if (typeof window !== 'undefined') {
     // Show on screen for absolute debug
@@ -60,7 +60,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
           fontFamily: 'sans-serif',
           zIndex: 99999
         }}>
-          <h1 style={{ color: '#ef4444', marginBottom: '10px', fontSize: '20px' }}>Oups ! Wexo a rencontré un problème.</h1>
+          <h1 style={{ color: '#ef4444', marginBottom: '10px', fontSize: '20px' }}>Oups ! Wixo a rencontré un problème.</h1>
           <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '20px' }}>Une erreur critique est survenue dans l'interface.</p>
           <div style={{ 
             background: '#1a1a1a', 
