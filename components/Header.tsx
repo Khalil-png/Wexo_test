@@ -416,7 +416,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
   return (
     <header className={`fixed top-0 left-0 right-0 ${isMobileDevice() ? 'h-[140px] pt-16 items-end pb-4' : 'h-20 items-center'} bg-[#0f0f0f] border-b border-white/10 flex justify-between px-4 md:px-10 z-[100]`}>
       <div className="flex items-center gap-5">
-        <button onClick={onToggleSidebar} className="lg:hidden p-2.5 text-slate-400 hover:text-white rounded-2xl"><Menu size={24} /></button>
+        <button onClick={onToggleSidebar} className="lg:hidden p-2.5 text-white !text-white rounded-2xl"><Menu size={24} /></button>
         <div 
           onClick={() => onTabChange('accueil')}
           className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-all"
@@ -444,12 +444,12 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
             {isMobileDevice() && (
               <button 
                 onClick={onOpenCamera}
-                className="p-2.5 text-slate-400 hover:text-white rounded-2xl active:scale-95 transition-all"
+                className="p-2.5 text-white !text-white rounded-2xl active:scale-95 transition-all"
               >
                 <Camera size={22} />
               </button>
             )}
-            <div className="relative" ref={notificationRef}>
+            <div className={`relative ${isMobileDevice() ? 'hidden' : 'block'}`} ref={notificationRef}>
               <button 
                 onClick={() => {
                   setShowNotifications(!showNotifications);
@@ -668,7 +668,7 @@ const Header: React.FC<HeaderProps> = ({ user, profile, onOpenAuth, onOpenLogout
                       }}
                       className="w-full flex items-center gap-4 p-3 hover:bg-white/5 rounded-2xl transition-all group mb-1"
                     >
-                      <div className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-white transition-colors">
+                      <div className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center text-white transition-colors">
                         <Camera size={20} />
                       </div>
                       <span className="text-sm font-bold text-white">Paramètres</span>

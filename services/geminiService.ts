@@ -40,7 +40,7 @@ export const generatePostIdea = async (topic: string) => {
   try {
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: prompt
     });
     return result.text;
@@ -60,7 +60,7 @@ export const summarizeWorkspaceNote = async (content: string) => {
   try {
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: prompt
     });
     return result.text;
@@ -78,7 +78,7 @@ export const generateImage = async (prompt: string) => {
     try {
       const ai = getAI();
       const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image",
+        model: "gemini-2.0-flash",
         contents: { parts: [{ text: prompt }] }
       });
       
@@ -101,7 +101,7 @@ export const generateVideo = async (prompt: string) => {
     try {
       const ai = getAI();
       let operation = await (ai.models as any).generateVideos({
-        model: 'veo-3.1-lite-generate-preview',
+        model: 'veo-2.0-generate-preview',
         prompt: prompt,
         config: {
           numberOfVideos: 1,
@@ -145,7 +145,7 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
 
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: [{
         role: 'user',
         parts: [
@@ -203,7 +203,7 @@ export const analyzePost = async (content: string) => {
   try {
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: `Analyse ce post et dis-moi s'il est approprié, quelle est sa langue, son type et le nom spécifique. Réponds au format JSON: {"is_appropriate": boolean, "language": string, "type": string, "name_of_type": string | null}. Contenu: ${content}`,
       config: { 
         responseMimeType: "application/json",
@@ -240,7 +240,7 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
         
         const ai = getAI();
         const result = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-2.0-flash",
           contents: history.map(h => ({
             role: (h.role === 'model' ? 'model' : 'user') as "user" | "model",
             parts: h.parts.map((p: any) => {

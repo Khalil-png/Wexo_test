@@ -19,6 +19,7 @@ import { encryptMessage, decryptMessage } from '@/services/encryptionService';
 import { db, serverTimestamp, handleFirestoreError, OperationType } from '@/services/firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { isMobileDevice } from '@/src/utils/device';
+import { isNative, getApiUrl } from '@/utils/api';
 import { useClickOutside } from '@/utils/hooks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import vscDarkPlus from 'react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus';
@@ -393,7 +394,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             display_name: otherMember.name || otherMember.username,
             lastMessage: decryptMessage(lastMsg?.text || ''),
             lastMessageTime: lastMsg ? new Date(lastMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
-            unreadCount: 0
+            unreadCount: 0,
+            last_active: otherMember.last_active
           });
           seenUserIds.add(otherMember.id);
           seenUserIds.add(chat.id);
@@ -519,17 +521,27 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     try {
       const u = await pb.collection('users').getOne(selectedId);
       setSelectedProfile({
+        id: u.id,
         username: u.username,
         avatar_url: u.avatar_url,
         display_name: u.display_name,
         is_verified: u.is_verified,
         role: u.role,
-        email: u.email
+        email: u.email,
+        last_active: u.last_active
       });
     } catch (e) {
       console.error("Erreur profil destinataire:", e);
     }
   }, [selectedId]);
+
+  // Refresh profile periodically for online status
+  useEffect(() => {
+    if (!selectedId || selectedId === 'gemini') return;
+    
+    const interval = setInterval(fetchSelectedProfile, 30000);
+    return () => clearInterval(interval);
+  }, [selectedId, fetchSelectedProfile]);
 
   const isOwnerAccount = user?.email === 'ky.chaine@gmail.com' || user?.username === 'khalil' || user?.displayName === 'khalil';
 
@@ -699,8 +711,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         fetchSelectedProfile();
       }
 
-      // Real-time subscription for messages and info
-      pb.collection('messages').subscribe('*', (e) => {
+      // Real-time events from App.tsx global listener
+      const handlePBMessage = (event: any) => {
+        const e = event.detail;
         if (e.action === 'create') {
           const m = e.record;
           const currentActiveChatId = activeChatIdRef.current;
@@ -711,6 +724,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           
           if (isRelated) {
             setMessages(prev => {
+              const decryptMessage = (text: string) => text; // Local fallback if not imported
+              // Note: decryptMessage is defined globally in the file, so it should be visible
+              
               const isDuplicate = prev.some(msg => 
                 msg.id === m.id || 
                 ((msg.is_own || msg.sender_id === 'gemini') && 
@@ -746,9 +762,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             });
           }
         }
-      });
+      };
 
-      pb.collection('message_info').subscribe('*', async (e) => {
+      const handlePBMessageInfo = async (event: any) => {
+        const e = event.detail;
         if (e.action === 'create') {
           const i = e.record;
           const currentActiveChatId = activeChatIdRef.current;
@@ -783,15 +800,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
              setMessages(prev => [...prev, newInfo].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
           }
         }
-      });
+      };
+
+      window.addEventListener('pb-message-created', handlePBMessage);
+      window.addEventListener('pb-message-info', handlePBMessageInfo);
 
       return () => {
-        try {
-          pb.collection('messages').unsubscribe('*').catch(() => {});
-          pb.collection('message_info').unsubscribe('*').catch(() => {});
-        } catch (e) {
-          // Ignore
-        }
+        window.removeEventListener('pb-message-created', handlePBMessage);
+        window.removeEventListener('pb-message-info', handlePBMessageInfo);
       };
     } else {
       setMessages([]);
@@ -1321,7 +1337,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         }
 
         // --- ENVOI DE LA NOTIFICATION PUSH FIREBASE (FCM) VIA LE SERVEUR ---
-        fetch('/api/notifications/send', {
+        fetch(getApiUrl('/api/notifications/send'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1689,7 +1705,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-center mb-0.5">
-                  <h4 className={`text-sm font-bold truncate ${c.unreadCount > 0 ? 'text-white' : 'text-slate-200'}`}>{c.username}</h4>
+                  <div className="flex items-center gap-2 truncate">
+                    <h4 className={`text-sm font-bold truncate ${c.unreadCount > 0 ? 'text-white' : 'text-slate-200'}`}>{c.username}</h4>
+                    {(() => {
+                      const isOnline = c.last_active && 
+                        (Date.now() - new Date(c.last_active).getTime() < 300000); // 5 minutes
+                      if (isOnline) return <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />;
+                      return null;
+                    })()}
+                  </div>
                   <span className={`text-[9px] font-bold ${c.unreadCount > 0 ? 'text-white' : 'text-slate-500'}`}>{c.lastMessageTime}</span>
                 </div>
                 <p className={`text-xs truncate font-medium ${c.unreadCount > 0 ? 'text-white font-bold' : 'text-slate-400'}`}>{renderTextWithEmojis(c.lastMessage || 'Membre Wexo')}</p>
@@ -1874,8 +1898,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                           <p className="text-[9px] text-slate-500 font-bold">Par Google</p>
                         ) : (
                           <>
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                            <p className="text-[9px] text-slate-500 font-bold">En ligne</p>
+                            {(() => {
+                              const isOnline = selectedProfile?.last_active && 
+                                (Date.now() - new Date(selectedProfile.last_active).getTime() < 300000); // 5 minutes
+                              
+                              return (
+                                <>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-slate-500'}`}></span>
+                                  <p className="text-[9px] text-slate-500 font-bold">
+                                    {isOnline ? 'En ligne' : 'Hors ligne'}
+                                  </p>
+                                </>
+                              );
+                            })()}
                           </>
                         )}
                       </div>
@@ -2002,12 +2037,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 
                 const isSelected = selectedMessageIds.has(msg.id);
 
-                // Normal spacing logic: consistent for AI and regular users
-                let extraMargin = 'mt-0.5';
+                // Normal spacing logic: 1.5x increase as requested
+                let extraMargin = 'mt-1';
                 if (!hasPrevSameSender) {
-                  extraMargin = 'mt-[18.2px]'; // Professional group gap / 1.10
+                  extraMargin = 'mt-10'; // ~40px
                 } else {
-                  extraMargin = 'mt-[1.1px]'; // Very tight gap * 1.10
+                  extraMargin = 'mt-4'; // ~16px (visible distance between bubbles of same sender)
                 }
                 
                 return (
@@ -2284,23 +2319,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   </div>
                 );
               })}
+
+              {/* Typing Indicator en bas à droite comme demandé */}
+              {isOtherTyping && (
+                <div className="flex justify-end w-full px-4 sm:px-8 mt-2 animate-in fade-in duration-300">
+                  <div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl flex items-center gap-1.5 backdrop-blur-md">
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {isTypingAI && <div className="flex justify-start animate-pulse px-4 sm:px-8 mb-4"><div className="bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-[9px] text-white font-bold uppercase">Gemini réfléchit... </div></div>}
             </div>
 
             {/* Pied de page Messagerie (Barre + Zone Noire) */}
             <div className={`flex flex-col bg-[#0f0f0f] flex-shrink-0 z-[110] relative`}>
-              {/* Indicateur d'écriture (Typing Indicator) */}
-              {isOtherTyping && (
-                <div className="absolute -top-6 left-4 flex items-center gap-1.5 px-3 py-1 bg-white/5 backdrop-blur-md rounded-t-xl border-x border-t border-white/10 animate-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex gap-1">
-                    <div className="w-1 h-1 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                    <div className="w-1 h-1 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                    <div className="w-1 h-1 bg-primary rounded-full animate-bounce"></div>
-                  </div>
-                  <span className="text-[9px] font-bold text-white/50 uppercase tracking-wider">En train d'écrire</span>
-                </div>
-              )}
-
               {/* Barre de Saisie */}
               <div className={`w-full px-2 sm:px-4 ${isMobileDevice() ? 'py-1' : 'py-4'} bg-[#0f0f0f] border-t border-white/10`}>
                 {isOwnerAccount && localUploadError && (

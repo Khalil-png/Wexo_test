@@ -16,7 +16,10 @@ const logToApp = (message: string, level: string = 'INFO', details?: any) => {
       debugEl.innerText = `[${level}] ${message}`;
     }
 
-    fetch('/api/log', {
+    const isNative = typeof window !== 'undefined' && (window as any).Capacitor && (window as any).Capacitor.getPlatform && (window as any).Capacitor.getPlatform() !== 'web';
+    const logUrl = isNative ? 'https://ais-dev-nizjo4pthywqbpbexbhx6d-28700408353.europe-west2.run.app/api/log' : '/api/log';
+
+    fetch(logUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, level, details, timestamp })

@@ -29,10 +29,11 @@ import { DEFAULT_AVATAR, NAV_ITEMS } from '@/constants';
 import { HelpCircle, TriangleAlert, X, Construction, CheckCircle, MessageSquarePlus } from 'lucide-react';
 import { generateSnowflake } from '@/utils/snowflake';
 import { AnimatePresence } from 'framer-motion';
+import { isNative, getApiUrl } from '@/utils/api';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
 import { db, auth, getMessagingInstance } from '@/services/firebase';
-import { getToken, onMessage } from 'firebase/messaging';
-import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { getMessaging, getToken as getFCMToken, onMessage } from 'firebase/messaging';
+import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, getDoc, addDoc, serverTimestamp as firestoreServerTimestamp } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -43,11 +44,7 @@ import { Device } from '@capacitor/device';
 import { NativeSettings, AndroidSettings } from 'capacitor-native-settings';
 import { ErrorBoundary } from 'react-error-boundary';
 
-// Utility to check if we are in a native Capacitor environment
-const isNative = () => {
-  const cap = (window as any).Capacitor;
-  return (cap && cap.getPlatform && cap.getPlatform() !== 'web') || (window as any).isNativeApp;
-};
+// Native Plugins & Utils imports
 
 const ringtoneAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3');
 ringtoneAudio.loop = true;
@@ -460,16 +457,12 @@ const AppContent: React.FC = () => {
         if (change.type === 'added') {
           const notification = change.doc.data();
           
-          // Ne pas afficher de notification locale si elle est déjà lue ou si elle est ancienne
-          // (Firestore déclenche 'added' pour tout l'historique au début)
-          // On compare avec l'heure actuelle
           const createdAtDate = notification.created_at?.toDate?.() || new Date();
           const createdAt = createdAtDate.getTime();
           const now = new Date().getTime();
-          const isNew = (now - createdAt) < 30000; // Moins de 30 secondes pour être sûr de capturer les nouvelles
+          const isNew = (now - createdAt) < 30000;
 
           if (isNew && notification.status === 'unread') {
-            // Filtrer si on est déjà dans le chat spécifique pour les notifications de messages
             if (notification.type === 'message' && notification.sender_id === activeChatIdRef.current) {
               log('Firebase message notification ignorée (chat actif)');
               return;
@@ -477,20 +470,33 @@ const AppContent: React.FC = () => {
 
             log('Nouvelle notification reçue via Firebase:', notification.title);
             
-            if (isMobileDevice()) {
-              // On utilise le contenu tel quel (pas besoin de décryptage selon la demande utilisateur)
-              const bodyText = notification.content || 'Nouveau message';
+            const titleMsg = notification.title || 'Wexo';
+            const bodyMsg = notification.content || 'Nouveau message';
+
+            setInAppNotice({
+              title: titleMsg,
+              content: bodyMsg,
+              senderId: notification.sender_id || '',
+              show: true
+            });
+            setTimeout(() => setInAppNotice(prev => prev?.show ? { ...prev, show: false } : prev), 5000);
+
+            if (isNative()) {
               LocalNotifications.schedule({
                 notifications: [{
                   id: Math.floor(Math.random() * 1000000),
-                  title: notification.title || 'Wixo',
-                  body: bodyText,
-                  largeBody: bodyText,
-                  summaryText: notification.title,
+                  title: titleMsg,
+                  body: bodyMsg,
+                  largeBody: bodyMsg,
+                  summaryText: titleMsg,
                   schedule: { at: new Date(Date.now() + 100) },
-                  sound: 'default',
                   extra: notification
                 }]
+              });
+            } else if ('Notification' in window && (window as any).Notification.permission === 'granted') {
+              new (window as any).Notification(titleMsg, {
+                body: bodyMsg,
+                icon: (notification as any).sender_avatar || DEFAULT_AVATAR
               });
             }
           }
@@ -503,6 +509,29 @@ const AppContent: React.FC = () => {
     return () => unsubscribe();
   }, [pbUser?.id]);
 
+  // User Presence Tracking
+  useEffect(() => {
+    if (!pbUser?.id) return;
+
+    const updatePresence = async () => {
+      try {
+        await pb.collection('users').update(pbUser.id, {
+          last_active: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('Error updating presence:', err);
+      }
+    };
+
+    // Initial update
+    updatePresence();
+
+    // Periodic update every 30 seconds
+    const interval = setInterval(updatePresence, 30000);
+
+    return () => clearInterval(interval);
+  }, [pbUser?.id]);
+
   // PocketBase Global Messages Listener for Notifications
   useEffect(() => {
     if (!pbUser?.id) return;
@@ -511,6 +540,9 @@ const AppContent: React.FC = () => {
       if (e.action === 'create') {
         const m = e.record;
         
+        // Dispatch global event for real-time components like MessagesTab
+        window.dispatchEvent(new CustomEvent('pb-message-created', { detail: { action: 'create', record: m } }));
+
         // Uniquement si c'est pour nous et pas de nous
         if (m.receiver_id === pbUser.id && m.sender_id !== pbUser.id) {
           // Si on est déjà dans le chat avec cette personne, pas de notif
@@ -573,8 +605,13 @@ const AppContent: React.FC = () => {
       }
     });
 
+    pb.collection('message_info').subscribe('*', (e) => {
+      window.dispatchEvent(new CustomEvent('pb-message-info', { detail: e }));
+    });
+
     return () => {
       pb.collection('messages').unsubscribe('*').catch(() => {});
+      pb.collection('message_info').unsubscribe('*').catch(() => {});
     };
   }, [pbUser?.id, location.pathname, location.search]);
 
@@ -585,12 +622,37 @@ const AppContent: React.FC = () => {
       return;
     }
     
-    if (listenersInitialized.current) return;
+    if (listenersInitialized.current && pbUser?.id === (window as any)._lastSetupUserId) return;
     listenersInitialized.current = true;
+    (window as any)._lastSetupUserId = pbUser?.id;
     
     const setupNative = async () => {
+      // 1. Web FCM Token Registration
+      const setupWebPush = async () => {
+        try {
+          const messaging = await getMessagingInstance();
+          if (messaging && !isNative()) {
+            const token = await getFCMToken(messaging, {
+              vapidKey: 'BGlYpD38vW0O_Y7O0_X27D0P6L8P2O0P2O0P2O0P2O0P2O0P2O0' // Generic or env placeholder
+            }).catch(() => null);
+            
+            if (token) {
+              log('Web FCM Token reçu:', token);
+              await fetch(getApiUrl('/api/notifications/register-token'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: pbUser.id, token })
+              }).catch(e => log('Error saving Web token:', e));
+            }
+          }
+        } catch (e) {
+          log('Web Push Setup Error:', e);
+        }
+      };
+      setupWebPush();
+
       if (!isNative()) {
-        log('NativeInit: Environnement Web détecté, skipping native plugins.');
+        log('NativeInit: Environnement Web détecté, skipping native tokens registration.');
         return;
       }
       
@@ -614,7 +676,7 @@ const AppContent: React.FC = () => {
 
         await addSafeListener(PushNotifications, 'registration', async (token: any) => {
           log('PushNotifications: Token reçu:', token.value);
-          await fetch('/api/notifications/register-token', {
+          await fetch(getApiUrl('/api/notifications/register-token'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: pbUser.id, token: token.value })
@@ -664,14 +726,35 @@ const AppContent: React.FC = () => {
           }
         };
 
-        // Permissions
-        await runNative('LocalNotifications.requestPermissions', () => LocalNotifications.requestPermissions());
-        await runNative('PushNotifications.requestPermissions', async () => {
-          const result = await PushNotifications.requestPermissions();
-          if (result.receive === 'granted') {
-            await PushNotifications.register();
+        // Permissions (Notifs & Calls)
+        const requestAppPermissions = async () => {
+          log('Requesting global permissions...');
+          
+          // 1. Notifs
+          try {
+            await LocalNotifications.requestPermissions();
+          } catch (e) { log('Notif permission error:', e); }
+          
+          try {
+            const result = await PushNotifications.requestPermissions();
+            if (result.receive === 'granted') {
+              await PushNotifications.register();
+            }
+          } catch (e) { log('Push permission error:', e); }
+
+          // 2. Calls (Micro/Camera)
+          try {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+              const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+              stream.getTracks().forEach(track => track.stop());
+              log('Call permissions granted via getUserMedia');
+            }
+          } catch (e) {
+            log('Call permissions denied or error:', e);
           }
-        });
+        };
+
+        await runNative('AppPermissions', requestAppPermissions);
 
         // Canaux de notification
         await runNative('LocalNotifications.createChannelMessages', () => LocalNotifications.createChannel({
@@ -919,6 +1002,19 @@ const AppContent: React.FC = () => {
        return;
     }
 
+    // Permission check for Native
+    if (isNative()) {
+      try {
+        // Simple trick to trigger permission prompt on native via web API
+        const testStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        testStream.getTracks().forEach(t => t.stop());
+      } catch (err) {
+        log("Permission denied for calls", err);
+        setNotification({ message: "Permissions micro/caméra refusées. Veuillez les activer dans les réglages.", show: true });
+        return;
+      }
+    }
+
     try {
       // Si on reçoit déjà un record complet (depuis CallsTab par exemple)
       if (receiver.caller_id) {
@@ -931,7 +1027,7 @@ const AppContent: React.FC = () => {
       
       const callUuid = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      const response = await fetch('/api/calls/initiate', {
+      const response = await fetch(getApiUrl('/api/calls/initiate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
