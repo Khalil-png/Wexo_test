@@ -509,14 +509,15 @@ const AppContent: React.FC = () => {
     return () => unsubscribe();
   }, [pbUser?.id]);
 
-  // User Presence Tracking
+  // User Presence Tracking (Heartbeat)
   useEffect(() => {
     if (!pbUser?.id) return;
 
     const updatePresence = async () => {
       try {
         await pb.collection('users').update(pbUser.id, {
-          last_active: new Date().toISOString()
+          last_active: new Date().toISOString(),
+          active: true
         });
       } catch (err) {
         console.error('Error updating presence:', err);
@@ -529,7 +530,12 @@ const AppContent: React.FC = () => {
     // Periodic update every 30 seconds
     const interval = setInterval(updatePresence, 30000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      // Optional: set offline on unmount if possible, 
+      // but heartbeat is usually enough for PocketBase presence
+      pb.collection('users').update(pbUser.id, { active: false }).catch(() => {});
+    };
   }, [pbUser?.id]);
 
   // PocketBase Global Messages Listener for Notifications
@@ -626,26 +632,6 @@ const AppContent: React.FC = () => {
     listenersInitialized.current = true;
     (window as any)._lastSetupUserId = pbUser?.id;
     
-    // Update PocketBase last_active (Heartbeat) for "Online" status
-    useEffect(() => {
-      if (!pbUser?.id) return;
-      
-      const updateHeartbeat = async () => {
-        try {
-          await pb.collection('users').update(pbUser.id, {
-            last_active: new Date().toISOString(),
-            active: true
-          });
-        } catch (e) {
-          console.error("Heartbeat error:", e);
-        }
-      };
-
-      updateHeartbeat();
-      const interval = setInterval(updateHeartbeat, 30000); // 30 secondes
-      return () => clearInterval(interval);
-    }, [pbUser?.id]);
-
     const setupNative = async () => {
       // 1. Permissions (Notifs & Calls) - RUN FOR EVERYONE
       const requestAppPermissions = async () => {
