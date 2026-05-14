@@ -1,17 +1,18 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-const API_KEYS = {
-  analysis: "AIzaSyBFkhqKIHMTDVnSJ_0IlCK4KyS7LQms67s",
-  chat: "AIzaSyAs6XB3NsJY0hxCM-XqzScq8zu3tFvXADg"
-};
-
-const getAI = (type: 'analysis' | 'chat' = 'analysis') => {
-  return new GoogleGenAI({ apiKey: API_KEYS[type] });
+const getAI = () => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    // If not in environment, check if user provided one in secrets or hasSelectedApiKey
+    // For now, we'll assume it's in process.env.GEMINI_API_KEY as per skill
+    return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+  }
+  return new GoogleGenAI({ apiKey });
 };
 
 /**
- * Checks if a paid API key has been selected for Veo models.
+ * Checks if a paid API key has been selected for higher tier models.
  */
 export const checkApiKey = async () => {
   if (typeof (window as any).aistudio?.hasSelectedApiKey === 'function') {
@@ -26,6 +27,7 @@ export const checkApiKey = async () => {
 export const openKeySelector = async () => {
   if (typeof (window as any).aistudio?.openSelectKey === 'function') {
     await (window as any).aistudio.openSelectKey();
+    // After selection, we usually proceed
   }
 };
 
@@ -38,7 +40,7 @@ export const generatePostIdea = async (topic: string) => {
   try {
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "models/gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: prompt
     });
     return result.text;
@@ -58,7 +60,7 @@ export const summarizeWorkspaceNote = async (content: string) => {
   try {
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "models/gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: prompt
     });
     return result.text;
@@ -73,15 +75,48 @@ export const summarizeWorkspaceNote = async (content: string) => {
  * Génère une image avec Gemini
  */
 export const generateImage = async (prompt: string) => {
-    // Géré via function calling dans getSmartResponse
-    return ""; 
+    try {
+      const ai = getAI();
+      const result = await ai.models.generateContent({
+        model: "gemini-2.5-flash-image",
+        contents: { parts: [{ text: prompt }] }
+      });
+      
+      for (const part of (result as any).candidates[0].content.parts) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
+      }
+      return "";
+    } catch (error) {
+      console.error("Generate Image Error:", error);
+      throw error;
+    }
 };
 
 /**
  * Génère une vidéo avec Gemini (Veo)
  */
 export const generateVideo = async (prompt: string) => {
-    return null;
+    try {
+      const ai = getAI();
+      let operation = await (ai.models as any).generateVideos({
+        model: 'veo-3.1-lite-generate-preview',
+        prompt: prompt,
+        config: {
+          numberOfVideos: 1,
+          resolution: '720p',
+          aspectRatio: '16:9'
+        }
+      });
+
+      // Polling for completion would normally happen in the component or via a handler
+      // This is a simplified service call.
+      return operation;
+    } catch (error) {
+      console.error("Generate Video Error:", error);
+      throw error;
+    }
 };
 
 export interface VideoAnalysis {
@@ -110,7 +145,7 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
 
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "models/gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: [{
         role: 'user',
         parts: [
@@ -127,7 +162,32 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
           }
         ]
       }],
-      config: { responseMimeType: "application/json" }
+      config: { 
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            type: { type: Type.STRING },
+            name_of_type: { type: Type.STRING, nullable: true } as any,
+            is_appropriate: { type: Type.BOOLEAN },
+            language: { type: Type.STRING },
+            thumbnail_timestamp: { type: Type.NUMBER },
+            transcription: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  start: { type: Type.NUMBER },
+                  end: { type: Type.NUMBER },
+                  text: { type: Type.STRING }
+                },
+                required: ["start", "end", "text"]
+              }
+            }
+          },
+          required: ["type", "name_of_type", "is_appropriate", "language", "thumbnail_timestamp", "transcription"]
+        }
+      }
     });
     return JSON.parse(result.text || "{}");
   } catch (error: any) {
@@ -141,13 +201,23 @@ export const analyzeVideo = async (videoBlob: Blob): Promise<VideoAnalysis> => {
  */
 export const analyzePost = async (content: string) => {
   try {
-    const prompt = `Analyse ce post et dis-moi s'il est approprié, quelle est sa langue, son type et le nom spécifique. Réponds au format JSON: {"is_appropriate": boolean, "language": string, "type": string, "name_of_type": string | null}. Contenu: ${content}`;
-    
     const ai = getAI();
     const result = await ai.models.generateContent({
-      model: "models/gemini-1.5-flash",
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
+      model: "gemini-3-flash-preview",
+      contents: `Analyse ce post et dis-moi s'il est approprié, quelle est sa langue, son type et le nom spécifique. Réponds au format JSON: {"is_appropriate": boolean, "language": string, "type": string, "name_of_type": string | null}. Contenu: ${content}`,
+      config: { 
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            is_appropriate: { type: Type.BOOLEAN },
+            language: { type: Type.STRING },
+            type: { type: Type.STRING },
+            name_of_type: { type: Type.STRING, nullable: true } as any
+          },
+          required: ["is_appropriate", "language", "type", "name_of_type"]
+        }
+      }
     });
     return result.text ? JSON.parse(result.text) : {};
   } catch (error: any) {
@@ -168,9 +238,9 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
     try {
         const systemInstruction = "Tu es Gemini, l'IA intégrée à Wexo. Ton créateur est Khalil BenRomdhane. Ton style : simple, gentil et poli. Explique les choses simplement. Encourage l'utilisateur. Utilise des emojis 🙂. Réponds toujours en français. Pour les images, utilise 'generate_image'. Pour les vidéos, utilise 'generate_video'.";
         
-        const ai = getAI('chat');
+        const ai = getAI();
         const result = await ai.models.generateContent({
-          model: "models/gemini-1.5-flash",
+          model: "gemini-3-flash-preview",
           contents: history.map(h => ({
             role: (h.role === 'model' ? 'model' : 'user') as "user" | "model",
             parts: h.parts.map((p: any) => {
@@ -186,9 +256,9 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
                   name: "generate_image",
                   description: "Génère une image.",
                   parameters: {
-                    type: Type.OBJECT as any,
+                    type: Type.OBJECT,
                     properties: {
-                      prompt: { type: Type.STRING as any, description: "Description détaillée." }
+                      prompt: { type: Type.STRING, description: "Description détaillée." }
                     },
                     required: ["prompt"]
                   }
@@ -197,9 +267,9 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
                   name: "generate_video",
                   description: "Génère une vidéo.",
                   parameters: {
-                    type: Type.OBJECT as any,
+                    type: Type.OBJECT,
                     properties: {
-                      prompt: { type: Type.STRING as any, description: "Description détaillée." }
+                      prompt: { type: Type.STRING, description: "Description détaillée." }
                     },
                     required: ["prompt"]
                   }
@@ -233,6 +303,6 @@ export const getSmartResponse = async (history: any[]): Promise<SmartResponse> =
         if (errorMessage.includes('429')) {
             return { text: "Désolé, j'ai atteint ma limite de messages. Réessaye plus tard ! 🙂", isError: true, errorDetails: "QUOTA_EXCEEDED" };
         }
-        return { text: "Désolé, j'ai eu un petit problème technique. On réessaie ? 🙂", isError: true, errorDetails: errorMessage };
+        return { text: "Désolé, j'ai eu un petit problème technique. Peux-tu réessayer dans un instant ? 🙂", isError: true, errorDetails: errorMessage };
     }
 };

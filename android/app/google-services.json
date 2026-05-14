@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "350228809557",
+    "project_id": "wexo-36cb4",
+    "storage_bucket": "wexo-36cb4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:350228809557:android:2967da196f2199b39711dc",
+        "android_client_info": {
+          "package_name": "com.wexo.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "350228809557-m1jcv4pc43fnab2dbtnnj5rp5b0io0ln.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDn-TIXvp0TAps7RB_U1O1ZcBzDXcup33w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "350228809557-m1jcv4pc43fnab2dbtnnj5rp5b0io0ln.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

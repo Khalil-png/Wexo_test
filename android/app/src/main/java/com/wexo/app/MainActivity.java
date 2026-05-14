@@ -1,4 +1,4 @@
-package com.wixo.app;
+package com.wexo.app;
 
 import com.getcapacitor.BridgeActivity;
 

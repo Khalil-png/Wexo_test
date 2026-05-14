@@ -41,10 +41,12 @@ import { App as CapApp } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
 import { Device } from '@capacitor/device';
 import { NativeSettings, AndroidSettings } from 'capacitor-native-settings';
+import { ErrorBoundary } from 'react-error-boundary';
 
 // Utility to check if we are in a native Capacitor environment
 const isNative = () => {
-  return (window.hasOwnProperty('Capacitor') && (window as any).Capacitor.getPlatform() !== 'web') || (window as any).isNativeApp;
+  const cap = (window as any).Capacitor;
+  return (cap && cap.getPlatform && cap.getPlatform() !== 'web') || (window as any).isNativeApp;
 };
 
 const ringtoneAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3');
@@ -52,7 +54,14 @@ ringtoneAudio.loop = true;
 ringtoneAudio.volume = 1.0;
 
 // Safe wrapper for console in case it's not available in background
-const log = (...args: any[]) => console.log('[App]', ...args);
+const log = (...args: any[]) => {
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(`[App][${timestamp}]`, ...args);
+  
+  // Also push to a global debug array for index.tsx to pick up if it wants
+  if (!(window as any).__DEBUG_LOGS__) (window as any).__DEBUG_LOGS__ = [];
+  (window as any).__DEBUG_LOGS__.push({ time: timestamp, msg: args.join(' ') });
+};
 
 // Save auth to preferences for background runner
 const saveAuthToPreferences = async (model: any) => {
@@ -282,70 +291,66 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     // Handler pour le bouton retour matériel (Android/Capacitor)
     const setupBackButton = async () => {
-      const listener = await CapApp.addListener('backButton', ({ canGoBack }) => {
-        // 1. Envoyer un événement global pour que les composants (Chat, Recherche) 
-        // puissent intercepter le retour s'ils ont un menu ouvert.
-        const backEvent = new CustomEvent('app-back-button', { cancelable: true });
-        const cancelled = !window.dispatchEvent(backEvent);
-        
-        if (cancelled) {
-          // Si un composant a appelé preventDefault(), on ne fait rien de plus ici
-          return;
-        }
+      if (!isNative()) return { remove: () => {} };
+      
+      try {
+        const listener = await CapApp.addListener('backButton', ({ canGoBack }) => {
+          // 1. Envoyer un événement global pour que les composants (Chat, Recherche) 
+          // puissent intercepter le retour s'ils ont un menu ouvert.
+          const backEvent = new CustomEvent('app-back-button', { cancelable: true });
+          const cancelled = !window.dispatchEvent(backEvent);
+          
+          if (cancelled) {
+            // Si un composant a appelé preventDefault(), on ne fait rien de plus ici
+            return;
+          }
 
-        // 2. Comportement par défaut si rien n'intercepte
-        const path = location.pathname;
-        const search = location.search;
+          // 2. Comportement par défaut si rien n'intercepte
+          const path = location.pathname;
+          
+          if (showCamera) {
+            setShowCamera(false);
+            return;
+          }
 
-        if (showCamera) {
-          setShowCamera(false);
-          return;
-        }
+          if (incomingCall) {
+            setIncomingCall(null);
+            return;
+          }
 
-        if (incomingCall) {
-          setIncomingCall(null);
-          return;
-        }
-
-        if (activeCall) {
-          // Ne rien faire sur le bouton retour en appel pour éviter de couper accidentellement
-          return;
-        }
-
-        if (path === '/' || path === '/accueil') {
-          // Sur l'accueil : on ne quitte JAMAIS l'appli via le bouton retour (système WhatsApp/Instagram)
-          // On peut éventuellement minimiser l'appli si on veut vraiment, mais exitApp est trop brutal.
-          log('Bouton retour sur accueil ignoré pour la stabilité.');
-          return;
-        } else if (path === '/message') {
-          if (search.includes('chat=')) {
-            navigate('/message', { replace: true });
+          if (path === '/' || path === '/accueil') {
+            log('Bouton retour sur accueil ignoré pour la stabilité.');
+            return;
           } else {
             navigate('/', { replace: true });
           }
-        } else {
-          navigate('/', { replace: true });
-        }
-      });
+        });
 
-      return listener;
+        return listener;
+      } catch (e) {
+        log('Error setting up back button listener:', e);
+        return { remove: () => {} };
+      }
     };
 
     const backButtonPromise = setupBackButton();
 
     // Listener de changement d'état (Premier plan / Arrière plan)
     const setupAppState = async () => {
-      return await CapApp.addListener('appStateChange', ({ isActive }) => {
-        if (isActive) {
-          console.log('App revenue au premier plan, rafraîchissement des connexions...');
-          // On force une reconnexion PocketBase si besoin
-          testPocketBaseConnection();
-          // On déclenche un check des notifications en attente
-          window.dispatchEvent(new CustomEvent('app-resume'));
-        } else {
-          console.log('App en arrière-plan...');
-        }
-      });
+      if (!isNative()) return { remove: () => {} };
+      
+      try {
+        return await CapApp.addListener('appStateChange', ({ isActive }) => {
+          if (isActive) {
+            console.log('App revenue au premier plan, rafraîchissement des connexions...');
+            testPocketBaseConnection();
+            window.dispatchEvent(new CustomEvent('app-resume'));
+          }
+        });
+      } catch (e) {
+        log('Error setting up app state listener:', e);
+        return { remove: () => {} };
+      }
     };
     
     const appStatePromise = setupAppState();
@@ -575,29 +580,39 @@ const AppContent: React.FC = () => {
 
   // Native Plugin Initialisation & Call/Message Subscriptions
   useEffect(() => {
-    if (!pbUser?.id || listenersInitialized.current) return;
+    if (!pbUser?.id) {
+      log('NativeInit: Attente de connexion utilisateur...');
+      return;
+    }
+    
+    if (listenersInitialized.current) return;
+    listenersInitialized.current = true;
     
     const setupNative = async () => {
-      if (!isNative()) return;
+      if (!isNative()) {
+        log('NativeInit: Environnement Web détecté, skipping native plugins.');
+        return;
+      }
       
       log('NativeInit: Démarrage de l\'initialisation stable (WIXO)...');
       
       try {
         // Enregistrement des listeners robustes
-        const addSafeListener = (plugin: any, name: string, cb: any) => {
+        const addSafeListener = async (plugin: any, name: string, cb: any) => {
           try {
              if (plugin && typeof plugin.addListener === 'function') {
                 log(`Adding listener: ${name}`);
-                plugin.addListener(name, cb);
+                return await plugin.addListener(name, cb);
              } else {
                 log(`Plugin or addListener missing for [${name}]`);
              }
           } catch (e) {
              log(`Critical listener error [${name}]:`, e);
           }
+          return { remove: () => {} };
         };
 
-        addSafeListener(PushNotifications, 'registration', async (token: any) => {
+        await addSafeListener(PushNotifications, 'registration', async (token: any) => {
           log('PushNotifications: Token reçu:', token.value);
           await fetch('/api/notifications/register-token', {
             method: 'POST',
@@ -606,11 +621,11 @@ const AppContent: React.FC = () => {
           }).catch(e => log('Error saving token:', e));
         });
 
-        addSafeListener(PushNotifications, 'registrationError', (error: any) => {
+        await addSafeListener(PushNotifications, 'registrationError', (error: any) => {
           log('PushNotifications: Erreur d\'enregistrement:', error);
         });
 
-        addSafeListener(PushNotifications, 'pushNotificationReceived', (notification: any) => {
+        await addSafeListener(PushNotifications, 'pushNotificationReceived', (notification: any) => {
           log('PushNotifications: Reçue:', notification);
           if (notification.data?.type === 'message' && notification.data?.senderId === activeChatIdRef.current) return;
           setInAppNotice({
@@ -621,14 +636,14 @@ const AppContent: React.FC = () => {
           });
         });
 
-        addSafeListener(PushNotifications, 'pushNotificationActionPerformed', (action: any) => {
+        await addSafeListener(PushNotifications, 'pushNotificationActionPerformed', (action: any) => {
           log('PushNotifications: Action:', action);
           if (action.notification.data?.senderId) {
             navigate(`/message?chat=${action.notification.data.senderId}`);
           }
         });
 
-        addSafeListener(LocalNotifications, 'localNotificationActionPerformed', (action: any) => {
+        await addSafeListener(LocalNotifications, 'localNotificationActionPerformed', (action: any) => {
           const { notification, actionId } = action;
           if (notification.extra?.type === 'call') {
             const callId = notification.extra.callId;
@@ -649,23 +664,41 @@ const AppContent: React.FC = () => {
           }
         };
 
-        // On ne bloque pas tout pour une seule erreur
-        runNative('LocalNotifications.requestPermissions', () => LocalNotifications.requestPermissions());
-        runNative('PushNotifications.checkPermissions', async () => {
-           const res = await PushNotifications.checkPermissions();
-           if (res.receive === 'granted') return PushNotifications.register();
+        // Permissions
+        await runNative('LocalNotifications.requestPermissions', () => LocalNotifications.requestPermissions());
+        await runNative('PushNotifications.requestPermissions', async () => {
+          const result = await PushNotifications.requestPermissions();
+          if (result.receive === 'granted') {
+            await PushNotifications.register();
+          }
         });
-        
-        runNative('LocalNotifications.createChannels', () => LocalNotifications.createChannel({ id: 'messages', name: 'Messages', importance: 5 }));
-        runNative('LocalNotifications.createChannelCalls', () => LocalNotifications.createChannel({ id: 'calls', name: 'Appels', importance: 4, vibration: true }));
+
+        // Canaux de notification
+        await runNative('LocalNotifications.createChannelMessages', () => LocalNotifications.createChannel({
+          id: 'messages',
+          name: 'Nouveaux Messages',
+          description: 'Notifications pour les nouveaux messages',
+          importance: 5,
+          visibility: 1,
+          vibration: true
+        }));
+
+        await runNative('LocalNotifications.createChannelCalls', () => LocalNotifications.createChannel({
+          id: 'calls',
+          name: 'Appels',
+          description: 'Notifications pour les appels entrants',
+          importance: 5,
+          visibility: 1,
+          vibration: true,
+          sound: 'ringtone.mp3'
+        }));
 
         setIsAppReady(true);
-        log('NativeInit: Initialisation terminée en mode ultra-sécurisé.');
+        log('NativeInit: Initialisation terminée avec succès.');
 
-      } catch (e) {
-        log('NativeInit Error (GLOBAL):', e);
-        // Force ready even on partial fail
-        setIsAppReady(true);
+      } catch (globalNativeErr) {
+        log('CRITICAL_NATIVE_INIT_ERROR:', globalNativeErr);
+        setIsAppReady(true); // On débloque quand même l'UI
       }
     };
 
@@ -692,12 +725,10 @@ const AppContent: React.FC = () => {
       });
     });
 
-    listenersInitialized.current = true;
-
     return () => {
       pb.collection('calls').unsubscribe('*').catch(() => {});
       unsubscribeFirebaseCalls();
-      // On garde listenersInitialized à true
+      listenersInitialized.current = false;
     };
   }, [pbUser?.id]);
 
@@ -1321,9 +1352,25 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <ErrorBoundary fallbackRender={({ error }) => (
+      <div className="min-h-screen bg-[#0f0f0f] flex items-center justify-center p-6 text-center">
+        <div className="max-w-md">
+          <TriangleAlert className="mx-auto text-amber-500 mb-4" size={48} />
+          <h1 className="text-2xl font-bold text-white mb-2">Une erreur est survenue</h1>
+          <p className="text-white/60 mb-6">{error instanceof Error ? error.message : String(error)}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-sky-500 text-white rounded-xl font-bold"
+          >
+            Redémarrer l'application
+          </button>
+        </div>
+      </div>
+    )}>
+      <Router>
+        <AppContent />
+      </Router>
+    </ErrorBoundary>
   );
 };
 

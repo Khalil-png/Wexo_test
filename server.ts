@@ -180,6 +180,14 @@ app.post("/api/notifications/send", async (req, res) => {
   });
 }
 
+process.on('uncaughtException', (err) => {
+  console.error('FATAL_UNCAUGHT_EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('FATAL_UNHANDLED_REJECTION at:', promise, 'reason:', reason);
+});
+
 startServer().catch(err => {
   console.error("ERREUR_DEMARRAGE_SERVEUR:", err);
 });

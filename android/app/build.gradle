@@ -3,18 +3,14 @@ apply plugin: 'com.android.application'
 repositories {
     google()
     mavenCentral()
-    flatDir {
-        dirs 'libs'
-        dirs '../../node_modules/@capacitor/background-runner/android/src/main/libs'
-    }
 }
 
 android {
-    namespace 'com.wixo.app'
+    namespace 'com.wexo.app'
     compileSdk rootProject.ext.compileSdkVersion
 
     defaultConfig {
-        applicationId 'com.wixo.app'
+        applicationId 'com.wexo.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2
@@ -50,7 +46,7 @@ android {
 }
 
 dependencies {
-    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation fileTree(include: ['*.jar', '*.aar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:1.7.0"
     implementation "androidx.coordinatorlayout:coordinatorlayout:1.2.0"
     implementation "androidx.core:core-splashscreen:1.0.1"
@@ -62,3 +58,4 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+apply plugin: 'com.google.gms.google-services'

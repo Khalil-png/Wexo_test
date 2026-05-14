@@ -1,8 +1,8 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.wixo.app',
-  appName: 'Wixo',
+  appId: 'com.wexo.app',
+  appName: 'Wexo',
   webDir: 'dist',
   server: {
     androidScheme: 'https',
