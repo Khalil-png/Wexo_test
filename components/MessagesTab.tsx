@@ -733,27 +733,25 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           const m = e.record;
           const currentActiveChatId = activeChatIdRef.current;
           
-          const isRelated = (m.chat && m.chat === currentActiveChatId) || 
-                            (!m.chat && ((m.sender_id === user.uid && m.receiver_id === selectedId) || 
-                                         (m.sender_id === selectedId && m.receiver_id === user.uid)));
+          // Verify if message belongs to the active chat
+          const isRelated = (m.chat && m.chat === currentActiveChatId);
           
           if (isRelated) {
             setMessages(prev => {
-              const decryptMessage = (text: string) => text; // Local fallback if not imported
-              // Note: decryptMessage is defined globally in the file, so it should be visible
-              
+              // Proper duplication check: check by PB ID or by temporal/content matching for optimistic messages
+              const decryptedText = decryptMessage(m.text);
               const isDuplicate = prev.some(msg => 
                 msg.id === m.id || 
-                ((msg.is_own || msg.sender_id === 'gemini') && 
-                 msg.text === decryptMessage(m.text) && 
-                 msg.sender_id === m.sender_id &&
-                 Math.abs(new Date(msg.created_at).getTime() - new Date(m.created).getTime()) < 10000)
+                (msg.id.startsWith('temp-') && 
+                 msg.sender_id === m.sender_id && 
+                 (msg.text === decryptedText || msg.text === m.text))
               );
 
               if (isDuplicate) {
+                // If it's a match for an optimistic message, replace the temp ID with the real PB ID
                 return prev.map(msg => {
-                  if ((msg.is_own || msg.sender_id === 'gemini') && msg.text === decryptMessage(m.text) && !msg.id.startsWith('rec')) {
-                    return { ...msg, id: m.id, created_at: m.created };
+                  if (msg.id.startsWith('temp-') && msg.sender_id === m.sender_id && (msg.text === decryptedText || msg.text === m.text)) {
+                    return { ...msg, id: m.id, created_at: m.created, text: decryptedText };
                   }
                   return msg;
                 });
@@ -773,7 +771,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 file_size: m.file_size,
                 timestamp: new Date(m.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
               } as ExtendedMessage;
-              return [...prev, newMsg].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+              
+              // Add only if not already present by ID
+              const finalMessages = [...prev];
+              if (!finalMessages.some(exist => exist.id === newMsg.id)) {
+                finalMessages.push(newMsg);
+              }
+              
+              return finalMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
             });
           }
         }
@@ -784,6 +789,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         if (e.action === 'create') {
           const i = e.record;
           const currentActiveChatId = activeChatIdRef.current;
+          
+          // Debug logs for user 'khalil'
+          if (profile?.username === 'khalil') {
+            console.log("[TYPING DEBUG] Received info:", i.type, "chat:", i.chat, "active:", currentActiveChatId);
+          }
+
           const isRelated = i.chat === currentActiveChatId;
 
           if (isRelated) {
@@ -791,7 +802,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                if (i.user !== user.uid) {
                  setIsOtherTyping(i.payload?.isTyping || false);
                  if (i.payload?.isTyping) {
-                   setTimeout(() => setIsOtherTyping(false), 5000);
+                   if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                   // Reset typing after 7 seconds instead of 5 for better stability
+                   typingTimeoutRef.current = setTimeout(() => setIsOtherTyping(false), 7000) as any;
                  }
                }
                return;
@@ -1263,9 +1276,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
       minute: '2-digit'
     });
 
+    const tempId = `temp-${Date.now()}`;
+
     setMessages(prev => [...prev, { 
       ...newMsg, 
-      id: Date.now().toString(), 
+      id: tempId, 
       is_own: true, 
       timestamp: optimisticTimestamp
     } as ExtendedMessage]);
@@ -1287,7 +1302,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
          } else {
            const newChat = await pb.collection('chats').create({
              type: 'direct',
-             members: [user.uid, selectedId]
+             members: [user.uid, selectedId],
+             updated: new Date().toISOString()
            });
            chatIdToUse = newChat.id;
          }
@@ -1300,6 +1316,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         chat: chatIdToUse,
         created: now 
       };
+      
+      console.log("[SEND DEBUG] Creating message on PB for chat:", chatIdToUse);
       await pb.collection('messages').create(pbData);
 
       // Mettre à jour le chat (pour le sort -updated dans fetchConversations)

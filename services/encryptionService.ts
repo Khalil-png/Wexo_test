@@ -24,10 +24,10 @@ export const decryptMessage = (encryptedText: string): string => {
     const bytes = CryptoJS.AES.decrypt(rawData, ENCRYPTION_SECRET);
     const decrypted = bytes.toString(CryptoJS.enc.Utf8);
     
-    if (!decrypted) return "[Message illisible ou corrompu]";
+    if (!decrypted) return rawData; // Retourne le texte chiffré brut (caractères aléatoires) si échec
     return decrypted;
   } catch (error) {
     console.error("Erreur de déchiffrement:", error);
-    return "[Erreur de déchiffrement]";
+    return encryptedText.substring(4); // Idem ici
   }
 };
