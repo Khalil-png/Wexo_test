@@ -627,14 +627,52 @@ const AppContent: React.FC = () => {
     (window as any)._lastSetupUserId = pbUser?.id;
     
     const setupNative = async () => {
-      // 1. Web FCM Token Registration
+      // 1. Permissions (Notifs & Calls) - RUN FOR EVERYONE
+      const requestAppPermissions = async () => {
+        log('Requesting global permissions...');
+        
+        // Browser/Native Notifications
+        try {
+          if ('Notification' in window) {
+            const status = await (window as any).Notification.requestPermission();
+            log('Browser Notification permission:', status);
+          }
+          if (isNative()) {
+            await LocalNotifications.requestPermissions();
+            const result = await PushNotifications.requestPermissions();
+            if (result.receive === 'granted') {
+              await PushNotifications.register();
+            }
+          }
+        } catch (e) { log('Notif permission error:', e); }
+
+        // Calls (Micro/Camera)
+        try {
+          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+            stream.getTracks().forEach(track => track.stop());
+            log('Call permissions granted via getUserMedia');
+          }
+        } catch (e) {
+          log('Call permissions denied or unsupported:', e);
+        }
+      };
+
+      await requestAppPermissions();
+
+      // 2. Web FCM Token Registration
       const setupWebPush = async () => {
         try {
           const messaging = await getMessagingInstance();
           if (messaging && !isNative()) {
+            const VAPID_KEY = 'BGlYpD38vW0O_Y7O0_X27D0P6L8P2O0P2O0P2O0P2O0P2O0P2O0'; 
+            
             const token = await getFCMToken(messaging, {
-              vapidKey: 'BGlYpD38vW0O_Y7O0_X27D0P6L8P2O0P2O0P2O0P2O0P2O0P2O0' // Generic or env placeholder
-            }).catch(() => null);
+              vapidKey: VAPID_KEY
+            }).catch((err) => {
+               log('FCM Token error (likely missing/invalid VAPID or permission denied):', err);
+               return null;
+            });
             
             if (token) {
               log('Web FCM Token reçu:', token);
@@ -652,12 +690,12 @@ const AppContent: React.FC = () => {
       setupWebPush();
 
       if (!isNative()) {
-        log('NativeInit: Environnement Web détecté, skipping native tokens registration.');
+        log('NativeInit: Setup Web terminé.');
         return;
       }
       
       log('NativeInit: Démarrage de l\'initialisation stable (WIXO)...');
-      
+
       try {
         // Enregistrement des listeners robustes
         const addSafeListener = async (plugin: any, name: string, cb: any) => {
@@ -726,36 +764,7 @@ const AppContent: React.FC = () => {
           }
         };
 
-        // Permissions (Notifs & Calls)
-        const requestAppPermissions = async () => {
-          log('Requesting global permissions...');
-          
-          // 1. Notifs
-          try {
-            await LocalNotifications.requestPermissions();
-          } catch (e) { log('Notif permission error:', e); }
-          
-          try {
-            const result = await PushNotifications.requestPermissions();
-            if (result.receive === 'granted') {
-              await PushNotifications.register();
-            }
-          } catch (e) { log('Push permission error:', e); }
-
-          // 2. Calls (Micro/Camera)
-          try {
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-              const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-              stream.getTracks().forEach(track => track.stop());
-              log('Call permissions granted via getUserMedia');
-            }
-          } catch (e) {
-            log('Call permissions denied or error:', e);
-          }
-        };
-
-        await runNative('AppPermissions', requestAppPermissions);
-
+        // On fait l'initialisation des channels après coup
         // Canaux de notification
         await runNative('LocalNotifications.createChannelMessages', () => LocalNotifications.createChannel({
           id: 'messages',

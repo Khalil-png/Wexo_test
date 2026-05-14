@@ -178,6 +178,99 @@ app.post("/api/notifications/send", async (req, res) => {
     console.error(`Attente des logs du navigateur...`);
     console.error(`***************************************************\n`);
   });
+
+  // --- BRIDGE POCKETBASE -> FIREBASE (NOTIFICATIONS) ---
+  const setupPbBridge = async () => {
+    const PocketBase = (await import('pocketbase')).default;
+    const pbUrl = process.env.VITE_POCKETBASE_URL || 'https://carnote.synology.me:9443';
+    const pb = new PocketBase(pbUrl);
+
+    console.log(`[BRIDGE] Connexion à PocketBase: ${pbUrl}`);
+
+    const runBridge = async () => {
+      try {
+        // Authentification admin si possible ou utilisateur système
+        // Pour ce prototype, on écoute sans auth si les permissions PocketBase le permettent (lecture publique ou admin)
+        // Mais idéalement on utiliserait pb.admins.authWithPassword(...)
+        
+        pb.collection('messages').subscribe('*', async ({ action, record }) => {
+          if (action === 'create') {
+            console.log(`[BRIDGE] Nouveau message détecté: ${record.id}`);
+            const { sender_id, receiver_id, text, file_url } = record;
+
+            if (!receiver_id) return;
+
+            try {
+              // 1. Récupérer les infos de l'expéditeur
+              const sender = await pb.collection('users').getOne(sender_id).catch(() => null);
+              const senderName = sender?.username || sender?.name || 'Wexo';
+              const senderAvatar = sender ? (sender.avatar ? `${pbUrl}/api/files/users/${sender.id}/${sender.avatar}` : sender.avatar_url) : '';
+
+              const title = senderName;
+              const content = text || (file_url ? "Pièce jointe reçue" : "Nouveau message");
+
+              // 2. Créer la notification dans Firestore (pour le listener App.tsx)
+              // On vérifie d'abord si elle n'existe pas déjà (évite les doublons si le client l'a fait)
+              const existingNotifs = await db.collection('notifications')
+                .where('user_id', '==', receiver_id)
+                .where('sender_id', '==', sender_id)
+                .where('type', '==', 'message')
+                .orderBy('created_at', 'desc')
+                .limit(1)
+                .get();
+
+              // Si la dernière notification identique date de moins de 2 secondes, on ignore
+              let shouldCreate = true;
+              if (!existingNotifs.empty) {
+                const last = existingNotifs.docs[0].data();
+                const lastTime = last.created_at?.toDate?.().getTime() || 0;
+                if (Date.now() - lastTime < 2000) shouldCreate = false;
+              }
+
+              if (shouldCreate) {
+                await db.collection('notifications').add({
+                  user_id: receiver_id,
+                  sender_id: sender_id,
+                  sender_avatar: senderAvatar || '',
+                  type: 'message',
+                  title: title,
+                  content: content,
+                  status: 'unread',
+                  created_at: admin.firestore.FieldValue.serverTimestamp()
+                });
+                console.log(`[BRIDGE] Notification Firestore créée pour ${receiver_id}`);
+              }
+
+              // 3. Envoyer le Push FCM
+              const tokenDoc = await db.collection("fcm_tokens").doc(receiver_id).get();
+              if (tokenDoc.exists) {
+                const tokens = tokenDoc.data()?.tokens || [];
+                if (tokens.length > 0) {
+                  const message = {
+                    notification: { title, body: content },
+                    data: { type: 'message', senderId: sender_id, chatId: record.chat || '' },
+                    tokens: tokens,
+                  };
+                  await admin.messaging().sendEachForMulticast(message);
+                  console.log(`[BRIDGE] Push FCM envoyé à ${tokens.length} tokens`);
+                }
+              }
+            } catch (err) {
+              console.error("[BRIDGE] Erreur traitement message:", err);
+            }
+          }
+        });
+      } catch (err) {
+        console.error("[BRIDGE] Erreur initialisation:", err);
+        // Retry after 5s
+        setTimeout(runBridge, 5000);
+      }
+    };
+
+    runBridge();
+  };
+
+  setupPbBridge().catch(err => console.error("[BRIDGE] Fatal error:", err));
 }
 
 process.on('uncaughtException', (err) => {

@@ -2037,12 +2037,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 
                 const isSelected = selectedMessageIds.has(msg.id);
 
-                // Normal spacing logic: 1.5x increase as requested
+                // Normal spacing logic: 2.1x decrease from previous mt-4
                 let extraMargin = 'mt-1';
                 if (!hasPrevSameSender) {
-                  extraMargin = 'mt-10'; // ~40px
+                  extraMargin = 'mt-8'; // ~32px (slightly tighter than mt-10)
                 } else {
-                  extraMargin = 'mt-4'; // ~16px (visible distance between bubbles of same sender)
+                  extraMargin = 'mt-[7px]'; // 16px / 2.1 -> ~7.6px (mt-2 is 8px, using custom for precision)
                 }
                 
                 return (

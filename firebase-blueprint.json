@@ -271,6 +271,29 @@
         "updated_at": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "workspace_id", "name", "type"]
+    },
+    "Presence": {
+      "title": "User Presence",
+      "description": "Syncs online status across devices",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["online", "offline"] },
+        "last_seen": { "type": "string", "format": "date-time", "description": "Timestamp of last activity" },
+        "user_id": { "type": "string", "description": "PocketBase user ID" }
+      },
+      "required": ["status", "last_seen", "user_id"]
+    },
+    "TypingIndicator": {
+      "title": "Typing Indicator",
+      "description": "Ephemeral typing state",
+      "type": "object",
+      "properties": {
+        "is_typing": { "type": "boolean" },
+        "user_id": { "type": "string" },
+        "chat_id": { "type": "string" },
+        "last_update": { "type": "string", "format": "date-time" }
+      },
+      "required": ["is_typing", "user_id", "chat_id", "last_update"]
     }
   },
   "firestore": {
@@ -281,6 +304,14 @@
     "/profiles/{userId}": {
       "schema": "UserProfile",
       "description": "User profiles"
+    },
+    "/presence/{userId}": {
+      "schema": "Presence",
+      "description": "User online/offline status"
+    },
+    "/typing/{typingId}": {
+      "schema": "TypingIndicator",
+      "description": "Real-time typing status"
     },
     "/posts/{postId}": {
       "schema": "Post",

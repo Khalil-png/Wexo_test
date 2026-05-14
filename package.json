@@ -44,7 +44,7 @@
     "http-proxy-middleware": "^3.0.5",
     "lucide-react": "^0.563.0",
     "motion": "^12.38.0",
-    "pocketbase": "^0.26.8",
+    "pocketbase": "^0.26.9",
     "postcss": "^8.5.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
