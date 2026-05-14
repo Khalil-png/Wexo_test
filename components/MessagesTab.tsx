@@ -310,7 +310,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const updateTypingStatus = async (typing: boolean) => {
     if (!user || !activeChatId || selectedId === 'gemini') return;
     try {
-      // On utilise message_info pour signaler le statut
+      // On revient sur message_info comme demandé
       await pb.collection('message_info').create({
         chat: activeChatId,
         user: user.uid,
@@ -318,7 +318,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         payload: { isTyping: typing }
       });
     } catch (e) {
-      // On ignore silencieusement les erreurs d'indicateur pour ne pas polluer l'UI
+      // Ignore silently
     }
   };
 
@@ -678,16 +678,31 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     if (user) {
       fetchConversations();
       
-      // Real-time pour les conversations
+      // Real-time pour les conversations et les profils utilisateurs (présence)
       pb.collection('messages').subscribe('*', (e) => {
         if (e.action === 'create') {
           fetchConversations();
+        }
+      });
+
+      pb.collection('users').subscribe('*', (e) => {
+        if (e.action === 'update') {
+          setConversations(prev => prev.map(c => {
+            if (c.id === e.record.id) {
+              return { ...c, last_active: e.record.last_active, active: e.record.active };
+            }
+            return c;
+          }));
+          if (selectedProfile && selectedProfile.id === e.record.id) {
+            setSelectedProfile(prev => ({ ...prev, last_active: e.record.last_active, active: e.record.active }));
+          }
         }
       });
       
       return () => {
         try {
           pb.collection('messages').unsubscribe('*').catch(() => {});
+          pb.collection('users').unsubscribe('*').catch(() => {});
         } catch (e) {
           // Ignore
         }
@@ -773,18 +788,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
           if (isRelated) {
              if (i.type === 'typing') {
-               // Si c'est un signal d'écriture et que ce n'est pas NOUS
                if (i.user !== user.uid) {
                  setIsOtherTyping(i.payload?.isTyping || false);
-                 
-                 // Auto-hide après 5s au cas où on rate l'événement "false"
                  if (i.payload?.isTyping) {
                    setTimeout(() => setIsOtherTyping(false), 5000);
                  }
                }
                return;
              }
-
+             
              const u = i.expand?.user || await pb.collection('users').getOne(i.user).catch(() => null);
              const newInfo = {
                 id: i.id,
@@ -804,6 +816,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
       window.addEventListener('pb-message-created', handlePBMessage);
       window.addEventListener('pb-message-info', handlePBMessageInfo);
+
+      // S'assurer que les événements Typing sont écoutés en local si nécessaire
+      // Note: App.tsx fait déjà la souscription globale, mais on s'assure du dispatch.
 
       return () => {
         window.removeEventListener('pb-message-created', handlePBMessage);
@@ -1708,8 +1723,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   <div className="flex items-center gap-2 truncate">
                     <h4 className={`text-sm font-bold truncate ${c.unreadCount > 0 ? 'text-white' : 'text-slate-200'}`}>{c.username}</h4>
                     {(() => {
-                      const isOnline = c.last_active && 
-                        (Date.now() - new Date(c.last_active).getTime() < 300000); // 5 minutes
+                      const isOnline = c.active === true || (c.last_active && (Date.now() - new Date(c.last_active).getTime() < 60000));
                       if (isOnline) return <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />;
                       return null;
                     })()}
@@ -1899,8 +1913,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                         ) : (
                           <>
                             {(() => {
-                              const isOnline = selectedProfile?.last_active && 
-                                (Date.now() - new Date(selectedProfile.last_active).getTime() < 300000); // 5 minutes
+                              const isOnline = selectedProfile?.active === true || (selectedProfile?.last_active && (Date.now() - new Date(selectedProfile.last_active).getTime() < 60000));
                               
                               return (
                                 <>
@@ -2037,12 +2050,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 
                 const isSelected = selectedMessageIds.has(msg.id);
 
-                // Normal spacing logic: 2.1x decrease from previous mt-4
+                // Espace entre les messages : Réduction de 2.1x demandée
+                // Précédemment mt-4 (16px), donc 16 / 2.1 = ~7.6px
                 let extraMargin = 'mt-1';
                 if (!hasPrevSameSender) {
-                  extraMargin = 'mt-8'; // ~32px (slightly tighter than mt-10)
+                  extraMargin = 'mt-7'; // Un peu plus serré que mt-10 (28px)
                 } else {
-                  extraMargin = 'mt-[7px]'; // 16px / 2.1 -> ~7.6px (mt-2 is 8px, using custom for precision)
+                  extraMargin = 'mt-[7.6px]'; // 16px / 2.1 = 7.619px precise spacing
                 }
                 
                 return (

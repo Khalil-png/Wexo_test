@@ -626,6 +626,26 @@ const AppContent: React.FC = () => {
     listenersInitialized.current = true;
     (window as any)._lastSetupUserId = pbUser?.id;
     
+    // Update PocketBase last_active (Heartbeat) for "Online" status
+    useEffect(() => {
+      if (!pbUser?.id) return;
+      
+      const updateHeartbeat = async () => {
+        try {
+          await pb.collection('users').update(pbUser.id, {
+            last_active: new Date().toISOString(),
+            active: true
+          });
+        } catch (e) {
+          console.error("Heartbeat error:", e);
+        }
+      };
+
+      updateHeartbeat();
+      const interval = setInterval(updateHeartbeat, 30000); // 30 secondes
+      return () => clearInterval(interval);
+    }, [pbUser?.id]);
+
     const setupNative = async () => {
       // 1. Permissions (Notifs & Calls) - RUN FOR EVERYONE
       const requestAppPermissions = async () => {
