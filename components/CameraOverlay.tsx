@@ -72,11 +72,30 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
     setFacingMode(prev => prev === 'user' ? 'environment' : 'user');
   };
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (videoRef.current) {
+      // 1. Handling actual device flash (torch)
+      let torchWasOn = false;
+      if (flashOn && stream && facingMode === 'environment') {
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities() as any;
+        if (capabilities.torch) {
+          try {
+            await track.applyConstraints({
+              advanced: [{ torch: true }]
+            } as any);
+            torchWasOn = true;
+          } catch (e) {
+            console.error("Capture torch error:", e);
+          }
+        }
+      }
+
+      // 2. Screen Flash overlay
       if (flashOn) {
         setShowFlashOverlay(true);
-        setTimeout(() => setShowFlashOverlay(false), 200);
+        // Wait a tiny bit for the torch/screen flash to be visible
+        await new Promise(r => setTimeout(r, 150));
       }
 
       const canvas = document.createElement('canvas');
@@ -91,6 +110,16 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
         ctx.drawImage(videoRef.current, 0, 0);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         setCapturedImage(dataUrl);
+      }
+
+      // 3. Reset states
+      if (flashOn) {
+        setShowFlashOverlay(false);
+        // If we turned torch ON just for the photo, turn it OFF (unless it was already ON)
+        if (torchWasOn && !flashOn) { // flashOn check might be redundant but safe
+             const track = stream!.getVideoTracks()[0];
+             await track.applyConstraints({ advanced: [{ torch: false }] } as any);
+        }
       }
     }
   };
@@ -171,9 +200,9 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] bg-black flex flex-col font-sans"
+      className="fixed inset-0 z-[200] bg-black flex flex-col font-sans select-none touch-none"
     >
-      {/* Flash Overlay */}
+      {/* Flash Overlay (Screen Flash) */}
       <AnimatePresence>
         {showFlashOverlay && (
           <motion.div 
@@ -185,43 +214,41 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start z-10 pt-10">
+      {/* Header Controls - Lowered as requested to match screenshot */}
+      <div className="absolute top-16 left-0 right-0 px-6 flex justify-between items-center z-50">
         <button 
           onClick={onClose}
-          className="p-3 bg-white/10 backdrop-blur-md rounded-full text-white hover:bg-white/20 transition-all border border-white/10"
+          className="p-3.5 bg-black/40 backdrop-blur-3xl rounded-full text-white active:scale-90 transition-all border border-white/15"
         >
-          <X size={24} />
+          <X size={28} strokeWidth={2.5} />
         </button>
-
+        
         {!capturedImage && !capturedVideo && !loading && (
           <button 
             onClick={toggleFlash}
-            className={`p-3 backdrop-blur-md rounded-full transition-all border border-white/10 ${flashOn ? 'bg-yellow-400 text-black shadow-[0_0_15px_rgba(250,204,21,0.5)]' : 'bg-white/10 text-white hover:bg-white/20'}`}
+            className={`p-3.5 backdrop-blur-3xl rounded-full transition-all border border-white/15 ${flashOn ? 'bg-yellow-400 text-black shadow-[0_0_30px_rgba(250,204,21,0.8)]' : 'bg-black/40 text-white'}`}
           >
-            <Zap size={24} fill={flashOn ? 'currentColor' : 'none'} />
+            <Zap size={28} fill={flashOn ? 'currentColor' : 'none'} strokeWidth={2.5} />
           </button>
         )}
       </div>
 
-      {/* Camera View */}
-      <div className="flex-1 relative flex items-center justify-center overflow-hidden rounded-[40px] mt-4 mb-4 mx-2">
+      {/* Camera View - FULL SCREEN, NO MARGINS, NO ROUNDED CORNERS */}
+      <div className="flex-1 relative bg-black">
         {loading && (
-          <div className="flex flex-col items-center gap-4 text-white">
-            <Loader2 className="animate-spin" size={40} />
-            <p className="text-sm font-bold">Initialisation...</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white z-20">
+            <Loader2 className="animate-spin" size={48} />
+            <span className="text-sm font-bold uppercase tracking-widest opacity-50">Démarrage...</span>
           </div>
         )}
 
         {error && (
-          <div className="p-8 text-center text-white max-w-xs">
-            <p className="text-sm font-bold mb-4">{error}</p>
-            <button 
-              onClick={startCamera}
-              className="px-6 py-3 bg-white text-black rounded-2xl font-bold text-xs"
-            >
-              Réessayer
-            </button>
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center gap-6 z-20">
+            <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center border border-red-500/50">
+              <X size={32} className="text-red-500" />
+            </div>
+            <p className="text-white font-medium text-lg leading-relaxed">{error}</p>
+            <button onClick={startCamera} className="px-8 py-3 bg-white text-black rounded-2xl font-black uppercase text-sm tracking-widest">Réessayer</button>
           </div>
         )}
 
@@ -231,7 +258,7 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
             autoPlay
             playsInline
             muted
-            className="w-full h-full object-cover transition-all duration-500"
+            className="w-full h-full object-cover"
             style={{ 
               transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
               filter: selectedFilter === 'chrome' ? 'contrast(1.2) brightness(1.1) saturate(1.1)' : 
@@ -260,32 +287,33 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
         )}
 
         {isRecording && (
-          <div className="absolute top-24 left-1/2 -translate-x-1/2 px-4 py-2 bg-red-500 text-white rounded-full flex items-center gap-2 animate-pulse">
+          <div className="absolute top-32 left-1/2 -translate-x-1/2 px-4 py-2 bg-red-500 text-white rounded-full flex items-center gap-2 animate-pulse z-40">
             <div className="w-2 h-2 bg-white rounded-full" />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Enregistrement</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest">Recording</span>
           </div>
         )}
       </div>
 
-      {/* Controls */}
-      <div className="p-4 bg-black flex flex-col items-center gap-4 pb-12">
+      {/* Interface Overlay (Mirroring Screenshot precisely) */}
+      <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col items-center gap-6 pb-12 z-50 bg-gradient-to-t from-black/80 via-black/20 to-transparent">
+        
         {!capturedImage && !capturedVideo ? (
-          <div className="flex flex-col items-center gap-6 w-full">
+          <div className="flex flex-col items-center gap-8 w-full">
             
-            {/* Filters row if open */}
+            {/* 1. Filter Options (if Wand clicked) */}
             <AnimatePresence>
               {showFilters && (
                 <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  className="w-full py-2 flex justify-center gap-4 overflow-x-auto no-scrollbar"
+                  exit={{ opacity: 0, y: 30 }}
+                  className="w-full flex justify-center gap-4 overflow-x-auto no-scrollbar pb-2"
                 >
                   {['none', 'chrome', 'sepia', 'mono', 'warm', 'cool'].map(f => (
                     <button
                       key={f}
                       onClick={() => setSelectedFilter(f)}
-                      className={`flex-shrink-0 w-14 h-14 rounded-full border-2 transition-all flex items-center justify-center font-black text-[8px] uppercase tracking-tighter ${selectedFilter === f ? 'border-primary bg-primary/20 text-white' : 'border-white/10 bg-white/5 text-white/40'}`}
+                      className={`flex-shrink-0 w-16 h-16 rounded-full border-2 transition-all flex items-center justify-center font-black text-[10px] uppercase tracking-tighter ${selectedFilter === f ? 'border-white bg-white/20 text-white' : 'border-white/20 bg-black/60 text-white/50'}`}
                     >
                       {f}
                     </button>
@@ -294,119 +322,117 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
               )}
             </AnimatePresence>
 
-            {/* Gallery Preview */}
-            <div className="w-full overflow-x-auto no-scrollbar py-2">
-              <div className="flex gap-2 px-4 h-16">
-                {[1,2,3,4,5,6].map(i => (
-                  <div key={i} className="flex-shrink-0 w-16 h-16 rounded-lg bg-white/10 border border-white/5 overflow-hidden">
-                    <img 
-                      src={`https://picsum.photos/seed/${i + 10}/200`} 
-                      className="w-full h-full object-cover opacity-60 grayscale hover:grayscale-0 transition-all" 
-                      alt="Gallery" 
-                    />
-                  </div>
-                ))}
-              </div>
+            {/* 2. Gallery Preview Row (Above Capture Button) */}
+            <div className="w-full flex gap-2 overflow-x-auto no-scrollbar px-2 shrink-0">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="flex-shrink-0 w-24 h-32 rounded-xl bg-white/20 border border-white/20 overflow-hidden relative shadow-2xl">
+                  <img 
+                    src={`https://picsum.photos/seed/${i + 88}/300/400`} 
+                    className="w-full h-full object-cover opacity-80" 
+                    alt="Sample" 
+                  />
+                  {i > 3 && (
+                    <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-lg border border-white/10">
+                      <ImageIcon size={12} className="text-white" />
+                      <span className="text-[10px] font-black text-white">0</span>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
 
-            {/* Main Action Bar */}
-            <div className="flex items-center justify-center w-full max-w-sm px-6">
+            {/* 3. Main Action Bar (Wand | Capture | Refresh) */}
+            <div className="flex items-center justify-between w-full max-w-sm px-6">
+              {/* Wand / Filter Button */}
               <button 
                 onClick={() => setShowFilters(!showFilters)}
-                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all mr-auto ${showFilters ? 'bg-primary text-white shadow-lg shadow-primary/30' : 'bg-white/10 text-white active:scale-95'}`}
+                className={`w-16 h-16 rounded-full flex items-center justify-center transition-all bg-black/40 border border-white/20 backdrop-blur-2xl ${showFilters ? 'ring-2 ring-white scale-110' : 'active:scale-95'}`}
               >
-                <Wand2 size={24} fill={showFilters ? 'currentColor' : 'none'} />
+                <Wand2 size={32} className="text-white" strokeWidth={2} />
               </button>
 
-              <div className="relative flex items-center justify-center mx-12">
+              {/* CENTER CAPTURE BUTTON - White Circle with subtle Ring */}
+              <div className="relative flex items-center justify-center">
                 {mode === 'photo' ? (
                   <button 
                     onClick={capturePhoto}
-                    className="w-20 h-20 bg-white rounded-full flex items-center justify-center border-[6px] border-white/20 active:scale-90 transition-all shadow-2xl"
+                    className="w-24 h-24 bg-white rounded-full flex items-center justify-center p-1.5 shadow-[0_0_50px_rgba(255,255,255,0.4)] active:scale-90 transition-all border-[8px] border-black/10"
                   >
-                    <div className="w-[66px] h-[66px] rounded-full border-2 border-black/10" />
+                    <div className="w-full h-full rounded-full border-2 border-black/5" />
                   </button>
                 ) : (
                   <button 
                     onClick={isRecording ? stopRecording : startRecording}
-                    className={`w-20 h-20 rounded-full flex items-center justify-center border-[6px] border-white/20 active:scale-90 transition-all shadow-2xl ${isRecording ? 'bg-red-500' : 'bg-white'}`}
+                    className={`w-24 h-24 rounded-full flex items-center justify-center p-1.5 active:scale-90 transition-all border-[8px] border-black/10 ${isRecording ? 'bg-red-500 scale-110' : 'bg-white shadow-[0_0_50px_rgba(255,255,255,0.4)]'}`}
                   >
                     {isRecording ? (
-                      <StopCircle size={32} className="text-white" />
+                      <StopCircle size={40} className="text-white" />
                     ) : (
-                      <div className="w-16 h-16 border-2 border-black rounded-full flex items-center justify-center">
-                        <Video size={24} className="text-black" />
+                      <div className="w-full h-full rounded-full flex items-center justify-center">
+                        <Video size={36} className="text-black" />
                       </div>
                     )}
                   </button>
                 )}
               </div>
 
+              {/* CAMERA SWITCH BUTTON */}
               <button 
                 onClick={switchCamera}
-                className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white active:scale-95 transition-all ml-auto"
+                className="w-16 h-16 rounded-full bg-black/40 border border-white/20 flex items-center justify-center text-white backdrop-blur-2xl active:scale-95 transition-all"
               >
-                <RefreshCw size={24} />
+                <RefreshCw size={32} className={loading ? 'animate-spin' : ''} />
               </button>
             </div>
 
-            {/* Mode Switcher */}
-            <div className="flex items-center gap-1 bg-[#1a1a1a] p-1 rounded-full border border-white/5 mt-2">
+            {/* 4. Bottom Mode Switcher Pill */}
+            <div className="flex items-center gap-1 bg-[#121212]/80 p-1.5 rounded-full border border-white/10 backdrop-blur-3xl shadow-2xl">
               <button 
                 onClick={() => setMode('photo')}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-[0.1em] transition-all ${mode === 'photo' ? 'bg-[#2a2a2a] text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}
+                className={`flex items-center gap-3 px-8 py-3.5 rounded-full text-[12px] font-black uppercase tracking-tighter transition-all ${mode === 'photo' ? 'bg-[#222222] text-white shadow-xl border border-white/5' : 'text-white/40 hover:text-white/60'}`}
               >
-                <Camera size={14} fill={mode === 'photo' ? 'currentColor' : 'none'} />
+                <Camera size={16} fill={mode === 'photo' ? 'currentColor' : 'none'} />
                 <span>Photo</span>
               </button>
               <button 
                 onClick={() => setMode('video')}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-[0.1em] transition-all ${mode === 'video' ? 'bg-[#2a2a2a] text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}
+                className={`flex items-center gap-3 px-8 py-3.5 rounded-full text-[12px] font-black uppercase tracking-tighter transition-all ${mode === 'video' ? 'bg-[#222222] text-white shadow-xl border border-white/5' : 'text-white/40 hover:text-white/60'}`}
               >
-                <Video size={14} fill={mode === 'video' ? 'currentColor' : 'none'} />
+                <Video size={16} fill={mode === 'video' ? 'currentColor' : 'none'} />
                 <span>Vidéo</span>
               </button>
             </div>
           </div>
         ) : (
-          <div className="w-full flex justify-between items-center max-w-sm pt-4">
-            <div className="flex items-center gap-3">
-              <button 
-                className="p-4 bg-white/10 backdrop-blur-md text-white rounded-2xl border border-white/10"
-              >
-                <Settings2 size={24} />
-              </button>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={resetCapture}
-                className="px-6 py-4 bg-white/10 backdrop-blur-md text-white rounded-2xl font-bold text-xs border border-white/10 active:scale-95 transition-all"
-              >
-                Reprendre
-              </button>
+          /* Captured Actions Menu */
+          <div className="w-full flex justify-between items-center max-w-md bg-[#121212]/90 backdrop-blur-3xl p-6 rounded-[32px] border border-white/10 shadow-3xl">
+            <button 
+              onClick={resetCapture}
+              className="px-8 py-4 bg-white/5 text-white rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95 transition-all border border-white/10"
+            >
+              Back
+            </button>
 
-              {initialDestination === 'message' ? (
-                <button 
-                  onClick={handleQuickSend}
-                  className="px-8 py-4 bg-blue-600 text-white rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-blue-600/20 active:scale-95 transition-all font-bold"
-                >
-                  Envoyer
-                </button>
-              ) : (
-                <button 
-                  onClick={() => setShowShareMenu(true)}
-                  className="p-5 bg-white text-black rounded-2xl flex items-center justify-center shadow-xl active:scale-95 transition-all"
-                >
-                  <Share2 size={24} />
-                </button>
-              )}
-            </div>
+            {initialDestination === 'message' ? (
+              <button 
+                onClick={handleQuickSend}
+                className="px-10 py-4 bg-[#0055ff] text-white rounded-2xl flex items-center justify-center gap-3 shadow-2xl shadow-blue-500/40 active:scale-95 transition-all font-black uppercase text-xs tracking-widest"
+              >
+                Send it
+              </button>
+            ) : (
+              <button 
+                onClick={() => setShowShareMenu(true)}
+                className="p-5 bg-white text-black rounded-2xl flex items-center justify-center shadow-2xl active:scale-95 transition-all"
+              >
+                <Share2 size={24} />
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      {/* Share Menu */}
+      {/* Share Menu Modal */}
       <AnimatePresence>
         {showShareMenu && (
           <>
@@ -415,64 +441,42 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowShareMenu(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[210]"
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[210]"
             />
             <motion.div 
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="fixed bottom-0 left-0 right-0 bg-[#1a1a1a] rounded-t-[32px] p-8 z-[220] border-t border-white/10"
+              className="fixed bottom-0 left-0 right-0 bg-[#0a0a0a] rounded-t-[40px] p-10 z-[220] border-t border-white/10 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]"
             >
-              <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-8" />
-              <h3 className="text-xl font-black text-white mb-6 text-center tracking-tight">Partager sur Wexo</h3>
+              <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-10" />
+              <h3 className="text-2xl font-black text-white mb-10 text-center tracking-tight uppercase">Share on Wexo</h3>
               
-              <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={() => handleShare('story')}
-                  className="flex flex-col items-center gap-3 p-6 bg-white/5 rounded-3xl hover:bg-white/10 transition-all group"
-                >
-                  <div className="w-14 h-14 bg-sky-500/10 text-sky-500 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Layout size={28} />
-                  </div>
-                  <span className="text-xs font-bold text-white">Story</span>
-                </button>
-
-                <button 
-                  onClick={() => handleShare('short')}
-                  className="flex flex-col items-center gap-3 p-6 bg-white/5 rounded-3xl hover:bg-white/10 transition-all group"
-                >
-                  <div className="w-14 h-14 bg-orange-500/10 text-orange-500 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Flame size={28} />
-                  </div>
-                  <span className="text-xs font-bold text-white">Short</span>
-                </button>
-
-                <button 
-                  onClick={() => handleShare('video')}
-                  className="flex flex-col items-center gap-3 p-6 bg-white/5 rounded-3xl hover:bg-white/10 transition-all group"
-                >
-                  <div className="w-14 h-14 bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Play size={28} />
-                  </div>
-                  <span className="text-xs font-bold text-white">Vidéo</span>
-                </button>
-
-                <button 
-                  onClick={() => handleShare('message')}
-                  className="flex flex-col items-center gap-3 p-6 bg-white/5 rounded-3xl hover:bg-white/10 transition-all group"
-                >
-                  <div className="w-14 h-14 bg-indigo-500/10 text-indigo-500 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <MessageSquare size={28} />
-                  </div>
-                  <span className="text-xs font-bold text-white">Message</span>
-                </button>
+              <div className="grid grid-cols-2 gap-6">
+                {[
+                  { id: 'story', label: 'Story', icon: <Layout />, color: 'text-sky-400', bg: 'bg-sky-400/10' },
+                  { id: 'short', label: 'Short', icon: <Flame />, color: 'text-orange-400', bg: 'bg-orange-400/10' },
+                  { id: 'video', label: 'Vidéo', icon: <Play />, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+                  { id: 'message', label: 'Message', icon: <MessageSquare />, color: 'text-indigo-400', bg: 'bg-indigo-400/10' }
+                ].map(item => (
+                  <button 
+                    key={item.id}
+                    onClick={() => handleShare(item.id as any)}
+                    className="flex flex-col items-center gap-4 p-8 bg-white/5 rounded-[32px] hover:bg-white/10 transition-all group border border-white/5"
+                  >
+                    <div className={`w-16 h-16 ${item.bg} ${item.color} rounded-[20px] flex items-center justify-center group-hover:scale-110 transition-transform shadow-xl`}>
+                      {React.isValidElement(item.icon) && React.cloneElement(item.icon as React.ReactElement<{size?: number}>, { size: 32 })}
+                    </div>
+                    <span className="text-sm font-black text-white uppercase tracking-widest">{item.label}</span>
+                  </button>
+                ))}
               </div>
 
               <button 
                 onClick={() => setShowShareMenu(false)}
-                className="w-full mt-8 py-4 text-slate-500 font-bold text-xs uppercase tracking-widest"
+                className="w-full mt-10 py-4 text-white/30 font-black text-xs uppercase tracking-[0.2em] hover:text-white/60 transition-colors"
               >
-                Annuler
+                Cancel
               </button>
             </motion.div>
           </>

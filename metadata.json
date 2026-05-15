@@ -5,7 +5,10 @@
     "camera",
     "microphone",
     "geolocation",
-    "notifications"
+    "notifications",
+    "phone",
+    "photos",
+    "audio"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

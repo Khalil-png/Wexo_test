@@ -1020,7 +1020,6 @@ const AppContent: React.FC = () => {
     // Permission check for Native
     if (isNative()) {
       try {
-        // Simple trick to trigger permission prompt on native via web API
         const testStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
         testStream.getTracks().forEach(t => t.stop());
       } catch (err) {
@@ -1032,59 +1031,45 @@ const AppContent: React.FC = () => {
 
     try {
       // Si on reçoit déjà un record complet (depuis CallsTab par exemple)
-      if (receiver.caller_id) {
+      if (receiver.caller_id && receiver.status && receiver.id) {
         setActiveCall(receiver);
         return;
       }
 
-      // Initiation de l'appel via l'API Serveur (Firebase + Notifications)
-      console.log("Initiation d'un appel vers:", receiver.username);
+      log("Initiation d'un appel vers:", receiver.username);
       
-      const callUuid = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      const response = await fetch(getApiUrl('/api/calls/initiate'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          callerId: pbUser.id,
-          receiverId: receiver.id,
-          type: 'video',
-          callId: callUuid
-        })
-      });
-
-      const data = await response.json();
-      
-      if (!data.success) throw new Error(data.error || "Erreur serveur");
-
-      setActiveCall({
-        id: data.callId,
-        caller_id: pbUser.id,
-        receiver_id: receiver.id,
-        profiles: {
-          username: receiver.username,
-          avatar_url: receiver.avatar_url || DEFAULT_AVATAR
-        }
-      });
-    } catch (err: any) {
-      console.error("Erreur lancement appel:", err);
-      // Fallback sur PocketBase si le serveur Firebase échoue
+      // On tente d'abord PocketBase parce que l'utilisateur gère son propre serveur Synology
+      // et que le screenshot montre qu'il suit cette collection.
       try {
         const record = await pb.collection('calls').create({
           caller_id: pbUser.id,
           receiver_id: receiver.id,
-          type: 'audio',
-          status: 'incoming'
+          type: 'video',
+          status: 'ongoing' // On le met direct en ongoing pour l'affichage, c'est le signaling qui fera le reste
         });
+
         setActiveCall({
           id: record.id,
           caller_id: pbUser.id,
           receiver_id: receiver.id,
-          profiles: { username: receiver.username, avatar_url: receiver.avatar_url }
+          profiles: { 
+            username: receiver.username, 
+            avatar_url: receiver.avatar_url || DEFAULT_AVATAR 
+          },
+          isOngoing: true
         });
-      } catch (e) {
-        setNotification({ message: "Échec de l'appel système et PocketBase", show: true });
+
+        log('Appel créé sur PocketBase:', record.id);
+      } catch (pbErr: any) {
+        log('Erreur PocketBase Call Creation:', pbErr);
+        throw pbErr;
       }
+    } catch (err: any) {
+      console.error("Erreur lancement appel:", err);
+      setNotification({ 
+        message: "Impossible de démarrer l'appel. Vérifiez les droits sur la collection 'calls' de votre NAS.", 
+        show: true 
+      });
     }
   };
 

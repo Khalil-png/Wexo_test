@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import admin from "firebase-admin";
-import EventSource from "eventsource";
+import { EventSource } from "eventsource";
 
 // Polyfill EventSource pour PocketBase SDK sur Node.js
 (global as any).EventSource = EventSource;
