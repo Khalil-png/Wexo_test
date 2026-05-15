@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useSearchParams } from 'react-router-dom';
 import { renderTextWithEmojis, EMOJI_MAP } from '../utils/emoji';
 import { 
@@ -27,6 +28,75 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { generateSnowflake } from '@/utils/snowflake';
 import Username from './Username';
+import { Play, Pause } from 'lucide-react';
+
+const VoiceMessagePlayer: React.FC<{ url: string, isOwn: boolean }> = ({ url, isOwn }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  const togglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      setDuration(audioRef.current.duration);
+    }
+  };
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className={`flex items-center gap-3 p-3 min-w-[200px] ${isOwn ? 'text-white' : 'text-slate-200'}`}>
+      <audio 
+        ref={audioRef} 
+        src={url} 
+        onTimeUpdate={handleTimeUpdate} 
+        onLoadedMetadata={handleLoadedMetadata}
+        onEnded={() => setIsPlaying(false)}
+      />
+      <button 
+        onClick={togglePlay}
+        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isOwn ? 'bg-white/20 hover:bg-white/30' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
+      >
+        {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
+      </button>
+      
+      <div className="flex-1 flex flex-col gap-1">
+        <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+          <div 
+            className={`h-full transition-all duration-100 ${isOwn ? 'bg-white' : 'bg-primary'}`}
+            style={{ width: `${(currentTime / duration) * 100 || 0}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-[10px] font-bold opacity-60">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Avatar Gemini avec coins moins arrondis
 const GeminiAvatarIcon = ({ size = 16 }: { size?: number }) => (
@@ -292,8 +362,119 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const initialHeight = useRef(window.innerHeight);
 
+  // States pour les messages vocaux
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
+  const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
+  const [visualizerData, setVisualizerData] = useState<number[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerIntervalRef = useRef<any>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const isCanceledRecording = useRef(false);
+
   const isAndroidDevice = () => {
     return /Android/i.test(navigator.userAgent);
+  };
+
+  const startRecordingVoice = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      isCanceledRecording.current = false;
+      
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 64;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (!isCanceledRecording.current && audioBlob.size > 0) {
+          await sendVoiceMessage(audioBlob);
+        }
+        stream.getTracks().forEach(track => track.stop());
+        audioContext.close();
+      };
+
+      mediaRecorder.start();
+      setIsRecordingVoice(true);
+      setRecordingDuration(0);
+
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+
+      const updateVisualizer = () => {
+        if (!analyserRef.current) return;
+        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+        analyserRef.current.getByteFrequencyData(dataArray);
+        
+        // Take a subset for the visualizer
+        const normalizedData = Array.from(dataArray.slice(0, 15)).map(v => v / 255);
+        setVisualizerData(normalizedData);
+        animationFrameRef.current = requestAnimationFrame(updateVisualizer);
+      };
+      updateVisualizer();
+
+    } catch (err) {
+      console.error("Erreur micro:", err);
+      setLocalUploadError("Impossible d'accéder au micro.");
+    }
+  };
+
+  const stopRecordingVoice = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    cleanupRecording();
+  };
+
+  const cancelRecordingVoice = () => {
+    isCanceledRecording.current = true;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    cleanupRecording();
+  };
+
+  const cleanupRecording = () => {
+    setIsRecordingVoice(false);
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    setVisualizerData([]);
+  };
+
+  const sendVoiceMessage = async (blob: Blob) => {
+    if (!user || !selectedId) return;
+    
+    try {
+      const fileName = `Voice_${Date.now()}.webm`;
+      const file = new File([blob], fileName, { type: 'audio/webm' });
+      const publicUrl = await uploadToPocketBase(file);
+      
+      await sendMessage('', {
+        url: publicUrl,
+        name: fileName,
+        type: 'audio/webm',
+        size: blob.size
+      });
+    } catch (err) {
+      console.error("Erreur envoi message vocal:", err);
+    }
   };
 
   useEffect(() => {
@@ -2061,6 +2242,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 const isVideo = msg.file_type?.startsWith('video/') || 
                                 msg.isGeneratingVideo || 
                                 /\.(mp4|mov|avi|wmv|flv|mkv|webm)$/i.test(msg.file_name || '');
+                const isAudio = msg.file_type?.startsWith('audio/') || /\.(mp3|wav|ogg|webm|m4a)$/i.test(msg.file_name || '');
                 const isDeleted = msg.is_deleted_for_everyone;
                 const isAI = msg.sender_id === 'gemini';
                 const hasPrevSameSender = idx > 0 && messages[idx - 1].sender_id === msg.sender_id;
@@ -2223,6 +2405,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                                         </div>
                                       </div>
                                     </div>
+                                  ) : isAudio ? (
+                                    <VoiceMessagePlayer url={msg.file_url!} isOwn={msg.is_own} />
                                   ) : (
                                     <div className="flex flex-col">
                                       <div className="p-3 flex items-start gap-3">
@@ -2393,52 +2577,82 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   </div>
                 )}
                 <div className={`flex items-center gap-2 max-w-full ${isMobileDevice() ? 'h-[50px]' : 'h-[53px]'}`}>
-                  <div className={`flex-1 h-full flex items-center gap-1 bg-white/5 rounded-full px-4 border border-white/10 shadow-inner overflow-hidden group/input relative`}>
-                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                    
-                    <div className="relative flex items-center flex-shrink-0">
-                      <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className={`p-1.5 transition-colors ${showEmojiPicker ? 'text-amber-400' : 'text-slate-400 hover:text-amber-400'}`}>
-                        <Smile size={24} />
-                      </button>
-                    </div>
+                  {isRecordingVoice ? (
+                    <div className="flex-1 h-full flex items-center gap-4 bg-red-500/10 rounded-full px-6 border border-red-500/30 animate-in slide-in-from-bottom-2 duration-300">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                        <span className="text-sm font-black text-red-500 mono tracking-tighter w-12 text-center">
+                          {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
+                        </span>
+                      </div>
+                      
+                      <div className="flex-1 flex items-center gap-1 justify-center h-full">
+                        {visualizerData.map((v, i) => (
+                          <motion.div 
+                            key={i}
+                            animate={{ height: Math.max(4, v * 30) }}
+                            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                            className="w-1 bg-red-500/60 rounded-full"
+                          />
+                        ))}
+                      </div>
 
-                    {stagedFile && (
-                      <div className="flex items-center gap-2 bg-white/10 px-2 py-1 rounded-xl border border-white/10 animate-in zoom-in duration-200 flex-shrink-0">
-                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#0f0f0f] flex-shrink-0">
-                          {stagedFile.type.startsWith('image/') ? (
-                            <img src={stagedFile.url} className="w-full h-full object-cover" alt="" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-primary">
-                              <Video size={16} />
-                            </div>
-                          )}
-                        </div>
-                        <span className="text-[10px] font-bold text-white max-w-[80px] truncate">{stagedFile.name}</span>
-                        <button onClick={() => setStagedFile(null)} className="p-1 hover:bg-white/20 rounded-full text-slate-400 hover:text-white">
-                          <X size={14} />
+                      {!isMobileDevice() && (
+                        <button 
+                          onClick={cancelRecordingVoice}
+                          className="p-2 text-slate-400 hover:text-white transition-colors"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className={`flex-1 h-full flex items-center gap-1 bg-white/5 rounded-full px-4 border border-white/10 shadow-inner overflow-hidden group/input relative`}>
+                      <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                      
+                      <div className="relative flex items-center flex-shrink-0">
+                        <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className={`p-1.5 transition-colors ${showEmojiPicker ? 'text-amber-400' : 'text-slate-400 hover:text-amber-400'}`}>
+                          <Smile size={24} />
                         </button>
                       </div>
-                    )}
 
-                    {!isMobileDevice() && (
-                      <button onClick={() => fileInputRef.current?.click()} className="p-1.5 text-slate-400 hover:text-white transition-colors flex-shrink-0"><Paperclip size={22} /></button>
-                    )}
+                      {stagedFile && (
+                        <div className="flex items-center gap-2 bg-white/10 px-2 py-1 rounded-xl border border-white/10 animate-in zoom-in duration-200 flex-shrink-0">
+                          <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#0f0f0f] flex-shrink-0">
+                            {stagedFile.type.startsWith('image/') ? (
+                              <img src={stagedFile.url} className="w-full h-full object-cover" alt="" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-primary">
+                                <Video size={16} />
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-bold text-white max-w-[80px] truncate">{stagedFile.name}</span>
+                          <button onClick={() => setStagedFile(null)} className="p-1 hover:bg-white/20 rounded-full text-slate-400 hover:text-white">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      )}
 
-                    <input 
-                      type="text" 
-                      value={messageText} 
-                      onChange={(e) => handleInputChange(e.target.value)}
-                      onFocus={handleInputFocus}
-                      onBlur={handleInputBlur}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          sendMessage(messageText);
-                          updateTypingStatus(false);
-                        }
-                      }} 
-                      placeholder="Message" 
-                      className="flex-1 bg-transparent border-none text-base text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1 h-full pl-0 min-w-0" 
-                    />
+                      {!isMobileDevice() && (
+                        <button onClick={() => fileInputRef.current?.click()} className="p-1.5 text-slate-400 hover:text-white transition-colors flex-shrink-0"><Paperclip size={22} /></button>
+                      )}
+
+                      <input 
+                        type="text" 
+                        value={messageText} 
+                        onChange={(e) => handleInputChange(e.target.value)}
+                        onFocus={handleInputFocus}
+                        onBlur={handleInputBlur}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            sendMessage(messageText);
+                            updateTypingStatus(false);
+                          }
+                        }} 
+                        placeholder="Message" 
+                        className="flex-1 bg-transparent border-none text-base text-white outline-none focus:ring-0 placeholder:text-slate-500 py-1 h-full pl-0 min-w-0" 
+                      />
 
                     <div className="flex items-center gap-0.5 flex-shrink-0 pr-1">
                       {isMobileDevice() && (
@@ -2461,17 +2675,48 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                       )}
 
                       {!isMobileDevice() && (
-                        <button onClick={() => sendMessage(messageText)} className="h-10 w-10 bg-primary text-white rounded-full flex items-center justify-center transition-all active:scale-95 shadow-md">
-                          {messageText.trim() ? <Send size={18} /> : <Mic size={20} />}
+                        <button 
+                          onClick={() => {
+                            if (messageText.trim()) {
+                              sendMessage(messageText);
+                            } else {
+                              if (isRecordingVoice) stopRecordingVoice();
+                              else startRecordingVoice();
+                            }
+                          }} 
+                          className={`h-10 w-10 text-white rounded-full flex items-center justify-center transition-all active:scale-95 shadow-md ${isRecordingVoice ? 'bg-red-500 animate-pulse' : 'bg-primary'}`}
+                        >
+                          {messageText.trim() ? <Send size={18} /> : (isRecordingVoice ? <Send size={18} /> : <Mic size={20} />)}
                         </button>
                       )}
                     </div>
                   </div>
+                )}
 
                   {isMobileDevice() && (
-                    <button onClick={() => sendMessage(messageText)} className="bg-primary text-white h-[50px] w-[50px] min-w-[50px] rounded-full flex items-center justify-center transition-all shadow-lg active:scale-90">
+                    <motion.button 
+                      animate={isRecordingVoice ? { scale: 1.5 } : { scale: 1 }}
+                      onTouchStart={(e) => {
+                        if (!messageText.trim()) {
+                          e.preventDefault();
+                          startRecordingVoice();
+                        }
+                      }}
+                      onTouchEnd={(e) => {
+                        if (isRecordingVoice) {
+                          e.preventDefault();
+                          stopRecordingVoice();
+                        }
+                      }}
+                      onClick={() => {
+                        if (messageText.trim()) {
+                          sendMessage(messageText);
+                        }
+                      }}
+                      className={`${isRecordingVoice ? 'bg-red-500' : 'bg-primary'} text-white h-[50px] w-[50px] min-w-[50px] rounded-full flex items-center justify-center transition-all shadow-lg z-50`}
+                    >
                       {messageText.trim() ? <Send size={24} /> : <Mic size={26} />}
-                    </button>
+                    </motion.button>
                   )}
                 </div>
               </div>
