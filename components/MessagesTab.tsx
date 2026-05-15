@@ -375,14 +375,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           const otherMember = chat.expand?.members?.find((m: any) => m.id !== user.uid);
           if (!otherMember || seenUserIds.has(otherMember.id) || seenUserIds.has(chat.id)) continue;
           
-          // Vérifier le nombre de messages (doit être >= 2 pour apparaître dans la liste des discussions actives)
+          // Vérifier le nombre de messages
           const messagesCountRes = await pb.collection('messages').getList(1, 2, {
             filter: `chat="${chat.id}"`,
             sort: '-created'
           });
-
-          // Si moins de 2 messages, on ne l'affiche pas dans la liste des colonnes
-          if (messagesCountRes.totalItems < 2) continue;
 
           const lastMsg = messagesCountRes.items[0];
 
@@ -395,7 +392,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             lastMessage: decryptMessage(lastMsg?.text || ''),
             lastMessageTime: lastMsg ? new Date(lastMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
             unreadCount: 0,
-            last_active: otherMember.last_active
+            last_active: otherMember.last_active,
+            active: otherMember.active
           });
           seenUserIds.add(otherMember.id);
           seenUserIds.add(chat.id);
@@ -408,9 +406,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             sort: '-created'
           });
           
-          // Même logique pour les groupes
-          if (messagesCountRes.totalItems < 2) continue;
-
           convs.push({
             id: chat.id,
             chatId: chat.id,
@@ -437,30 +432,45 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     try {
       let chatIdToUse = '';
       
-      // Trouver ou créer le chat si c'est un utilisateur direct
+      // Trouver ou choisir le chat approprié
       if (selectedId !== 'gemini') {
-        const chatList = await pb.collection('chats').getList(1, 1, {
-          filter: `type="direct" && members ~ "${user.uid}" && members ~ "${selectedId}"`
-        });
-        
-        if (chatList.items.length > 0) {
-          chatIdToUse = chatList.items[0].id;
-        } else {
-          // Créer le chat
-          const newChat = await pb.collection('chats').create({
-            type: 'direct',
-            members: [user.uid, selectedId]
+        // Tentative 1: On vérifie si selectedId est déjà un ID de chat (Groupe par exemple)
+        try {
+          const possibleChat = await pb.collection('chats').getOne(selectedId).catch(() => null);
+          if (possibleChat) {
+            chatIdToUse = possibleChat.id;
+          }
+        } catch(e) {}
+
+        // Tentative 2: Si non trouvé, on cherche un chat direct entre moi et selectedId (qui est donc un ID d'utilisateur)
+        if (!chatIdToUse) {
+          const chatList = await pb.collection('chats').getList(1, 1, {
+            filter: `type="direct" && members ~ "${user.uid}" && members ~ "${selectedId}"`
           });
-          chatIdToUse = newChat.id;
+          
+          if (chatList.items.length > 0) {
+            chatIdToUse = chatList.items[0].id;
+          } else {
+            // Créer le chat direct uniquement si on est sûr que selectedId n'est pas un chat existant
+            const newChat = await pb.collection('chats').create({
+              type: 'direct',
+              members: [user.uid, selectedId],
+              updated: new Date().toISOString()
+            });
+            chatIdToUse = newChat.id;
+          }
         }
       }
       
       setActiveChatId(chatIdToUse);
 
-      // 1. Charger les messages liés au chat
-      const filter = chatIdToUse ? `chat="${chatIdToUse}"` : `(sender_id="${user.uid}" && receiver_id="${selectedId}") || (sender_id="${selectedId}" && receiver_id="${user.uid}")`;
+      // Charger les messages : On cherche soit par le chat_id, soit par les IDs sender/receiver pour être sûr
+      // On augmente le limit à 500 pour ne pas rater de messages
+      const filter = chatIdToUse 
+        ? `chat="${chatIdToUse}" || (sender_id="${user.uid}" && receiver_id="${selectedId}") || (sender_id="${selectedId}" && receiver_id="${user.uid}")` 
+        : `(sender_id="${user.uid}" && receiver_id="${selectedId}") || (sender_id="${selectedId}" && receiver_id="${user.uid}")`;
       
-      const resultList = await pb.collection('messages').getList(1, 100, {
+      const resultList = await pb.collection('messages').getList(1, 500, {
         filter: filter,
         sort: 'created',
       });
@@ -734,7 +744,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
           const currentActiveChatId = activeChatIdRef.current;
           
           // Verify if message belongs to the active chat
-          const isRelated = (m.chat && m.chat === currentActiveChatId);
+          const isRelated = (m.chat && m.chat === currentActiveChatId) || 
+                            (!m.chat && ((m.sender_id === user.uid && m.receiver_id === selectedId) || 
+                                         (m.sender_id === selectedId && m.receiver_id === user.uid)));
           
           if (isRelated) {
             setMessages(prev => {
@@ -2068,13 +2080,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 
                 const isSelected = selectedMessageIds.has(msg.id);
 
-                // Espace entre les messages : Réduction de 2.1x demandée
-                // Précédemment mt-4 (16px), donc 16 / 2.1 = ~7.6px
+                // Espace entre les messages : Réduction pour un look plus "messagerie"
                 let extraMargin = 'mt-1';
                 if (!hasPrevSameSender) {
-                  extraMargin = 'mt-7'; // Un peu plus serré que mt-10 (28px)
+                  extraMargin = 'mt-6'; // Espace normal entre différents auteurs
                 } else {
-                  extraMargin = 'mt-[7.6px]'; // 16px / 2.1 = 7.619px precise spacing
+                  extraMargin = 'mt-0.5'; // Espace minimal (0.5px) entre messages d'un même auteur
                 }
                 
                 return (

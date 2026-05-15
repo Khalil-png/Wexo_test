@@ -37,6 +37,7 @@
     "capacitor-native-settings": "^8.1.0",
     "clsx": "^2.1.1",
     "crypto-js": "^4.2.0",
+    "eventsource": "^4.1.0",
     "express": "^5.2.1",
     "firebase": "^12.12.1",
     "firebase-admin": "^13.8.0",

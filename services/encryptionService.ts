@@ -9,25 +9,31 @@ const ENCRYPTION_SECRET = "wexo-secure-vault-2024-khalil-benromdhane";
  */
 export const encryptMessage = (text: string): string => {
   if (!text) return text;
-  // On ajoute un préfixe pour identifier les messages chiffrés
-  return "ENC:" + CryptoJS.AES.encrypt(text, ENCRYPTION_SECRET).toString();
+  // On retourne directement le résultat AES (qui ressemble à des caractères aléatoires base64)
+  return CryptoJS.AES.encrypt(text, ENCRYPTION_SECRET).toString();
 };
 
 /**
  * Déchiffre une chaîne de caractères AES
  */
 export const decryptMessage = (encryptedText: string): string => {
-  if (!encryptedText || !encryptedText.startsWith("ENC:")) return encryptedText;
+  if (!encryptedText) return encryptedText;
   
+  // Si le message commence par "ENC:", on l'enlève pour la compatibilité avec les anciens messages
+  let dataToDecrypt = encryptedText;
+  if (encryptedText.startsWith("ENC:")) {
+    dataToDecrypt = encryptedText.substring(4);
+  }
+
   try {
-    const rawData = encryptedText.substring(4); // On enlève le préfixe "ENC:"
-    const bytes = CryptoJS.AES.decrypt(rawData, ENCRYPTION_SECRET);
+    const bytes = CryptoJS.AES.decrypt(dataToDecrypt, ENCRYPTION_SECRET);
     const decrypted = bytes.toString(CryptoJS.enc.Utf8);
     
-    if (!decrypted) return rawData; // Retourne le texte chiffré brut (caractères aléatoires) si échec
+    // Si la sortie est vide, cela signifie probablement que ce n'était pas un message chiffré valide (ou mauvaise clé)
+    if (!decrypted) return encryptedText; 
     return decrypted;
   } catch (error) {
-    console.error("Erreur de déchiffrement:", error);
-    return encryptedText.substring(4); // Idem ici
+    // Si erreur, c'est probablement du texte brut non chiffré
+    return encryptedText;
   }
 };
