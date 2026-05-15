@@ -30,6 +30,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
   const { mode, setMode, primaryColor, setPrimaryColor } = useTheme();
   const [activeSection, setActiveSection] = useState<'main' | 'compte' | 'profil' | 'theme' | 'onglets'>('main');
   const [displayName, setDisplayName] = useState(profile?.name || profile?.display_name || '');
+  const [phoneNumber, setPhoneNumber] = useState(profile?.phone || '');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -239,7 +240,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
     setLoading(true);
     try {
       const updatedRecord = await pb.collection('users').update(pb.authStore.model.id, {
-        name: displayName
+        name: displayName,
+        phone: phoneNumber
       });
       
       // Update local auth store to trigger onChange in App.tsx
@@ -343,6 +345,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ user, profile, onLogout }) =>
                 className="w-full py-4 bg-transparent border-none outline-none transition-all font-bold text-3xl text-white placeholder:text-white/20"
                 placeholder="Ex: Mon Pseudo..."
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-white mb-2 px-1 uppercase tracking-widest text-white/40">Numéro de téléphone</label>
+              <input 
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                className="w-full p-4 bg-white/5 border border-white/5 rounded-2xl outline-none transition-all font-bold text-xl text-white placeholder:text-white/10"
+                placeholder="+33 6 12 34 56 78"
+              />
+              <p className="mt-2 text-[10px] text-white/20 font-medium px-1 uppercase tracking-tighter">Utilisé par le téléphone pour identifier les appels (style WhatsApp).</p>
             </div>
             
             <button 

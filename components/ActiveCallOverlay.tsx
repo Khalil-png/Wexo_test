@@ -23,6 +23,28 @@ const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
   callTimer, 
   onEndCall 
 }) => {
+  const ringtoneRef = React.useRef<HTMLAudioElement | null>(null);
+
+  React.useEffect(() => {
+    if (!activeCall.isOngoing) {
+      // Outgoing rigntone
+      ringtoneRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/1355/1355-preview.mp3");
+      ringtoneRef.current.loop = true;
+      ringtoneRef.current.play().catch(e => console.log("Sound error:", e));
+    } else {
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current = null;
+      }
+    }
+    return () => {
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current = null;
+      }
+    };
+  }, [activeCall.isOngoing]);
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;

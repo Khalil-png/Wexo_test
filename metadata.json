@@ -5,14 +5,9 @@
     "camera",
     "microphone",
     "geolocation",
-    "notifications",
     "phone",
-    "photos",
     "audio",
-    "contacts",
-    "storage",
-    "bluetooth",
-    "nearby-devices"
+    "notifications"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

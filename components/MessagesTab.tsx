@@ -463,14 +463,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     if (!user || !selectedId) return;
     
     try {
-      const fileName = `Voice_${Date.now()}.webm`;
-      const file = new File([blob], fileName, { type: 'audio/webm' });
+      // On utilise l'extension .mp3 pour une meilleure compatibilité
+      const fileName = `Audio_${Date.now()}.mp3`;
+      const file = new File([blob], fileName, { type: 'audio/mpeg' });
       const publicUrl = await uploadToPocketBase(file);
       
       await sendMessage('', {
         url: publicUrl,
         name: fileName,
-        type: 'audio/webm',
+        type: 'audio/mpeg',
         size: blob.size
       });
     } catch (err) {

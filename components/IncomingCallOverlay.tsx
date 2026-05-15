@@ -9,6 +9,7 @@ interface IncomingCallOverlayProps {
     username: string;
     avatar_url: string | null;
     id: string;
+    phone?: string;
   };
   onAccept: () => void;
   onDecline: () => void;
@@ -129,6 +130,7 @@ const IncomingCallOverlay: React.FC<IncomingCallOverlayProps> = ({
       {/* Caller Info */}
       <div className="relative z-10 flex flex-col items-center text-center mt-4 animate-in fade-in slide-in-from-top-4 duration-1000">
         <h1 className="text-3xl font-normal mb-1 tracking-tight text-white">{caller.username}</h1>
+        {caller.phone && <p className="text-white/40 text-sm mb-1 font-mono tracking-wider">{caller.phone}</p>}
         <p className="text-[#00a884] text-sm font-medium tracking-wide mb-10">Appel vidéo Wexo...</p>
         
         <div className="relative">

@@ -93,7 +93,6 @@ const AppContent: React.FC = () => {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceType | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [incomingCall, setIncomingCall] = useState<any>(null);
   const [activeCall, setActiveCall] = useState<any>(null);
   const [callTimer, setCallTimer] = useState(0);
   const [showCamera, setShowCamera] = useState(false);
@@ -101,33 +100,66 @@ const AppContent: React.FC = () => {
   const [isRinging, setIsRinging] = useState(false);
   const [inAppNotice, setInAppNotice] = useState<{title: string, content: string, senderId: string, show: boolean} | null>(null);
   const [isAppReady, setIsAppReady] = useState(false);
+  const [incomingCall, setIncomingCall] = useState<any>(null);
+  const incomingRingtoneRef = useRef<HTMLAudioElement | null>(null);
   const listenersInitialized = useRef(false);
   const activeChatIdRef = useRef<string | null>(null);
+
+  const stopIncomingRingtone = () => {
+    if (incomingRingtoneRef.current) {
+      incomingRingtoneRef.current.pause();
+      incomingRingtoneRef.current.currentTime = 0;
+      incomingRingtoneRef.current = null;
+    }
+  };
+
   const handleIncomingCall = async (record: any, source: 'pb' | 'firebase') => {
+    log('Déclenchement handleIncomingCall...', record.id);
     let callerName = "Utilisateur inconnu";
     let avatar = DEFAULT_AVATAR;
+    let phoneNum = undefined;
 
-    if (source === 'pb' && record.expand?.caller_id) {
-      const caller = record.expand.caller_id;
-      callerName = caller.username;
-      avatar = caller.avatar ? pb.files.getUrl(caller, caller.avatar) : (caller.avatar_url || DEFAULT_AVATAR);
-    } else {
-      try {
-        const sender = await pb.collection('users').getOne(record.caller_id);
-        callerName = sender.username;
-        avatar = sender.avatar ? pb.files.getUrl(sender, sender.avatar) : (sender.avatar_url || DEFAULT_AVATAR);
-      } catch (e) {}
+    // Lancer la sonnerie pour que ça fasse comme WhatsApp
+    try {
+      if (!incomingRingtoneRef.current) {
+        incomingRingtoneRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/1355/1355-preview.mp3");
+        incomingRingtoneRef.current.loop = true;
+        incomingRingtoneRef.current.play().catch(e => console.log("Sound error:", e));
+      }
+    } catch (e) {
+      console.log("Ringtone error:", e);
     }
 
+    try {
+      if (source === 'pb' && record.expand?.caller_id) {
+        const caller = record.expand.caller_id;
+        callerName = caller.username;
+        avatar = caller.avatar ? pb.files.getUrl(caller, caller.avatar) : (caller.avatar_url || DEFAULT_AVATAR);
+        phoneNum = caller.phone;
+      } else {
+        const sender = await pb.collection('users').getOne(record.caller_id).catch(() => null);
+        if (sender) {
+          callerName = sender.username;
+          avatar = sender.avatar ? pb.files.getUrl(sender, sender.avatar) : (sender.avatar_url || DEFAULT_AVATAR);
+          phoneNum = sender.phone;
+        }
+      }
+    } catch (e) {
+      log('Erreur récupération profil appelant:', e);
+    }
+
+    // On affiche TOUJOURS l'overlay pour que l'utilisateur puisse répondre (Comme WhatsApp)
     setIncomingCall({
       id: record.id,
       caller_id: record.caller_id,
       receiver_id: record.receiver_id,
       source: source,
+      isProcessing: false,
       profiles: {
         id: record.caller_id,
         username: callerName,
-        avatar_url: avatar
+        avatar_url: avatar,
+        phone: phoneNum
       }
     });
 
@@ -135,23 +167,28 @@ const AppContent: React.FC = () => {
       try {
         await LocalNotifications.schedule({
           notifications: [{
-            title: `APPEL: ${callerName}`,
-            body: "Appuyez pour répondre",
+            title: `📞 APPEL ENTRANT: ${callerName}`,
+            body: phoneNum ? `Appel Wexo via ${phoneNum}` : "Appuyez pour répondre ou glissez pour ignorer",
             id: 999,
             schedule: { at: new Date(Date.now() + 100) },
             channelId: 'calls',
-            ongoing: true,
             autoCancel: false,
+            smallIcon: 'ic_stat_phone',
             extra: { type: 'call', callId: record.id, source: source },
-            actionTypeId: 'INCOMING_CALL'
+            actionTypeId: 'INCOMING_CALL',
+            importance: 5,
+            sound: 'ringtone.mp3',
+            ongoing: true
           }]
         });
       } catch (e) {
-        console.warn("Call handling error:", e);
+        console.warn("Call handling notification error:", e);
       }
-      if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
-    } else if (isMobileDevice()) {
-      setNotification({ message: `APPEL ENTRANT: ${callerName}`, show: true, type: 'success' });
+      
+      // Vibration active immédiatement
+      if (navigator.vibrate) {
+        navigator.vibrate([1000, 500, 1000, 500, 1000]);
+      }
     }
   };
 
@@ -803,8 +840,11 @@ const AppContent: React.FC = () => {
     setupNative();
 
     // Souscriptions (Appels PocketBase)
+    log('PocketBase: Initialisation subscription calls...');
     pb.collection('calls').subscribe('*', async ({ action, record }) => {
-      if (action === 'create' && record.receiver_id === pbUser.id && record.status === 'incoming') {
+      log(`Call Event: ${action}`, record);
+      if (action === 'create' && record.receiver_id === pbUser.id && (record.status === 'incoming' || record.status === 'calling')) {
+        log('Appel entrant identifié !', record.id);
         handleIncomingCall(record, 'pb');
       }
       if (action === 'update' && (record.receiver_id === pbUser.id || record.caller_id === pbUser.id)) {
@@ -813,12 +853,15 @@ const AppContent: React.FC = () => {
     }, { expand: 'caller_id' });
 
     // Souscriptions (Appels Firebase)
-    const callsQuery = query(collection(db, 'calls'), where('receiverId', '==', pbUser.id), where('status', '==', 'outgoing'), limit(1));
+    const callsQuery = query(collection(db, 'calls'), where('receiverId', '==', pbUser.id), where('status', '==', 'incoming'), limit(1));
     const unsubscribeFirebaseCalls = onSnapshot(callsQuery, (snapshot) => {
       snapshot.docChanges().forEach(async (change) => {
-        if (change.type === 'added') {
+        if (change.type === 'added' || change.type === 'modified') {
           const record = change.doc.data();
-          handleIncomingCall({ id: change.doc.id, caller_id: record.callerId, receiver_id: record.receiverId, status: 'incoming', type: record.type, source: 'firebase' }, 'firebase');
+          if (record.status === 'incoming') {
+            log('Appel Firebase entrant identifié !', change.doc.id);
+            handleIncomingCall({ id: change.doc.id, caller_id: record.callerId, receiver_id: record.receiverId, status: 'incoming', type: record.type, source: 'firebase' }, 'firebase');
+          }
         }
       });
     });
@@ -987,6 +1030,7 @@ const AppContent: React.FC = () => {
   const handleAcceptCall = async () => {
     if (!incomingCall) return;
     log('User clicked Accept button in overlay');
+    stopIncomingRingtone();
     setIncomingCall((prev: any) => ({ ...prev, isProcessing: true }));
     handleAcceptCallFromNotification(incomingCall.id, incomingCall.source);
   };
@@ -994,6 +1038,7 @@ const AppContent: React.FC = () => {
   const handleDeclineCall = async () => {
     if (!incomingCall) return;
     log('User clicked Decline button in overlay');
+    stopIncomingRingtone();
     setIncomingCall((prev: any) => ({ ...prev, isProcessing: true }));
     handleDeclineCallFromNotification(incomingCall.id, incomingCall.source);
   };
@@ -1045,7 +1090,7 @@ const AppContent: React.FC = () => {
           caller_id: pbUser.id,
           receiver_id: receiver.id,
           type: 'video',
-          status: 'ongoing' // On le met direct en ongoing pour l'affichage, c'est le signaling qui fera le reste
+          status: 'incoming'
         });
 
         setActiveCall({
@@ -1056,7 +1101,7 @@ const AppContent: React.FC = () => {
             username: receiver.username, 
             avatar_url: receiver.avatar_url || DEFAULT_AVATAR 
           },
-          isOngoing: true
+          isOngoing: false // L'appel n'est pas encore "décroché"
         });
 
         log('Appel créé sur PocketBase:', record.id);
