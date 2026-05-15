@@ -29,6 +29,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
   const [isCustomAvatar, setIsCustomAvatar] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [showPhoneStep, setShowPhoneStep] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
 
@@ -176,6 +178,9 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
           });
           await pb.collection('users').authWithPassword(finalEmail, cleanPassword);
           console.log("Auth successful!");
+          
+          // Au lieu de fermer, on passe au numéro de téléphone
+          setShowPhoneStep(true);
         } catch (err: any) {
           console.error("Auth process error details:", err.data || err);
           let msg = err.message || "Erreur lors de la création du compte.";
@@ -363,6 +368,80 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
     return () => window.removeEventListener('message', handleMessage);
   }, [onClose]);
 
+  const handlePhoneStepSubmit = async (skip: boolean) => {
+    if (!skip && phoneNumber.trim()) {
+      setLoading(true);
+      try {
+        await pb.collection('users').update(pb.authStore.model.id, {
+          phone: phoneNumber.trim()
+        });
+      } catch (err) {
+        console.error("Error updating phone:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    onClose();
+  };
+
+  if (showPhoneStep) {
+    return (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[#1a1a1a] sm:bg-black/60 sm:backdrop-blur-sm p-4 overflow-y-auto">
+        <div className="w-full h-full sm:h-auto sm:max-w-md bg-[#1a1a1a] sm:border sm:border-white/10 sm:rounded-2xl shadow-2xl p-8 relative animate-in slide-in-from-right duration-500 flex flex-col justify-center">
+          <div className="text-center mb-10">
+            <div className="w-20 h-20 bg-white/5 text-white rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10">
+              <RefreshCw size={32} />
+            </div>
+            <h2 className="text-2xl font-bold text-white tracking-tight">Une dernière étape</h2>
+            <p className="text-slate-400 text-sm mt-3 leading-relaxed">
+              Ajoutez votre numéro pour aider vos amis à vous trouver et passer des appels natifs.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div className="relative">
+              <div className="flex items-center justify-between mb-2 px-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Numéro de téléphone <span className="text-white/40 ml-1">(recommandé)</span></label>
+              </div>
+              <input 
+                type="tel"
+                placeholder="+33 6 12 34 56 78"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-xl font-bold text-white placeholder:text-white/10 focus:ring-2 focus:ring-white/20 transition-all"
+              />
+              <p className="mt-4 text-[10px] text-slate-500 leading-relaxed text-center px-4 font-medium uppercase tracking-tighter">
+                Votre numéro ne sera jamais partagé publiquement.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 pt-4">
+              <button 
+                onClick={() => handlePhoneStepSubmit(false)}
+                disabled={loading}
+                className="w-full bg-white text-black font-black py-5 rounded-2xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 className="animate-spin" size={24} /> : (
+                  <>
+                    Suivant
+                    <ArrowRight size={20} />
+                  </>
+                )}
+              </button>
+              <button 
+                onClick={() => handlePhoneStepSubmit(true)}
+                disabled={loading}
+                className="w-full py-4 text-slate-500 hover:text-white text-xs font-black uppercase tracking-widest transition-colors"
+              >
+                Passer cette étape
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (showCamera) {
     return (
       <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black">
@@ -428,9 +507,9 @@ const AuthModal: React.FC<AuthModalProps> = ({ type, onClose, onTriggerVerifyWar
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-20 bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="w-full max-w-md bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl p-8 relative animate-in zoom-in duration-300">
-        <button onClick={onClose} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X size={24} /></button>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center sm:bg-black/60 sm:backdrop-blur-sm sm:p-4 overflow-y-auto bg-[#1a1a1a]">
+      <div className="w-full h-full sm:h-auto sm:max-w-md bg-[#1a1a1a] sm:border sm:border-white/10 sm:rounded-2xl shadow-2xl p-8 relative animate-in zoom-in duration-300 flex flex-col justify-center overflow-y-auto">
+        <button onClick={onClose} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors z-10"><X size={24} /></button>
         
         {step === 'form' ? (
           <>

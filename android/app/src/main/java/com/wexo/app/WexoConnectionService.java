@@ -1,0 +1,79 @@
+package com.wexo.app;
+
+import android.telecom.Connection;
+import android.telecom.ConnectionRequest;
+import android.telecom.ConnectionService;
+import android.telecom.PhoneAccountHandle;
+import android.telecom.TelecomManager;
+import android.os.Bundle;
+import android.util.Log;
+
+public class WexoConnectionService extends ConnectionService {
+    private static final String TAG = "WexoConnectionService";
+
+    @Override
+    public Connection onCreateIncomingConnection(PhoneAccountHandle connectionManagerPhoneAccount, ConnectionRequest request) {
+        Log.d(TAG, "onCreateIncomingConnection");
+        WexoConnection connection = new WexoConnection();
+        connection.setAddress(request.getAddress(), TelecomManager.PRESENTATION_ALLOWED);
+        connection.setVideoState(request.getVideoState());
+        connection.setInitializing();
+        
+        Bundle extras = request.getExtras();
+        if (extras != null) {
+            connection.putExtras(extras);
+        }
+
+        return connection;
+    }
+
+    @Override
+    public Connection onCreateOutgoingConnection(PhoneAccountHandle connectionManagerPhoneAccount, ConnectionRequest request) {
+        Log.d(TAG, "onCreateOutgoingConnection");
+        WexoConnection connection = new WexoConnection();
+        connection.setAddress(request.getAddress(), TelecomManager.PRESENTATION_ALLOWED);
+        connection.setVideoState(request.getVideoState());
+        connection.setDialing();
+        return connection;
+    }
+
+    @Override
+    public void onCreateIncomingConnectionFailed(PhoneAccountHandle connectionManagerPhoneAccount, ConnectionRequest request) {
+        Log.e(TAG, "onCreateIncomingConnectionFailed");
+    }
+
+    @Override
+    public void onCreateOutgoingConnectionFailed(PhoneAccountHandle connectionManagerPhoneAccount, ConnectionRequest request) {
+        Log.e(TAG, "onCreateOutgoingConnectionFailed");
+    }
+}
+
+class WexoConnection extends Connection {
+    @Override
+    public void onAnswer() {
+        Log.d("WexoConnection", "onAnswer");
+        setActive();
+        // Ici, on devra notifier la partie JS (Capacitor) que l'utilisateur a répondu
+    }
+
+    @Override
+    public void onDisconnect() {
+        Log.d("WexoConnection", "onDisconnect");
+        setDisconnected(new android.telecom.DisconnectCause(android.telecom.DisconnectCause.LOCAL));
+        destroy();
+    }
+
+    @Override
+    public void onAbort() {
+        Log.d("WexoConnection", "onAbort");
+        setDisconnected(new android.telecom.DisconnectCause(android.telecom.DisconnectCause.CANCELED));
+        destroy();
+    }
+
+    @Override
+    public void onReject() {
+        Log.d("WexoConnection", "onReject");
+        setDisconnected(new android.telecom.DisconnectCause(android.telecom.DisconnectCause.REJECTED));
+        destroy();
+    }
+}

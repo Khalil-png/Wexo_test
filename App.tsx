@@ -42,7 +42,10 @@ import { App as CapApp } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
 import { Device } from '@capacitor/device';
 import { NativeSettings, AndroidSettings } from 'capacitor-native-settings';
+import { registerPlugin } from '@capacitor/core';
 import { ErrorBoundary } from 'react-error-boundary';
+
+const WexoCallNative = registerPlugin<any>('WexoCallNative');
 
 // Native Plugins & Utils imports
 
@@ -164,6 +167,17 @@ const AppContent: React.FC = () => {
     });
 
     if (isNative()) {
+      try {
+        // Tentative de déclenchement d'un VRAI appel système (Telecom Manager)
+        await WexoCallNative.showIncomingCall({
+          name: callerName,
+          number: phoneNum || "Inconnu"
+        });
+        log("Appel natif Telecom Manager déclenché !");
+      } catch (nativeErr) {
+        log("Échec Telecom Manager, repli sur notifications standard", nativeErr);
+      }
+      
       try {
         await LocalNotifications.schedule({
           notifications: [{
