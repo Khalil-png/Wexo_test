@@ -8,7 +8,11 @@
     "notifications",
     "phone",
     "photos",
-    "audio"
+    "audio",
+    "contacts",
+    "storage",
+    "bluetooth",
+    "nearby-devices"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
