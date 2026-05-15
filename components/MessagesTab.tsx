@@ -403,7 +403,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        if (!isCanceledRecording.current && audioBlob.size > 0) {
+        // Minimum 500ms pour éviter les erreurs de tap accidentel
+        if (!isCanceledRecording.current && audioBlob.size > 1000) {
           await sendVoiceMessage(audioBlob);
         }
         stream.getTracks().forEach(track => track.stop());
@@ -2578,31 +2579,40 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 )}
                 <div className={`flex items-center gap-2 max-w-full ${isMobileDevice() ? 'h-[50px]' : 'h-[53px]'}`}>
                   {isRecordingVoice ? (
-                    <div className="flex-1 h-full flex items-center gap-4 bg-red-500/10 rounded-full px-6 border border-red-500/30 animate-in slide-in-from-bottom-2 duration-300">
+                    <div className={`flex-1 h-full flex items-center gap-4 ${isMobileDevice() ? 'bg-red-500/10 border-red-500/30' : 'bg-white/5 border-white/10'} rounded-full px-4 border animate-in slide-in-from-bottom-2 duration-300`}>
+                      {!isMobileDevice() && (
+                        <button 
+                          onClick={cancelRecordingVoice}
+                          className="p-2 text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      )}
+
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                        <span className="text-sm font-black text-red-500 mono tracking-tighter w-12 text-center">
+                        <div className={`w-2 h-2 rounded-full ${isMobileDevice() ? 'bg-red-500 animate-pulse' : 'bg-white/40'}`} />
+                        <span className={`text-sm font-black ${isMobileDevice() ? 'text-red-500' : 'text-white/60'} mono tracking-tighter w-14 text-center`}>
                           {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
                         </span>
                       </div>
                       
-                      <div className="flex-1 flex items-center gap-1 justify-center h-full">
+                      <div className="flex-1 flex items-center gap-1 justify-center h-full min-w-0">
                         {visualizerData.map((v, i) => (
                           <motion.div 
                             key={i}
-                            animate={{ height: Math.max(4, v * 30) }}
+                            animate={{ height: Math.max(4, v * (isMobileDevice() ? 30 : 20)) }}
                             transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                            className="w-1 bg-red-500/60 rounded-full"
+                            className={`w-1 ${isMobileDevice() ? 'bg-red-500/60' : 'bg-white/20'} rounded-full`}
                           />
                         ))}
                       </div>
 
                       {!isMobileDevice() && (
                         <button 
-                          onClick={cancelRecordingVoice}
-                          className="p-2 text-slate-400 hover:text-white transition-colors"
+                          onClick={stopRecordingVoice}
+                          className="h-9 w-9 bg-primary text-white rounded-full flex items-center justify-center transition-all active:scale-95 shadow-md flex-shrink-0"
                         >
-                          <Trash2 size={20} />
+                          <Send size={16} />
                         </button>
                       )}
                     </div>
@@ -2693,31 +2703,34 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                   </div>
                 )}
 
-                  {isMobileDevice() && (
-                    <motion.button 
-                      animate={isRecordingVoice ? { scale: 1.5 } : { scale: 1 }}
-                      onTouchStart={(e) => {
-                        if (!messageText.trim()) {
-                          e.preventDefault();
-                          startRecordingVoice();
-                        }
-                      }}
-                      onTouchEnd={(e) => {
-                        if (isRecordingVoice) {
-                          e.preventDefault();
-                          stopRecordingVoice();
-                        }
-                      }}
-                      onClick={() => {
-                        if (messageText.trim()) {
-                          sendMessage(messageText);
-                        }
-                      }}
-                      className={`${isRecordingVoice ? 'bg-red-500' : 'bg-primary'} text-white h-[50px] w-[50px] min-w-[50px] rounded-full flex items-center justify-center transition-all shadow-lg z-50`}
-                    >
-                      {messageText.trim() ? <Send size={24} /> : <Mic size={26} />}
-                    </motion.button>
-                  )}
+                      {isMobileDevice() && (
+                        <motion.button 
+                          animate={isRecordingVoice ? { scale: 2 } : { scale: 1 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                          onTouchStart={(e) => {
+                            if (!messageText.trim()) {
+                              e.preventDefault();
+                              if (navigator.vibrate) navigator.vibrate(80);
+                              startRecordingVoice();
+                            }
+                          }}
+                          onTouchEnd={(e) => {
+                            if (isRecordingVoice) {
+                              e.preventDefault();
+                              stopRecordingVoice();
+                            }
+                          }}
+                          onContextMenu={(e) => e.preventDefault()}
+                          onClick={() => {
+                            if (messageText.trim()) {
+                              sendMessage(messageText);
+                            }
+                          }}
+                          className={`${isRecordingVoice ? 'bg-red-500' : 'bg-primary'} text-white h-[50px] w-[50px] min-w-[50px] rounded-full flex items-center justify-center transition-all shadow-lg z-50`}
+                        >
+                          {messageText.trim() ? <Send size={24} /> : <Mic size={26} />}
+                        </motion.button>
+                      )}
                 </div>
               </div>
 

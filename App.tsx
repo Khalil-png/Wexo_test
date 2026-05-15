@@ -1066,8 +1066,13 @@ const AppContent: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Erreur lancement appel:", err);
+      // Aide spécifique pour PocketBase syntaxe
+      let msg = "Impossible de démarrer l'appel. Vérifiez les droits sur 'calls' (NAS).";
+      if (err.status === 403 || (err.message && err.message.includes('403'))) {
+        msg = "Erreur Droits NAS : Dans PocketBase, allez dans 'calls' > 'API Rules'. Videz les champs (ils doivent être gris/vides). N'écrivez pas 'all users' !";
+      }
       setNotification({ 
-        message: "Impossible de démarrer l'appel. Vérifiez les droits sur la collection 'calls' de votre NAS.", 
+        message: msg, 
         show: true 
       });
     }
