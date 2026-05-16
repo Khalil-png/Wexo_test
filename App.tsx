@@ -97,6 +97,8 @@ const AppContent: React.FC = () => {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceType | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeCall, setActiveCall] = useState<any>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
   const [callTimer, setCallTimer] = useState(0);
   const [callStatus, setCallStatus] = useState<'calling' | 'ongoing' | 'no_answer' | 'rejected'>('calling');
 
@@ -252,9 +254,58 @@ const AppContent: React.FC = () => {
     };
   }, [callTimer, callStatus, activeCall, pbUser?.id]);
 
-  const handleCallUpdate = (record: any) => {
+  const setupWebRTC = async (isCaller: boolean, callId: string) => {
+    log("Initialisation WebRTC...", { isCaller, callId });
+    const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    const pc = new RTCPeerConnection(configuration);
+    pcRef.current = pc;
+
+    pc.onicecandidate = async (event) => {
+      if (event.candidate) {
+        log("Candidat ICE généré");
+        // On pourrait les stocker dans une collection dédiée
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      log("WebRTC Connection State:", pc.connectionState);
+      if (pc.connectionState === 'connected') setCallStatus('ongoing');
+      if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) handleEndCall();
+    };
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      localStreamRef.current = stream;
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+    } catch (err) {
+      log("Erreur micro:", err);
+    }
+
+    pc.ontrack = (event) => {
+      log("Flux distant reçu !");
+      const remoteAudio = new Audio();
+      remoteAudio.srcObject = event.streams[0];
+      remoteAudio.play().catch(e => log("Erreur lecture audio distant", e));
+    };
+
+    return pc;
+  };
+
+  const handleCallUpdate = async (record: any) => {
     if (record.status === 'ongoing') {
-      log("Appel accepté par le destinataire !");
+      // Si on est l'appelant et qu'on reçoit une réponse WebRTC
+      if (record.answer && activeCall?.id === record.id && record.caller_id === pbUser?.id) {
+        if (pcRef.current && pcRef.current.signalingState === 'have-local-offer') {
+          try {
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(JSON.parse(record.answer)));
+            log("Réponse WebRTC appliquée sur l'appelant !");
+          } catch (err) {
+            log("Erreur setRemoteDescription (answer):", err);
+          }
+        }
+      }
+
+      log("Appel en cours...");
       setActiveCall((prev: any) => prev ? { ...prev, isOngoing: true } : null);
       setCallStatus('ongoing');
       return;
@@ -297,14 +348,25 @@ const AppContent: React.FC = () => {
   const handleAcceptCallFromNotification = async (callId: string, source: 'pb' | 'firebase' = 'pb') => {
     try {
       if (source === 'pb') {
-        const callerId = incomingCall?.caller_id;
-        await pb.collection('calls').update(callId, { status: 'ongoing' });
-        log('Call accepted (PB):', callId);
-        navigate(`/appel?id=${callId}&source=pb&caller=${callerId}`);
+        log('Acceptation appel PB via WebRTC...');
+        const fullCall = await pb.collection('calls').getOne(callId);
+        const pc = await setupWebRTC(false, callId);
+        
+        if (fullCall.offer) {
+          await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(fullCall.offer)));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          await pb.collection('calls').update(callId, { 
+            status: 'ongoing',
+            answer: JSON.stringify(answer)
+          });
+          log('Handshake WebRTC (Answer) envoyé');
+        }
+
+        setActiveCall({ ...fullCall, isOngoing: true });
       } else {
         await updateDoc(doc(db, 'calls', callId), { status: 'accepted', updatedAt: new Date().toISOString() });
         log('Call accepted (Firebase):', callId);
-        navigate(`/appel?id=${callId}&source=firebase`);
       }
       setIncomingCall(null);
       LocalNotifications.cancel({ notifications: [{ id: 999 }] });
@@ -759,6 +821,14 @@ const AppContent: React.FC = () => {
             if (result.receive === 'granted') {
               await PushNotifications.register();
             }
+            
+            // Requesting Phone Permissions if native
+            try {
+              log('Requesting Phone/Telecom permissions...');
+              await WexoCallNative.requestPermissions({ permissions: ['phone'] });
+            } catch (phoneErr) {
+              log('Error requesting phone permissions:', phoneErr);
+            }
           }
         } catch (e) { log('Notif permission error:', e); }
 
@@ -1126,6 +1196,17 @@ const AppContent: React.FC = () => {
         console.error("Error ending call:", err);
       }
     }
+    
+    // Fermeture WebRTC
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+
     setActiveCall(null);
   };
 
@@ -1138,57 +1219,53 @@ const AppContent: React.FC = () => {
     // Permission check for Native
     if (isNative()) {
       try {
-        const testStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        const testStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         testStream.getTracks().forEach(t => t.stop());
       } catch (err) {
         log("Permission denied for calls", err);
-        setNotification({ message: "Permissions micro/caméra refusées. Veuillez les activer dans les réglages.", show: true });
+        setNotification({ message: "Permissions micro refusées. Veuillez les activer.", show: true });
         return;
       }
     }
 
     try {
-      // Si on reçoit déjà un record complet (depuis CallsTab par exemple)
-      if (receiver.caller_id && receiver.status && receiver.id) {
-        setActiveCall(receiver);
-        return;
-      }
-
       log("Initiation d'un appel vers:", receiver.username);
       
-      // On tente d'abord PocketBase parce que l'utilisateur gère son propre serveur Synology
-      // et que le screenshot montre qu'il suit cette collection.
-      try {
-        const record = await pb.collection('calls').create({
-          caller_id: pbUser.id,
-          receiver_id: receiver.id,
-          type: 'video',
-          status: 'incoming'
-        });
+      const record = await pb.collection('calls').create({
+        caller_id: pbUser.id,
+        receiver_id: receiver.id,
+        type: 'voice',
+        status: 'ongoing' // On déclenche l'écoute côté receveur
+      });
 
-        setActiveCall({
-          id: record.id,
-          caller_id: pbUser.id,
-          receiver_id: receiver.id,
-          profiles: { 
-            username: receiver.username, 
-            avatar_url: receiver.avatar_url || DEFAULT_AVATAR 
-          },
-          isOngoing: false // L'appel n'est pas encore "décroché"
-        });
+      // WebRTC Offer
+      const pc = await setupWebRTC(true, record.id);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      
+      await pb.collection('calls').update(record.id, {
+        offer: JSON.stringify(offer)
+      });
 
-        if (isNative()) {
-          WexoCallNative.startOutgoingCall({
-            name: receiver.username,
-            number: receiver.phone || "Wexo"
-          }).catch((e: any) => log("Erreur startOutgoingCall:", e));
-        }
+      setActiveCall({
+        id: record.id,
+        caller_id: pbUser.id,
+        receiver_id: receiver.id,
+        profiles: { 
+          username: receiver.username, 
+          avatar_url: receiver.avatar_url || DEFAULT_AVATAR 
+        },
+        isOngoing: false
+      });
 
-        log('Appel créé sur PocketBase:', record.id);
-      } catch (pbErr: any) {
-        log('Erreur PocketBase Call Creation:', pbErr);
-        throw pbErr;
+      if (isNative()) {
+        WexoCallNative.startOutgoingCall({
+          name: receiver.username,
+          number: receiver.phone || "Wexo"
+        }).catch((e: any) => log("Erreur startOutgoingCall:", e));
       }
+
+      log('Appel créé avec Offre WebRTC:', record.id);
     } catch (err: any) {
       console.error("Erreur lancement appel:", err);
       // Aide spécifique pour PocketBase syntaxe

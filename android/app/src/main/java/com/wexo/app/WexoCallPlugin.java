@@ -13,9 +13,23 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import android.Manifest;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
 
-@CapacitorPlugin(name = "WexoCallNative")
+@CapacitorPlugin(
+    name = "WexoCallNative",
+    permissions = {
+        @Permission(
+            alias = "phone",
+            strings = {
+                Manifest.permission.READ_PHONE_STATE,
+                Manifest.permission.READ_PHONE_NUMBERS,
+                Manifest.permission.MANAGE_OWN_CALLS
+            }
+        )
+    }
+)
 public class WexoCallPlugin extends Plugin {
 
     private static final String TAG = "WexoCallPlugin";
@@ -76,6 +90,9 @@ public class WexoCallPlugin extends Plugin {
 
             Bundle extras = new Bundle();
             Uri uri = Uri.fromParts("tel", number, null);
+            
+            // CRUCIAL: Passer le PhoneAccountHandle dans les extras
+            extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, phoneAccountHandle);
             extras.putParcelable(TelecomManager.EXTRA_INCOMING_CALL_ADDRESS, uri);
             
             Bundle incomingCallExtras = new Bundle();
@@ -101,11 +118,18 @@ public class WexoCallPlugin extends Plugin {
             
             Bundle extras = new Bundle();
             Uri uri = Uri.fromParts("tel", number, null);
-            extras.putParcelable(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS, extras);
+            
+            // CRUCIAL: Associer l'appel sortant à notre compte
+            extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, phoneAccountHandle);
+            
+            Bundle outgoingExtras = new Bundle();
+            outgoingExtras.putString("caller_name", name);
+            extras.putBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS, outgoingExtras);
             
             telecomManager.placeCall(uri, extras);
             call.resolve();
         } catch (Exception e) {
+            Log.e(TAG, "Error placing outgoing call", e);
             call.reject(e.getMessage());
         }
     }
