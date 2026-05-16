@@ -15,19 +15,21 @@ interface ActiveCallOverlayProps {
     isOngoing?: boolean;
   };
   callTimer: number;
+  callStatus: 'calling' | 'ongoing' | 'no_answer' | 'rejected';
   onEndCall: () => void;
 }
 
 const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({ 
   activeCall, 
   callTimer, 
+  callStatus,
   onEndCall 
 }) => {
   const ringtoneRef = React.useRef<HTMLAudioElement | null>(null);
 
   React.useEffect(() => {
-    if (!activeCall.isOngoing) {
-      // Outgoing rigntone
+    if (callStatus === 'calling') {
+      // Outgoing ringtone
       ringtoneRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/1355/1355-preview.mp3");
       ringtoneRef.current.loop = true;
       ringtoneRef.current.play().catch(e => console.log("Sound error:", e));
@@ -43,7 +45,22 @@ const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
         ringtoneRef.current = null;
       }
     };
-  }, [activeCall.isOngoing]);
+  }, [callStatus]);
+
+  // Timeout logic: if calling for > 60s without answer
+  React.useEffect(() => {
+    if (callStatus === 'calling' && callTimer >= 60) {
+      // Logic handled in App.tsx would be better but we can trigger it here or show UI
+    }
+  }, [callTimer, callStatus]);
+
+  const getStatusText = () => {
+    if (callStatus === 'calling') return 'Appel en cours...';
+    if (callStatus === 'no_answer') return 'Aucune réponse';
+    if (callStatus === 'rejected') return 'Appel refusé';
+    if (callStatus === 'ongoing') return 'Appel en direct';
+    return 'Connexion...';
+  };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -52,7 +69,7 @@ const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[1001] bg-black flex flex-col items-center justify-between py-24 px-6 text-white overflow-hidden select-none">
+    <div className="fixed inset-0 z-[2000] bg-black flex flex-col items-center justify-between py-24 px-6 text-white overflow-hidden select-none">
       {/* Dynamic Background */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a] to-black opacity-90 animate-in fade-in duration-1000"></div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.05)_0%,transparent_70%)] pointer-events-none" />
@@ -81,7 +98,9 @@ const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
           {/* Animated rings */}
           <div className="absolute inset-[-10px] rounded-full border-2 border-emerald-500/20 animate-[ping_3s_linear_infinite]" />
           <div className="absolute inset-[-20px] rounded-full border border-emerald-500/10 animate-[ping_4s_linear_infinite_delay-1s]" />
-          <div className="absolute inset-0 rounded-full border-4 border-emerald-500 animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite] opacity-30" />
+          {callStatus === 'ongoing' && (
+            <div className="absolute inset-0 rounded-full border-4 border-emerald-500 animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite] opacity-30" />
+          )}
         </div>
         
         <h3 className="text-4xl font-black text-white mb-3 tracking-tight">
@@ -89,16 +108,26 @@ const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
         </h3>
         
         <div className="flex flex-col items-center gap-4">
-          <div className="flex items-center gap-2 px-4 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-            <span className="text-emerald-500 font-black tracking-widest text-[10px] uppercase">
-              {activeCall.isOngoing ? 'Appel en direct' : 'Connexion...'}
+          <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full ${
+            callStatus === 'rejected' || callStatus === 'no_answer' 
+              ? 'bg-red-500/10 border border-red-500/20' 
+              : 'bg-emerald-500/10 border border-emerald-500/20'
+          }`}>
+            <div className={`w-2 h-2 rounded-full animate-pulse ${
+              callStatus === 'rejected' || callStatus === 'no_answer' ? 'bg-red-500' : 'bg-emerald-500'
+            }`} />
+            <span className={`font-black tracking-widest text-[10px] uppercase ${
+              callStatus === 'rejected' || callStatus === 'no_answer' ? 'text-red-500' : 'text-emerald-500'
+            }`}>
+              {getStatusText()}
             </span>
           </div>
           
-          <p className="text-white/40 font-mono text-3xl tabular-nums tracking-wider mt-4">
-            {formatTime(callTimer)}
-          </p>
+          {callStatus === 'ongoing' && (
+            <p className="text-white/40 font-mono text-3xl tabular-nums tracking-wider mt-4">
+              {formatTime(callTimer)}
+            </p>
+          )}
         </div>
       </div>
 

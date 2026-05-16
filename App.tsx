@@ -98,6 +98,33 @@ const AppContent: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeCall, setActiveCall] = useState<any>(null);
   const [callTimer, setCallTimer] = useState(0);
+  const [callStatus, setCallStatus] = useState<'calling' | 'ongoing' | 'no_answer' | 'rejected'>('calling');
+
+  useEffect(() => {
+    if (activeCall && !activeCall.isOngoing) {
+      setCallStatus('calling');
+    } else if (activeCall?.isOngoing) {
+      setCallStatus('ongoing');
+    }
+  }, [activeCall?.isOngoing]);
+
+  useEffect(() => {
+    if (isNative()) {
+      const listener = (WexoCallNative as any).addListener('onCallAction', (data: { action: 'answer' | 'reject' | 'disconnect' }) => {
+        log("Action call native reçue:", data.action);
+        if (data.action === 'answer') {
+          handleAcceptCall();
+        } else if (data.action === 'reject' || data.action === 'disconnect') {
+          handleEndCall();
+        }
+      });
+
+      return () => {
+        listener.remove();
+      };
+    }
+  }, [activeCall]);
+
   const [showCamera, setShowCamera] = useState(false);
   const [isKeyboardActive, setIsKeyboardActive] = useState(false);
   const [isRinging, setIsRinging] = useState(false);
@@ -206,8 +233,40 @@ const AppContent: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    let timeout: any = null;
+    if (callStatus === 'calling' && activeCall && !activeCall.isOngoing) {
+      if (callTimer >= 60) {
+        setCallStatus('no_answer');
+        // On informe le destinataire que c'est manqué (si c'est nous qui appelons)
+        if (activeCall.caller_id === pbUser?.id) {
+          pb.collection('calls').update(activeCall.id, { status: 'missed' }).catch(log);
+        }
+        timeout = setTimeout(() => {
+          setActiveCall(null);
+        }, 1500);
+      }
+    }
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [callTimer, callStatus, activeCall, pbUser?.id]);
+
   const handleCallUpdate = (record: any) => {
+    if (record.status === 'ongoing') {
+      log("Appel accepté par le destinataire !");
+      setActiveCall((prev: any) => prev ? { ...prev, isOngoing: true } : null);
+      setCallStatus('ongoing');
+      return;
+    }
+
     if (['completed', 'missed', 'rejected', 'ended'].includes(record.status)) {
+      if (record.status === 'rejected' && activeCall?.id === record.id) {
+        setCallStatus('rejected');
+        setTimeout(() => setActiveCall(null), 1500);
+        return;
+      }
+
       if (incomingCall?.id === record.id) {
         if (record.status === 'missed' && record.receiver_id === pbUser.id) {
           LocalNotifications.cancel({ notifications: [{ id: 999 }] });
@@ -1118,6 +1177,13 @@ const AppContent: React.FC = () => {
           isOngoing: false // L'appel n'est pas encore "décroché"
         });
 
+        if (isNative()) {
+          WexoCallNative.startOutgoingCall({
+            name: receiver.username,
+            number: receiver.phone || "Wexo"
+          }).catch((e: any) => log("Erreur startOutgoingCall:", e));
+        }
+
         log('Appel créé sur PocketBase:', record.id);
       } catch (pbErr: any) {
         log('Erreur PocketBase Call Creation:', pbErr);
@@ -1482,6 +1548,7 @@ const AppContent: React.FC = () => {
           <ActiveCallOverlay 
             activeCall={activeCall}
             callTimer={callTimer}
+            callStatus={callStatus}
             onEndCall={handleEndCall}
           />
         )}

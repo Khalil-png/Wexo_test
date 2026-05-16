@@ -53,7 +53,10 @@ class WexoConnection extends Connection {
     public void onAnswer() {
         Log.d("WexoConnection", "onAnswer");
         setActive();
-        // Ici, on devra notifier la partie JS (Capacitor) que l'utilisateur a répondu
+        WexoCallPlugin plugin = WexoCallPlugin.getInstance();
+        if (plugin != null) {
+            plugin.onNativeCallAnswered();
+        }
     }
 
     @Override
@@ -61,6 +64,10 @@ class WexoConnection extends Connection {
         Log.d("WexoConnection", "onDisconnect");
         setDisconnected(new android.telecom.DisconnectCause(android.telecom.DisconnectCause.LOCAL));
         destroy();
+        WexoCallPlugin plugin = WexoCallPlugin.getInstance();
+        if (plugin != null) {
+            plugin.onNativeCallDisconnected();
+        }
     }
 
     @Override
@@ -68,6 +75,10 @@ class WexoConnection extends Connection {
         Log.d("WexoConnection", "onAbort");
         setDisconnected(new android.telecom.DisconnectCause(android.telecom.DisconnectCause.CANCELED));
         destroy();
+        WexoCallPlugin plugin = WexoCallPlugin.getInstance();
+        if (plugin != null) {
+            plugin.onNativeCallDisconnected();
+        }
     }
 
     @Override
@@ -75,5 +86,9 @@ class WexoConnection extends Connection {
         Log.d("WexoConnection", "onReject");
         setDisconnected(new android.telecom.DisconnectCause(android.telecom.DisconnectCause.REJECTED));
         destroy();
+        WexoCallPlugin plugin = WexoCallPlugin.getInstance();
+        if (plugin != null) {
+            plugin.onNativeCallRejected();
+        }
     }
 }

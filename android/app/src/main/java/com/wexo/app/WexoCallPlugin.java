@@ -20,9 +20,15 @@ public class WexoCallPlugin extends Plugin {
 
     private static final String TAG = "WexoCallPlugin";
     private PhoneAccountHandle phoneAccountHandle;
+    private static WexoCallPlugin instance;
+
+    public static WexoCallPlugin getInstance() {
+        return instance;
+    }
 
     @Override
     public void load() {
+        instance = this;
         registerPhoneAccount();
     }
 
@@ -39,6 +45,24 @@ public class WexoCallPlugin extends Plugin {
 
         telecomManager.registerPhoneAccount(phoneAccount);
         Log.d(TAG, "PhoneAccount registered");
+    }
+
+    public void onNativeCallAnswered() {
+        JSObject ret = new JSObject();
+        ret.put("action", "answer");
+        notifyListeners("onCallAction", ret);
+    }
+
+    public void onNativeCallRejected() {
+        JSObject ret = new JSObject();
+        ret.put("action", "reject");
+        notifyListeners("onCallAction", ret);
+    }
+
+    public void onNativeCallDisconnected() {
+        JSObject ret = new JSObject();
+        ret.put("action", "disconnect");
+        notifyListeners("onCallAction", ret);
     }
 
     @PluginMethod
@@ -62,6 +86,26 @@ public class WexoCallPlugin extends Plugin {
             call.resolve();
         } catch (Exception e) {
             Log.e(TAG, "Error adding incoming call", e);
+            call.reject(e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void startOutgoingCall(PluginCall call) {
+        String name = call.getString("name", "Inconnu");
+        String number = call.getString("number", "0000");
+
+        try {
+            Context context = getContext();
+            TelecomManager telecomManager = (TelecomManager) context.getSystemService(Context.TELECOM_SERVICE);
+            
+            Bundle extras = new Bundle();
+            Uri uri = Uri.fromParts("tel", number, null);
+            extras.putParcelable(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS, extras);
+            
+            telecomManager.placeCall(uri, extras);
+            call.resolve();
+        } catch (Exception e) {
             call.reject(e.getMessage());
         }
     }
