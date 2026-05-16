@@ -103,6 +103,18 @@ const AppContent: React.FC = () => {
   const [callStatus, setCallStatus] = useState<'calling' | 'ongoing' | 'no_answer' | 'rejected'>('calling');
 
   useEffect(() => {
+    if (isNative()) {
+      WexoCallNative.checkAndRequestPermissions()
+        .then((result: any) => {
+          log("Permissions d'appel vérifiées:", result);
+        })
+        .catch((err: any) => {
+          log("Erreur lors de la demande de permissions d'appel:", err);
+        });
+    }
+  }, []);
+
+  useEffect(() => {
     if (activeCall && !activeCall.isOngoing) {
       setCallStatus('calling');
     } else if (activeCall?.isOngoing) {

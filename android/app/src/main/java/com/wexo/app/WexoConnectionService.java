@@ -24,6 +24,11 @@ public class WexoConnectionService extends ConnectionService {
             connection.putExtras(extras);
         }
 
+        WexoCallPlugin plugin = WexoCallPlugin.getInstance();
+        if (plugin != null) {
+            plugin.setCurrentConnection(connection);
+        }
+
         return connection;
     }
 
@@ -37,6 +42,7 @@ public class WexoConnectionService extends ConnectionService {
         
         WexoCallPlugin plugin = WexoCallPlugin.getInstance();
         if (plugin != null) {
+            plugin.setCurrentConnection(connection);
             String name = "Appel en cours";
             Bundle extras = request.getExtras();
             if (extras != null && extras.getBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS) != null) {

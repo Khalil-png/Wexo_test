@@ -43,9 +43,14 @@ public class WexoCallPlugin extends Plugin {
     private PhoneAccountHandle phoneAccountHandle;
     private static WexoCallPlugin instance;
     private String currentCallId;
+    private WexoConnection currentConnection;
 
     public static WexoCallPlugin getInstance() {
         return instance;
+    }
+
+    public void setCurrentConnection(WexoConnection connection) {
+        this.currentConnection = connection;
     }
 
     @Override
@@ -54,11 +59,27 @@ public class WexoCallPlugin extends Plugin {
         registerPhoneAccount();
     }
 
+    @PluginMethod
+    public void checkAndRequestPermissions(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            String[] permissions = {
+                Manifest.permission.READ_PHONE_STATE,
+                Manifest.permission.READ_PHONE_NUMBERS,
+                Manifest.permission.MANAGE_OWN_CALLS,
+                Manifest.permission.RECORD_AUDIO
+            };
+            requestPermissions(call);
+        } else {
+            call.resolve();
+        }
+    }
+
     private void registerPhoneAccount() {
         Context context = getContext();
         TelecomManager telecomManager = (TelecomManager) context.getSystemService(Context.TELECOM_SERVICE);
+        if (telecomManager == null) return;
+
         ComponentName componentName = new ComponentName(context, WexoConnectionService.class);
-        
         phoneAccountHandle = new PhoneAccountHandle(componentName, "WexoCallAccount");
 
         PhoneAccount phoneAccount = PhoneAccount.builder(phoneAccountHandle, "Wexo")
@@ -69,7 +90,14 @@ public class WexoCallPlugin extends Plugin {
         Log.d(TAG, "PhoneAccount registered");
     }
 
+    private static final int NOTIFICATION_ID = 2026;
+    private static final String CHANNEL_ID = "wexo_calls_channel";
+
     public void onNativeCallAnswered(String name) {
+        cancelNotification();
+        if (currentConnection != null) {
+            currentConnection.setActive();
+        }
         startForegroundService(name);
         JSObject ret = new JSObject();
         ret.put("action", "answer");
@@ -78,10 +106,43 @@ public class WexoCallPlugin extends Plugin {
     }
 
     public void onNativeCallRejected() {
+        cancelNotification();
+        if (currentConnection != null) {
+            currentConnection.setDisconnected(new android.telecom.DisconnectCause(android.telecom.DisconnectCause.REJECTED));
+            currentConnection.destroy();
+            currentConnection = null;
+        }
         stopForegroundService();
         JSObject ret = new JSObject();
         ret.put("action", "reject");
         notifyListeners("onCallAction", ret);
+    }
+
+    private void cancelNotification() {
+        NotificationManager notificationManager = (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
+        if (notificationManager != null) {
+            notificationManager.cancel(NOTIFICATION_ID);
+        }
+    }
+
+    @PluginMethod
+    public void answerCall(PluginCall call) {
+        if (currentConnection != null) {
+            currentConnection.onAnswer();
+            call.resolve();
+        } else {
+            call.reject("No active connection to answer");
+        }
+    }
+
+    @PluginMethod
+    public void rejectCall(PluginCall call) {
+        if (currentConnection != null) {
+            currentConnection.onReject();
+            call.resolve();
+        } else {
+            call.reject("No active connection to reject");
+        }
     }
 
     public void onNativeCallDisconnected() {
@@ -123,7 +184,7 @@ public class WexoCallPlugin extends Plugin {
             // Create notification channel
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-                NotificationChannel channel = new NotificationChannel("wexo_calls_channel", "Appels entrants", NotificationManager.IMPORTANCE_HIGH);
+                NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Appels entrants", NotificationManager.IMPORTANCE_HIGH);
                 channel.setImportance(NotificationManager.IMPORTANCE_HIGH);
                 channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
                 if (notificationManager != null) {
@@ -138,7 +199,7 @@ public class WexoCallPlugin extends Plugin {
             PendingIntent fullScreenPendingIntent = PendingIntent.getActivity(
                     context, 0, fullScreenIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, "wexo_calls_channel")
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(android.R.drawable.ic_menu_call)
                     .setContentTitle(name)
                     .setContentText("Appel entrant...")
@@ -151,7 +212,7 @@ public class WexoCallPlugin extends Plugin {
 
             NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (notificationManager != null) {
-                notificationManager.notify(2026, builder.build());
+                notificationManager.notify(NOTIFICATION_ID, builder.build());
             }
 
             Bundle extras = new Bundle();
