@@ -34,6 +34,17 @@ public class WexoConnectionService extends ConnectionService {
         connection.setAddress(request.getAddress(), TelecomManager.PRESENTATION_ALLOWED);
         connection.setVideoState(request.getVideoState());
         connection.setDialing();
+        
+        WexoCallPlugin plugin = WexoCallPlugin.getInstance();
+        if (plugin != null) {
+            String name = "Appel en cours";
+            Bundle extras = request.getExtras();
+            if (extras != null && extras.getBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS) != null) {
+                 name = extras.getBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS).getString("caller_name", "Appel en cours");
+            }
+            plugin.startForegroundService(name);
+        }
+        
         return connection;
     }
 
@@ -55,7 +66,17 @@ class WexoConnection extends Connection {
         setActive();
         WexoCallPlugin plugin = WexoCallPlugin.getInstance();
         if (plugin != null) {
-            plugin.onNativeCallAnswered();
+            String name = "Appel en cours";
+            Bundle extras = getExtras();
+            if (extras != null) {
+                Bundle incomingExtras = extras.getBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS);
+                if (incomingExtras != null) {
+                    name = incomingExtras.getString("caller_name", "Appel en cours");
+                } else {
+                    name = extras.getString("caller_name", "Appel en cours");
+                }
+            }
+            plugin.onNativeCallAnswered(name);
         }
     }
 

@@ -31,7 +31,7 @@ import { generateSnowflake } from '@/utils/snowflake';
 import { AnimatePresence } from 'framer-motion';
 import { isNative, getApiUrl } from '@/utils/api';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
-import { db, auth, getMessagingInstance } from '@/services/firebase';
+import { db, auth, getMessagingInstance, handleFirestoreError, OperationType } from '@/services/firebase';
 import { getMessaging, getToken as getFCMToken, onMessage } from 'firebase/messaging';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, getDoc, addDoc, serverTimestamp as firestoreServerTimestamp } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
@@ -112,10 +112,14 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     if (isNative()) {
-      const listener = (WexoCallNative as any).addListener('onCallAction', (data: { action: 'answer' | 'reject' | 'disconnect' }) => {
-        log("Action call native reçue:", data.action);
+      const listener = (WexoCallNative as any).addListener('onCallAction', (data: { action: 'answer' | 'reject' | 'disconnect', callId?: string }) => {
+        log("Action call native reçue:", data.action, data.callId);
         if (data.action === 'answer') {
-          handleAcceptCall();
+          if (data.callId) {
+            handleAcceptCallFromNotification(data.callId);
+          } else {
+            handleAcceptCall();
+          }
         } else if (data.action === 'reject' || data.action === 'disconnect') {
           handleEndCall();
         }
@@ -200,7 +204,8 @@ const AppContent: React.FC = () => {
         // Tentative de déclenchement d'un VRAI appel système (Telecom Manager)
         await WexoCallNative.showIncomingCall({
           name: callerName,
-          number: phoneNum || "Inconnu"
+          number: phoneNum || "Inconnu",
+          callId: record.id
         });
         log("Appel natif Telecom Manager déclenché !");
       } catch (nativeErr) {
@@ -219,7 +224,6 @@ const AppContent: React.FC = () => {
             smallIcon: 'ic_stat_phone',
             extra: { type: 'call', callId: record.id, source: source },
             actionTypeId: 'INCOMING_CALL',
-            importance: 5,
             sound: 'ringtone.mp3',
             ongoing: true
           }]
@@ -365,7 +369,7 @@ const AppContent: React.FC = () => {
 
         setActiveCall({ ...fullCall, isOngoing: true });
       } else {
-        await updateDoc(doc(db, 'calls', callId), { status: 'accepted', updatedAt: new Date().toISOString() });
+        await updateDoc(doc(db, 'calls', callId), { status: 'accepted', updatedAt: new Date().toISOString() }).catch(err => handleFirestoreError(err, OperationType.UPDATE, `calls/${callId}`));
         log('Call accepted (Firebase):', callId);
       }
       setIncomingCall(null);
@@ -381,7 +385,7 @@ const AppContent: React.FC = () => {
         await pb.collection('calls').update(callId, { status: 'rejected' });
         log('Call rejected (PB):', callId);
       } else {
-        await updateDoc(doc(db, 'calls', callId), { status: 'rejected', updatedAt: new Date().toISOString() });
+        await updateDoc(doc(db, 'calls', callId), { status: 'rejected', updatedAt: new Date().toISOString() }).catch(err => handleFirestoreError(err, OperationType.UPDATE, `calls/${callId}`));
         log('Call rejected (Firebase):', callId);
       }
       setIncomingCall(null);
@@ -675,7 +679,7 @@ const AppContent: React.FC = () => {
         }
       });
     }, (error) => {
-      console.error('Firestore listener error:', error);
+      handleFirestoreError(error, OperationType.GET, 'notifications');
     });
 
     return () => unsubscribe();
@@ -996,17 +1000,19 @@ const AppContent: React.FC = () => {
     }, { expand: 'caller_id' });
 
     // Souscriptions (Appels Firebase)
-    const callsQuery = query(collection(db, 'calls'), where('receiverId', '==', pbUser.id), where('status', '==', 'incoming'), limit(1));
+    const callsQuery = query(collection(db, 'calls'), where('receiver_id', '==', pbUser.id), where('status', '==', 'incoming'), limit(1));
     const unsubscribeFirebaseCalls = onSnapshot(callsQuery, (snapshot) => {
       snapshot.docChanges().forEach(async (change) => {
         if (change.type === 'added' || change.type === 'modified') {
           const record = change.doc.data();
           if (record.status === 'incoming') {
             log('Appel Firebase entrant identifié !', change.doc.id);
-            handleIncomingCall({ id: change.doc.id, caller_id: record.callerId, receiver_id: record.receiverId, status: 'incoming', type: record.type, source: 'firebase' }, 'firebase');
+            handleIncomingCall({ id: change.doc.id, caller_id: record.caller_id, receiver_id: record.receiver_id, status: 'incoming', type: record.type, source: 'firebase' }, 'firebase');
           }
         }
       });
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'calls');
     });
 
     return () => {
@@ -1031,6 +1037,8 @@ const AppContent: React.FC = () => {
              setActiveCall(null);
            }
          }
+       }, (error) => {
+         handleFirestoreError(error, OperationType.GET, `calls/${activeCall.id}`);
        });
     }
 

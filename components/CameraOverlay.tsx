@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Camera, Share2, MessageSquare, Flame, Play, Layout, Loader2, RefreshCw, Video, StopCircle, Zap, Wand2, Image as ImageIcon, Settings2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { pb } from '@/services/pocketbaseService';
 
 interface CameraOverlayProps {
   onClose: () => void;

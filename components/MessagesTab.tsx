@@ -9,7 +9,7 @@ import {
   MessageCircle, Info, UserPlus, Clock, 
   MessageSquarePlus, Users, User, Mic, Paperclip, AlertCircle, Video, Sparkles, Camera, Phone,
   Dog, Utensils, Trophy, Car, Lightbulb, Heart as HeartIcon, Flag,
-  Download, File, FileText, Archive, Ban, Copy
+  Download, File as FileIcon, FileText, Archive, Ban, Copy
 } from 'lucide-react';
 import VideoPlayer from './VideoPlayer';
 import { DEFAULT_AVATAR } from '../constants';
@@ -294,7 +294,7 @@ const getFileIcon = (type: string) => {
   if (type.startsWith('image/')) return <Image size={24} />;
   if (type.includes('zip') || type.includes('rar') || type.includes('archive')) return <Archive size={24} />;
   if (type.includes('pdf')) return <FileText size={24} />;
-  return <File size={24} />;
+  return <FileIcon size={24} />;
 };
 
 const truncateFileName = (name: string, limit: number = 25) => {

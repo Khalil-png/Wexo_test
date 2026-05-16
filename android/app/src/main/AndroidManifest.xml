@@ -48,6 +48,28 @@
                 <action android:name="android.telecom.ConnectionService" />
             </intent-filter>
         </service>
+
+        <service 
+            android:name=".CallForegroundService"
+            android:foregroundServiceType="phoneCall"
+            android:exported="false">
+        </service>
+
+        <receiver android:name=".CallActionReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="ACTION_HANGUP" />
+            </intent-filter>
+        </receiver>
+
+        <activity
+            android:name=".IncomingCallActivity"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:showOnLockScreen="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:screenOrientation="portrait">
+        </activity>
     </application>
 
     <!-- Permissions -->

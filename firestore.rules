@@ -1,14 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
+    // ---------------------------------------------------------
+    // 1. GLOBAL SAFETY NET
+    // ---------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper functions
+    // ---------------------------------------------------------
+    // 2. PRIMITIVES & HELPERS
+    // ---------------------------------------------------------
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
     }
 
     function isValidId(id) {
@@ -23,74 +35,171 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // Notifications
-    match /notifications/{notificationId} {
-      function isValidNotification(data) {
-        return data.user_id is string && 
-               data.user_id.size() <= 128 &&
-               data.type in ['message', 'friend_request', 'call', 'like'] &&
-               data.sender_id is string &&
-               data.sender_id.size() <= 128 &&
-               data.status in ['unread', 'read', 'pending'];
-      }
+    // ---------------------------------------------------------
+    // 3. VALIDATION HELPERS (One per Entity)
+    // ---------------------------------------------------------
 
-      // On autorise la lecture si c'est pour l'utilisateur
-      // Note: On utilise l'ID PocketBase passé dans les champs pour filtrer
-      // Comme on utilise signInAnonymously, on ne peut pas facilement vérifier l'UID Firebase contre le user_id PocketBase sans session partagée
-      // Pour ce prototype, on autorise la lecture si le user_id correspond (le client filtre déjà)
-      allow read: if isSignedIn() && resource.data.user_id != null;
-      
-      // Autoriser la création par n'importe quel utilisateur connecté (anonyme ou non)
-      allow create: if isSignedIn() && isValidNotification(incoming());
-      
-      // Mise à jour (ex: marquer comme lu)
-      allow update: if isSignedIn() && 
-                   incoming().diff(existing()).affectedKeys().hasOnly(['status']);
-                   
-      allow delete: if isSignedIn();
+    function isValidUserProfile(data) {
+      return data.username is string && data.username.size() >= 1 && data.username.size() <= 50
+        && (data.get('username', '') != '')
+        && (!data.diff({}).affectedKeys().hasAny(['role', 'is_verified']))
+        && (data.get('id', '') == request.auth.uid || !data.keys().hasAll(['id']));
     }
 
-    // Profiles
+    function isValidPresence(data) {
+      return data.status in ['online', 'offline']
+        && data.last_seen is timestamp
+        && data.user_id == request.auth.uid;
+    }
+
+    function isValidTyping(data) {
+      return data.is_typing is bool
+        && data.user_id == request.auth.uid
+        && data.chat_id is string
+        && data.last_update is timestamp;
+    }
+
+    function isValidPost(data) {
+      return data.user_id == request.auth.uid
+        && data.content is string && data.content.size() <= 5000
+        && (data.get('media_type', 'post') in ['image', 'video', 'post'])
+        && data.created_at == request.time;
+    }
+
+    function isValidCall(data) {
+      return (data.caller_id == request.auth.uid || data.receiver_id == request.auth.uid)
+        && data.status in ['incoming', 'outgoing', 'missed', 'completed', 'ongoing']
+        && data.created_at is timestamp;
+    }
+
+    function isValidMessage(data) {
+      return data.sender_id == request.auth.uid
+        && data.created_at == request.time
+        && data.text is string && data.text.size() <= 10000;
+    }
+
+    function isValidNotification(data) {
+      return data.status in ['unread', 'read']
+        && data.type in ['message', 'friend_request', 'call']
+        && data.created_at is timestamp;
+    }
+
+    // ---------------------------------------------------------
+    // 4. COLLECTION MATCH BLOCKS
+    // ---------------------------------------------------------
+
+    // User Profiles
     match /profiles/{userId} {
-      allow read: if true;
-      allow write: if isSignedIn(); 
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update: if isOwner(userId) && isValidUserProfile(incoming());
     }
 
-    // Appels (Calls)
-    match /calls/{callId} {
-      function isValidCall(data) {
-        return data.callerId is string && 
-               data.receiverId is string &&
-               data.status in ['outgoing', 'incoming', 'accepted', 'rejected', 'ended'];
-      }
-
-      // Un utilisateur peut lire un appel s'il en est l'expéditeur ou le destinataire
-      allow read: if isSignedIn() && (
-        resource.data.callerId != null || resource.data.receiverId != null
-      );
-      
-      // Le serveur crée l'appel (Admin bypass), mais on autorise aussi le client
-      // pour plus de flexibilité si vous voulez bypasser le serveur plus tard
-      allow create: if isSignedIn() && isValidCall(incoming());
-      
-      // Mise à jour de l'état (ex: accepter ou rejeter l'appel)
-      allow update: if isSignedIn() && (
-        incoming().diff(existing()).affectedKeys().hasAny(['status', 'lastUpdate'])
-      );
-      
-      allow delete: if isSignedIn();
-    }
-
-    // Présence
+    // User Presence
     match /presence/{userId} {
-      allow read: if true;
-      allow write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) && isValidPresence(incoming());
     }
 
     // Typing Indicators
     match /typing/{typingId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidTyping(incoming()) && (isOwner(incoming().user_id));
+    }
+
+    // Social Media Posts
+    match /posts/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidPost(incoming());
+      allow update: if isSignedIn() && isOwner(existing().user_id) && isValidPost(incoming());
+      allow delete: if isSignedIn() && isOwner(existing().user_id);
+    }
+
+    // Calls
+    match /calls/{callId} {
+      allow read: if isSignedIn() && (existing().caller_id == request.auth.uid || existing().receiver_id == request.auth.uid);
+      allow create: if isSignedIn() && (incoming().caller_id == request.auth.uid) && isValidCall(incoming());
+      allow update: if isSignedIn() && (existing().caller_id == request.auth.uid || existing().receiver_id == request.auth.uid) && isValidCall(incoming());
+    }
+
+    // Direct Messages
+    match /messages/{messageId} {
+      allow read: if isSignedIn() && (existing().sender_id == request.auth.uid || existing().receiver_id == request.auth.uid);
+      allow create: if isSignedIn() && (incoming().sender_id == request.auth.uid) && isValidMessage(incoming());
+      allow update: if isSignedIn() && (existing().sender_id == request.auth.uid) && isValidMessage(incoming()) 
+                     && incoming().diff(existing()).affectedKeys().hasOnly(['text', 'is_deleted_for_everyone']);
+      allow delete: if isSignedIn() && (existing().sender_id == request.auth.uid);
+    }
+
+    // Friendships
+    match /friendships/{friendshipId} {
+      allow read: if isSignedIn() && (existing().requester_id == request.auth.uid || existing().receiver_id == request.auth.uid);
+      allow create: if isSignedIn() && (incoming().requester_id == request.auth.uid);
+      allow update: if isSignedIn() && (existing().requester_id == request.auth.uid || existing().receiver_id == request.auth.uid);
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (existing().user_id == request.auth.uid);
+      allow write: if isSignedIn() && (incoming().user_id == request.auth.uid || existing().user_id == request.auth.uid);
+    }
+
+    // Video Views
+    match /video_views/{viewId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (incoming().user_id == request.auth.uid);
+    }
+
+    // App Config
+    match /settings/app_config {
       allow read: if true;
+      allow write: if false; // Only via Admin (not implemented here)
+    }
+
+    // Interaction Collections (Likes, Comments, etc.)
+    match /post_likes/{likeId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (incoming().user_id == request.auth.uid);
+    }
+    
+    match /post_comments/{commentId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (incoming().user_id == request.auth.uid);
+    }
+
+    match /video_likes/{likeId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (incoming().user_id == request.auth.uid);
+    }
+
+    match /video_comments/{commentId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (incoming().user_id == request.auth.uid);
+    }
+
+    match /subscriptions/{subId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (incoming().follower_id == request.auth.uid);
+    }
+
+    match /workspaces/{workspaceId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (incoming().owner_id == request.auth.uid || existing().owner_id == request.auth.uid);
+    }
+
+    match /workspace_members/{memberId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn(); // Simplified, should check workspace ownership
+    }
+    
+    match /workspace_projects/{projectId} {
+      allow read: if isSignedIn();
       allow write: if isSignedIn();
+    }
+
+    match /reports/{reportId} {
+      allow create: if isSignedIn() && (incoming().reporter_id == request.auth.uid);
+      allow read: if false; // Only admins
     }
   }
 }
