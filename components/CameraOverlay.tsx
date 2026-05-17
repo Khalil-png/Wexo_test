@@ -321,7 +321,7 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
       </div>
 
       {/* Interface Overlay */}
-      <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-4 pb-12 z-50">
+      <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-4 pb-10 z-50">
         
         {!capturedImage && !capturedVideo ? (
           <div className="flex flex-col items-center gap-6 w-full">
@@ -355,9 +355,17 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
               )}
             </div>
 
-            {/* 2. Main Action Bar (Capture alone centered) */}
-            <div className="flex items-center justify-center w-full max-w-[360px] px-6 z-10 mb-4">
-              {/* CENTER CAPTURE - 1.2x larger than wand */}
+            {/* 2. Main Action Bar (Wand | Capture | Refresh) */}
+            <div className="flex items-center justify-between w-full max-w-[360px] px-8 z-10 mb-4">
+              {/* Filter Button */}
+              <button 
+                onClick={() => setShowFilters(!showFilters)}
+                className="w-14 h-14 rounded-full flex items-center justify-center transition-all bg-zinc-900/40 backdrop-blur-3xl border border-white/10 active:scale-90"
+              >
+                <Wand2 size={26} className="text-white" />
+              </button>
+
+              {/* CENTER CAPTURE */}
               <div className="relative flex items-center justify-center">
                 {mode === 'photo' ? (
                   <button 
@@ -375,6 +383,14 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
                   </button>
                 )}
               </div>
+
+              {/* Refresh Button */}
+              <button 
+                onClick={switchCamera}
+                className="w-14 h-14 rounded-full bg-zinc-900/40 backdrop-blur-3xl border border-white/10 flex items-center justify-center text-white active:scale-90"
+              >
+                <RefreshCw size={26} className={loading ? 'animate-spin' : ''} />
+              </button>
             </div>
 
             {/* 3. Bottom Row (Mode Switcher) */}
@@ -398,7 +414,7 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
             </div>
 
             {/* Black background zone for controls (Zone noire sous les boutons de mode uniquement) */}
-            <div className="absolute inset-x-0 bottom-0 h-28 bg-black -z-10" />
+            <div className="absolute inset-x-0 bottom-0 h-32 bg-black -z-10" />
           </div>
         ) : (
           /* Captured Actions Menu */
