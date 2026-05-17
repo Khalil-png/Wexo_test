@@ -420,22 +420,20 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
         )}
 
         {(capturedImage || capturedVideo) && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button 
               onClick={handleDownload}
               className="w-10 h-10 bg-black/40 backdrop-blur-xl rounded-full text-white flex items-center justify-center active:scale-95 transition-all"
             >
               <Download size={20} />
             </button>
+            <div className="w-10 h-10 bg-black/40 backdrop-blur-xl rounded-full text-white flex items-center justify-center font-bold text-xs">
+              HD
+            </div>
             <button 
               className="w-10 h-10 bg-black/40 backdrop-blur-xl rounded-full text-white flex items-center justify-center active:scale-95 transition-all"
             >
               <Crop size={20} />
-            </button>
-            <button 
-              className="w-10 h-10 bg-black/40 backdrop-blur-xl rounded-full text-white flex items-center justify-center active:scale-95 transition-all"
-            >
-              <RotateCcw size={20} />
             </button>
             <button 
               onClick={() => setEditorMode(editorMode === 'sticker' ? 'none' : 'sticker')}
