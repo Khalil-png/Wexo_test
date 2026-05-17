@@ -393,36 +393,28 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
               </button>
             </div>
 
-            {/* 3. Bottom Row (Settings | Mode Switer | Layout) */}
-            <div className="flex items-center justify-between w-full px-8 mt-2 z-10">
-              <button className="w-12 h-12 rounded-full bg-zinc-900/60 flex items-center justify-center border border-white/10 active:scale-90">
-                <Settings2 size={24} className="text-white/80" />
-              </button>
-
-              <div className="flex items-center bg-zinc-900/80 backdrop-blur-2xl p-1 rounded-full border border-white/10 gap-1 shadow-2xl">
+            {/* 3. Bottom Row (Mode Switer) */}
+            <div className="flex items-center justify-center w-full px-8 mt-4 z-10">
+              <div className="flex items-center bg-zinc-900/80 backdrop-blur-2xl p-1.5 rounded-full border border-white/10 gap-1 shadow-2xl">
                 <button 
                   onClick={() => setMode('photo')}
-                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${mode === 'photo' ? 'bg-white text-black shadow-xl' : 'text-white/40'}`}
+                  className={`flex items-center gap-2 px-8 py-3 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${mode === 'photo' ? 'bg-white text-black shadow-xl scale-105' : 'text-white/40 hover:text-white/60'}`}
                 >
                   <Camera size={14} fill={mode === 'photo' ? 'black' : 'none'} />
                   <span>Photo</span>
                 </button>
                 <button 
                   onClick={() => setMode('video')}
-                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${mode === 'video' ? 'bg-white text-black shadow-xl' : 'text-white/40'}`}
+                  className={`flex items-center gap-2 px-8 py-3 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${mode === 'video' ? 'bg-white text-black shadow-xl scale-105' : 'text-white/40 hover:text-white/60'}`}
                 >
                   <Video size={14} fill={mode === 'video' ? 'black' : 'none'} />
                   <span>Vidéo</span>
                 </button>
               </div>
-
-              <button className="w-12 h-12 rounded-full bg-zinc-900/60 flex items-center justify-center border border-white/10 active:scale-90">
-                <Layout size={24} className="text-white/80" />
-              </button>
             </div>
 
             {/* Black background zone for controls (Zone noire sous les boutons) */}
-            <div className="absolute inset-x-0 bottom-0 top-[40%] bg-black -z-10" />
+            <div className="absolute inset-x-0 bottom-0 h-40 bg-black -z-10" />
           </div>
         ) : (
           /* Captured Actions Menu */
