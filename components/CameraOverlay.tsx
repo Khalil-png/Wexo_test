@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Camera, Share2, MessageSquare, Flame, Play, Layout, Loader2, RefreshCw, Video, StopCircle, Zap, Wand2, Image as ImageIcon, Settings2 } from 'lucide-react';
+import { X, Camera, Share2, MessageSquare, Flame, Play, Layout, Loader2, RefreshCw, Video, StopCircle, Zap, Wand2, Image as ImageIcon, Settings2, Download, Crop, Smile, Type, Pencil, Check, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { pb } from '@/services/pocketbaseService';
 import { Media } from '@capacitor-community/media';
@@ -32,6 +32,17 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
   const recordedChunksRef = useRef<Blob[]>([]);
 
   const [galleryImages, setGalleryImages] = useState<any[]>([]);
+
+  // Editor states
+  const [editorMode, setEditorMode] = useState<'none' | 'draw' | 'text' | 'sticker'>('none');
+  const [paths, setPaths] = useState<any[]>([]);
+  const [currentPath, setCurrentPath] = useState<any>(null);
+  const [stickers, setStickers] = useState<{id: string, emoji: string, x: number, y: number}[]>([]);
+  const [texts, setTexts] = useState<{id: string, text: string, x: number, y: number}[]>([]);
+  const [selectedColor, setSelectedColor] = useState('#ffffff');
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  const editorCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     startCamera();
@@ -203,9 +214,67 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
     }
   };
 
-  const handleShare = (destination: 'story' | 'message' | 'short' | 'video') => {
-    if (capturedImage) {
-      onShare(capturedImage, destination, 'image');
+  const getEditedImage = async (): Promise<string | null> => {
+    if (!capturedImage) return null;
+
+    const canvas = document.createElement('canvas');
+    const img = new Image();
+    img.src = capturedImage;
+
+    await new Promise((resolve) => {
+      img.onload = resolve;
+    });
+
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return capturedImage;
+
+    // 1. Draw base image
+    ctx.drawImage(img, 0, 0);
+
+    // 2. Draw paths (drawing)
+    // We need to scale paths to canvas size
+    const scaleX = canvas.width / (editorCanvasRef.current?.clientWidth || canvas.width);
+    const scaleY = canvas.height / (editorCanvasRef.current?.clientHeight || canvas.height);
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4 * scaleX;
+
+    paths.forEach(path => {
+      ctx.strokeStyle = path.color;
+      ctx.beginPath();
+      path.points.forEach((p: any, i: number) => {
+        if (i === 0) ctx.moveTo(p.x * scaleX, p.y * scaleY);
+        else ctx.lineTo(p.x * scaleX, p.y * scaleY);
+      });
+      ctx.stroke();
+    });
+
+    // 3. Draw Stickers/Texts (Simplified for now as emojis)
+    ctx.font = `${60 * scaleX}px sans-serif`;
+    stickers.forEach(s => {
+      ctx.fillText(s.emoji, s.x * scaleX, s.y * scaleY + 50 * scaleY);
+    });
+
+    ctx.font = `bold ${24 * scaleX}px sans-serif`;
+    ctx.fillStyle = 'white';
+    texts.forEach(t => {
+      ctx.fillText(t.text, t.x * scaleX, t.y * scaleY + 30 * scaleY);
+    });
+
+    return canvas.toDataURL('image/jpeg', 0.9);
+  };
+
+  const handleShare = async (destination: 'story' | 'message' | 'short' | 'video') => {
+    let finalMedia = capturedImage;
+    if (capturedImage && (paths.length > 0 || stickers.length > 0 || texts.length > 0)) {
+      finalMedia = await getEditedImage();
+    }
+
+    if (finalMedia) {
+      onShare(finalMedia, destination, 'image');
     } else if (capturedVideo) {
       onShare(capturedVideo, destination, 'video');
     }
@@ -244,6 +313,67 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
     }
   };
 
+  const handleDownload = async () => {
+    if (!capturedImage) return;
+    try {
+      if (isNative()) {
+        const media = Media as any;
+        await media.savePhoto({ path: capturedImage });
+        // Show some feedback?
+      } else {
+        const link = document.createElement('a');
+        link.href = capturedImage;
+        link.download = `wexo_${Date.now()}.jpg`;
+        link.click();
+      }
+    } catch (err) {
+      console.error("Download error:", err);
+    }
+  };
+
+  const addSticker = (emoji: string) => {
+    setStickers([...stickers, { id: Math.random().toString(), emoji, x: 100, y: 100 }]);
+    setEditorMode('none');
+  };
+
+  const addText = (text: string) => {
+    setTexts([...texts, { id: Math.random().toString(), text, x: 100, y: 100 }]);
+    setEditorMode('none');
+  };
+
+  // Drawing handlers
+  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+    if (editorMode !== 'draw') return;
+    setIsDrawing(true);
+    const pos = getPos(e);
+    setCurrentPath({ points: [pos], color: selectedColor });
+  };
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawing || !currentPath) return;
+    const pos = getPos(e);
+    setCurrentPath({ ...currentPath, points: [...currentPath.points, pos] });
+  };
+
+  const stopDrawing = () => {
+    if (currentPath) {
+      setPaths([...paths, currentPath]);
+    }
+    setCurrentPath(null);
+    setIsDrawing(false);
+  };
+
+  const getPos = (e: React.MouseEvent | React.TouchEvent): { x: number, y: number } => {
+    const rect = editorCanvasRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -272,13 +402,52 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
           <X size={28} strokeWidth={2.5} />
         </button>
         
-        {!capturedImage && !capturedVideo && !loading && (
+        {(!capturedImage && !capturedVideo && !loading) && (
           <button 
             onClick={toggleFlash}
             className={`w-12 h-12 bg-black/40 backdrop-blur-xl rounded-full flex items-center justify-center transition-all ${flashOn ? 'text-white shadow-[0_0_20px_rgba(255,255,255,0.6)]' : 'text-white'}`}
           >
             <Zap size={24} fill={flashOn ? 'white' : 'none'} strokeWidth={2.5} />
           </button>
+        )}
+
+        {(capturedImage || capturedVideo) && (
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleDownload}
+              className="w-10 h-10 bg-black/40 backdrop-blur-xl rounded-full text-white flex items-center justify-center active:scale-95 transition-all"
+            >
+              <Download size={20} />
+            </button>
+            <button 
+              className="w-10 h-10 bg-black/40 backdrop-blur-xl rounded-full text-white flex items-center justify-center active:scale-95 transition-all"
+            >
+              <Crop size={20} />
+            </button>
+            <button 
+              className="w-10 h-10 bg-black/40 backdrop-blur-xl rounded-full text-white flex items-center justify-center active:scale-95 transition-all"
+            >
+              <RotateCcw size={20} />
+            </button>
+            <button 
+              onClick={() => setEditorMode(editorMode === 'sticker' ? 'none' : 'sticker')}
+              className={`w-10 h-10 backdrop-blur-xl rounded-full flex items-center justify-center active:scale-95 transition-all ${editorMode === 'sticker' ? 'bg-white text-black' : 'bg-black/40 text-white'}`}
+            >
+              <Smile size={20} />
+            </button>
+            <button 
+              onClick={() => setEditorMode(editorMode === 'text' ? 'none' : 'text')}
+              className={`w-10 h-10 backdrop-blur-xl rounded-full flex items-center justify-center active:scale-95 transition-all ${editorMode === 'text' ? 'bg-white text-black' : 'bg-black/40 text-white'}`}
+            >
+              <span className="font-bold text-lg leading-none">Aa</span>
+            </button>
+            <button 
+              onClick={() => setEditorMode(editorMode === 'draw' ? 'none' : 'draw')}
+              className={`w-10 h-10 backdrop-blur-xl rounded-full flex items-center justify-center active:scale-95 transition-all ${editorMode === 'draw' ? 'bg-white text-black' : 'bg-black/40 text-white'}`}
+            >
+              <Pencil size={20} />
+            </button>
+          </div>
         )}
       </div>
 
@@ -317,21 +486,161 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
             }}
           />
         ) : (
-          capturedImage ? (
-            <img 
-              src={capturedImage} 
-              className="w-full h-full object-cover"
-              alt="Captured"
-            />
-          ) : (
-            <video 
-              src={capturedVideo!} 
-              autoPlay 
-              loop 
-              playsInline 
-              className="w-full h-full object-cover"
-            />
-          )
+          <div className="relative w-full h-full overflow-hidden">
+            {capturedImage ? (
+              <img 
+                src={capturedImage} 
+                className="w-full h-full object-cover"
+                alt="Captured"
+              />
+            ) : (
+              <video 
+                src={capturedVideo!} 
+                autoPlay 
+                loop 
+                playsInline 
+                className="w-full h-full object-cover"
+              />
+            )}
+
+            {/* Drawing/Editing Canvas Overlay */}
+            <div className="absolute inset-0 pointer-events-auto">
+              {/* Paths */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                {paths.map((path, i) => (
+                  <polyline
+                    key={i}
+                    points={path.points.map((p: any) => `${p.x},${p.y}`).join(' ')}
+                    fill="none"
+                    stroke={path.color}
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                ))}
+                {currentPath && (
+                  <polyline
+                    points={currentPath.points.map((p: any) => `${p.x},${p.y}`).join(' ')}
+                    fill="none"
+                    stroke={currentPath.color}
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
+              </svg>
+
+              {/* Stickers and Texts */}
+              {stickers.map((sticker) => (
+                <motion.div
+                  key={sticker.id}
+                  drag
+                  dragMomentum={false}
+                  className="absolute text-6xl cursor-move select-none"
+                  initial={{ x: sticker.x, y: sticker.y }}
+                >
+                  {sticker.emoji}
+                </motion.div>
+              ))}
+
+              {texts.map((textItem) => (
+                <motion.div
+                  key={textItem.id}
+                  drag
+                  dragMomentum={false}
+                  className="absolute text-white font-bold p-2 text-2xl border border-white/20 bg-black/20 rounded cursor-move select-none"
+                  initial={{ x: textItem.x, y: textItem.y }}
+                >
+                  {textItem.text}
+                </motion.div>
+              ))}
+
+              {/* Interaction Layer for Drawing */}
+              {editorMode === 'draw' && (
+                <div 
+                  ref={editorCanvasRef as any}
+                  className="absolute inset-0 z-10 touch-none"
+                  onMouseDown={startDrawing}
+                  onMouseMove={draw}
+                  onMouseUp={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
+                />
+              )}
+            </div>
+
+            {/* Color Picker / Modal Overlays */}
+            <AnimatePresence>
+              {editorMode === 'draw' && (
+                <motion.div 
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  className="absolute right-6 top-40 flex flex-col gap-3 z-[60]"
+                >
+                  {['#ffffff', '#000000', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'].map(color => (
+                    <button 
+                      key={color}
+                      onClick={() => setSelectedColor(color)}
+                      className={`w-8 h-8 rounded-full border-2 ${selectedColor === color ? 'border-white scale-125' : 'border-black/20'}`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </motion.div>
+              )}
+              {editorMode === 'sticker' && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  className="absolute bottom-20 left-0 right-0 bg-black/60 backdrop-blur-xl p-4 flex gap-4 overflow-x-auto z-[60]"
+                >
+                  {['🔥', '❤️', '😂', '✨', '🚀', '💯', '💀', '👀', '🥺', '🙏', '⚡', '🌈'].map(emoji => (
+                    <button 
+                      key={emoji} 
+                      onClick={() => addSticker(emoji)}
+                      className="text-4xl p-2 active:scale-90 transition-transform"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+              {editorMode === 'text' && (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-6 z-[60]"
+                >
+                  <div className="w-full max-w-md bg-zinc-900 rounded-[32px] p-6 border border-white/10 shadow-3xl">
+                    <h4 className="text-white font-black uppercase text-sm tracking-widest mb-4">Ajouter du texte</h4>
+                    <input 
+                      type="text" 
+                      autoFocus
+                      placeholder="Votre texte..."
+                      className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white font-bold mb-6 focus:outline-none focus:border-blue-500"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          addText((e.target as HTMLInputElement).value);
+                        }
+                      }}
+                    />
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => setEditorMode('none')}
+                        className="flex-1 py-4 bg-white/5 text-white rounded-2xl font-black uppercase text-xs tracking-widest border border-white/10"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         )}
 
         {/* Bottom gradient */}
@@ -443,29 +752,13 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
           </div>
         ) : (
           /* Captured Actions Menu */
-          <div className="w-full flex justify-between items-center max-w-md bg-[#121212]/90 backdrop-blur-3xl p-6 rounded-[32px] border border-white/10 shadow-3xl">
+          <div className="w-full flex justify-center pb-6">
             <button 
-              onClick={resetCapture}
-              className="px-8 py-4 bg-white/5 text-white rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95 transition-all border border-white/10"
+              onClick={handleQuickSend}
+              className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.4)] active:scale-90 transition-all border-4 border-white/10"
             >
-              Back
+              <Check size={40} className="text-white" strokeWidth={3} />
             </button>
-
-            {initialDestination === 'message' ? (
-              <button 
-                onClick={handleQuickSend}
-                className="px-10 py-4 bg-[#0055ff] text-white rounded-2xl flex items-center justify-center gap-3 shadow-2xl shadow-blue-500/40 active:scale-95 transition-all font-black uppercase text-xs tracking-widest"
-              >
-                Send it
-              </button>
-            ) : (
-              <button 
-                onClick={() => setShowShareMenu(true)}
-                className="p-5 bg-white text-black rounded-2xl flex items-center justify-center shadow-2xl active:scale-95 transition-all"
-              >
-                <Share2 size={24} />
-              </button>
-            )}
           </div>
         )}
       </div>
