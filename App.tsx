@@ -33,7 +33,7 @@ import { isNative, getApiUrl } from '@/utils/api';
 import { testPocketBaseConnection, pb } from '@/services/pocketbaseService';
 import { db, auth, getMessagingInstance, handleFirestoreError, OperationType } from '@/services/firebase';
 import { getMessaging, getToken as getFCMToken, onMessage } from 'firebase/messaging';
-import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, getDoc, addDoc, serverTimestamp as firestoreServerTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit, doc, updateDoc, getDoc, addDoc, setDoc, serverTimestamp as firestoreServerTimestamp } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -1211,6 +1211,8 @@ const AppContent: React.FC = () => {
       try {
         if (activeCall.id && activeCall.status !== 'completed') {
           await pb.collection('calls').update(activeCall.id, { status: 'completed' });
+          // Sync with Firebase
+          await updateDoc(doc(db, 'calls', activeCall.id), { status: 'ended', updatedAt: new Date().toISOString() }).catch(() => {});
         }
       } catch (err) {
         console.error("Error ending call:", err);
@@ -1257,6 +1259,20 @@ const AppContent: React.FC = () => {
         type: 'voice',
         status: 'ongoing' // On déclenche l'écoute côté receveur
       });
+
+      // AJOUT : Création aussi dans Firebase pour une notification instantanée
+      try {
+        await setDoc(doc(db, 'calls', record.id), {
+          caller_id: pbUser.id,
+          receiver_id: receiver.id,
+          type: 'voice',
+          status: 'incoming',
+          created_at: firestoreServerTimestamp()
+        });
+        log('Appel également enregistré dans Firebase pour le destinataire:', record.id);
+      } catch (fbErr) {
+        log('Erreur enregistrement Firebase (non bloquant):', fbErr);
+      }
 
       // WebRTC Offer
       const pc = await setupWebRTC(true, record.id);

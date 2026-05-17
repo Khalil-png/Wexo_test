@@ -58,7 +58,7 @@ const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
     if (callStatus === 'calling') return 'Appel en cours...';
     if (callStatus === 'no_answer') return 'Aucune réponse';
     if (callStatus === 'rejected') return 'Appel refusé';
-    if (callStatus === 'ongoing') return 'Appel en direct';
+    if (callStatus === 'ongoing') return 'En ligne';
     return 'Connexion...';
   };
 
@@ -108,20 +108,28 @@ const ActiveCallOverlay: React.FC<ActiveCallOverlayProps> = ({
         </h3>
         
         <div className="flex flex-col items-center gap-4">
-          <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full ${
-            callStatus === 'rejected' || callStatus === 'no_answer' 
-              ? 'bg-red-500/10 border border-red-500/20' 
-              : 'bg-emerald-500/10 border border-emerald-500/20'
-          }`}>
-            <div className={`w-2 h-2 rounded-full animate-pulse ${
-              callStatus === 'rejected' || callStatus === 'no_answer' ? 'bg-red-500' : 'bg-emerald-500'
-            }`} />
-            <span className={`font-black tracking-widest text-[10px] uppercase ${
-              callStatus === 'rejected' || callStatus === 'no_answer' ? 'text-red-500' : 'text-emerald-500'
+          {callStatus !== 'calling' && (
+            <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full ${
+              callStatus === 'rejected' || callStatus === 'no_answer' 
+                ? 'bg-red-500/10 border border-red-500/20' 
+                : 'bg-emerald-500/10 border border-emerald-500/20'
             }`}>
-              {getStatusText()}
+              <div className={`w-2 h-2 rounded-full animate-pulse ${
+                callStatus === 'rejected' || callStatus === 'no_answer' ? 'bg-red-500' : 'bg-emerald-500'
+              }`} />
+              <span className={`font-black tracking-widest text-[10px] uppercase ${
+                callStatus === 'rejected' || callStatus === 'no_answer' ? 'text-red-500' : 'text-emerald-500'
+              }`}>
+                {getStatusText()}
+              </span>
+            </div>
+          )}
+
+          {callStatus === 'calling' && (
+            <span className="text-white/60 font-medium tracking-widest text-xs uppercase animate-pulse">
+              Appel en cours...
             </span>
-          </div>
+          )}
           
           {callStatus === 'ongoing' && (
             <p className="text-white/40 font-mono text-3xl tabular-nums tracking-wider mt-4">

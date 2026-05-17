@@ -326,11 +326,11 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
         {!capturedImage && !capturedVideo ? (
           <div className="flex flex-col items-center gap-4 w-full">
             
-            {/* 1. Gallery Preview Row (Continuous vertical thumbnails) */}
+              {/* 1. Gallery Preview Row (Square thumbnails like WhatsApp) */}
             <div className="w-full flex gap-1 overflow-x-auto no-scrollbar px-1 shrink-0 scroll-smooth mb-2">
               {galleryImages.length > 0 ? (
                 galleryImages.map((img, idx) => (
-                  <div key={img.id} className="flex-shrink-0 w-24 h-36 bg-zinc-800 overflow-hidden relative group active:scale-95 transition-transform rounded-xl border border-white/10">
+                  <div key={img.id} className="flex-shrink-0 w-24 h-24 bg-zinc-800 overflow-hidden relative group active:scale-95 transition-transform border border-white/10">
                     <img 
                       src={img.url} 
                       className="w-full h-full object-cover" 
@@ -338,21 +338,25 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
                     />
                     {img.type === 'video' && (
                       <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1 bg-black/40 backdrop-blur-md px-1.5 py-0.5 rounded-lg border border-white/10">
-                        <Camera size={10} className="text-white" />
+                        <Video size={10} className="text-white" />
                         <span className="text-[9px] font-bold text-white">0</span>
                       </div>
                     )}
                   </div>
                 ))
               ) : (
-                [1,2,3,4,5,6].map(i => (
-                   <div key={i} className="flex-shrink-0 w-24 h-36 bg-zinc-900 overflow-hidden relative animate-pulse rounded-xl border border-white/5" />
+                /* Mock Gallery placeholders */
+                [1,2,3,4,5,6,7,8].map(i => (
+                   <div key={i} className="flex-shrink-0 w-24 h-24 bg-zinc-900 border border-white/5 relative overflow-hidden">
+                     <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900" />
+                     <ImageIcon size={20} className="absolute inset-0 m-auto text-white/5" />
+                   </div>
                 ))
               )}
             </div>
 
             {/* 2. Main Action Bar (Wand | Capture | Refresh) */}
-            <div className="flex items-center justify-between w-full max-w-[360px] px-6">
+            <div className="flex items-center justify-between w-full max-w-[360px] px-6 z-10">
               {/* Filter Button */}
               <button 
                 onClick={() => setShowFilters(!showFilters)}
@@ -361,21 +365,21 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
                 <Wand2 size={26} className="text-white" />
               </button>
 
-              {/* CENTER CAPTURE */}
+              {/* CENTER CAPTURE - 1.2x larger than wand */}
               <div className="relative flex items-center justify-center">
                 {mode === 'photo' ? (
                   <button 
                     onClick={capturePhoto}
-                    className="w-22 h-22 bg-white rounded-full flex items-center justify-center p-1 shadow-[0_0_50px_rgba(255,255,255,0.15)] active:scale-90 transition-all border-[1.5px] border-black/5"
+                    className="w-[68px] h-[68px] bg-white rounded-full flex items-center justify-center p-1 shadow-[0_0_30px_rgba(255,255,255,0.2)] active:scale-90 transition-all border-[1.5px] border-black/5"
                   >
-                    <div className="w-full h-full rounded-full border-[1.5px] border-black/10" />
+                    <div className="w-full h-full rounded-full border-[2px] border-black/10" />
                   </button>
                 ) : (
                   <button 
                     onClick={isRecording ? stopRecording : startRecording}
-                    className={`w-22 h-22 rounded-full flex items-center justify-center p-1 active:scale-90 transition-all ${isRecording ? 'bg-red-500' : 'bg-white shadow-[0_0_50px_rgba(255,255,255,0.15)]'}`}
+                    className={`w-[68px] h-[68px] rounded-full flex items-center justify-center p-1 active:scale-90 transition-all ${isRecording ? 'bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'bg-white shadow-[0_0_30px_rgba(255,255,255,0.2)]'}`}
                   >
-                    {isRecording ? <StopCircle size={40} className="text-white" /> : <div className="w-full h-full rounded-full border-[1.5px] border-black/10" />}
+                    {isRecording ? <div className="w-5 h-5 bg-white rounded-sm" /> : <div className="w-full h-full rounded-full border-[2px] border-black/10" />}
                   </button>
                 )}
               </div>
@@ -390,24 +394,24 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
             </div>
 
             {/* 3. Bottom Row (Settings | Mode Switer | Layout) */}
-            <div className="flex items-center justify-between w-full px-8 mt-2">
+            <div className="flex items-center justify-between w-full px-8 mt-2 z-10">
               <button className="w-12 h-12 rounded-full bg-zinc-900/60 flex items-center justify-center border border-white/10 active:scale-90">
                 <Settings2 size={24} className="text-white/80" />
               </button>
 
-              <div className="flex items-center bg-black/60 backdrop-blur-[40px] p-1 rounded-full border border-white/15 gap-1 shadow-2xl">
+              <div className="flex items-center bg-zinc-900/80 backdrop-blur-2xl p-1 rounded-full border border-white/10 gap-1 shadow-2xl">
                 <button 
                   onClick={() => setMode('photo')}
-                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${mode === 'photo' ? 'bg-white/10 text-white shadow-xl' : 'text-white/40'}`}
+                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${mode === 'photo' ? 'bg-white text-black shadow-xl' : 'text-white/40'}`}
                 >
-                  <Camera size={14} fill={mode === 'photo' ? 'white' : 'none'} />
+                  <Camera size={14} fill={mode === 'photo' ? 'black' : 'none'} />
                   <span>Photo</span>
                 </button>
                 <button 
                   onClick={() => setMode('video')}
-                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${mode === 'video' ? 'bg-white/10 text-white shadow-xl' : 'text-white/40'}`}
+                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest transition-all ${mode === 'video' ? 'bg-white text-black shadow-xl' : 'text-white/40'}`}
                 >
-                  <Video size={14} fill={mode === 'video' ? 'white' : 'none'} />
+                  <Video size={14} fill={mode === 'video' ? 'black' : 'none'} />
                   <span>Vidéo</span>
                 </button>
               </div>
@@ -416,6 +420,9 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
                 <Layout size={24} className="text-white/80" />
               </button>
             </div>
+
+            {/* Black background zone for controls (Zone noire sous les boutons) */}
+            <div className="absolute inset-x-0 bottom-0 top-[40%] bg-black -z-10" />
           </div>
         ) : (
           /* Captured Actions Menu */
