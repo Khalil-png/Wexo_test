@@ -3,6 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Camera, Share2, MessageSquare, Flame, Play, Layout, Loader2, RefreshCw, Video, StopCircle, Zap, Wand2, Image as ImageIcon, Settings2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { pb } from '@/services/pocketbaseService';
+import { Media } from '@capacitor-community/media';
+import { isNative } from '@/utils/api';
 
 interface CameraOverlayProps {
   onClose: () => void;
@@ -41,19 +43,42 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
 
   const fetchGallery = async () => {
     try {
-      // On récupère les 10 derniers médias (images/vidéos)
-      const records = await pb.collection('media').getList(1, 10, {
-        sort: '-created',
-        expand: 'profile_id'
-      });
-      
-      const images = records.items.map(item => ({
-        id: item.id,
-        url: pb.files.getUrl(item, item.file),
-        type: item.type
-      }));
-      
-      setGalleryImages(images);
+      if (isNative()) {
+        const media = Media as any;
+        // Request permissions (using any to avoid type issues if not in interface)
+        if (media.requestPermissions) {
+          await media.requestPermissions();
+        }
+
+        // Get all medias (photos and videos)
+        // Note: quantity 50 is safer for performance with base64 data
+        const result = await media.getMedias({
+          quantity: 50,
+          types: 'all'
+        });
+
+        const assets = result.medias.map((m: any) => ({
+          id: m.identifier,
+          // data is the base64 thumbnail
+          url: m.data ? `data:image/jpeg;base64,${m.data}` : m.identifier,
+          type: m.duration ? 'video' : 'image'
+        }));
+
+        setGalleryImages(assets);
+      } else {
+        // Web fallback (PocketBase)
+        const records = await pb.collection('media').getList(1, 10, {
+          sort: '-created',
+        });
+        
+        const images = records.items.map(item => ({
+          id: item.id,
+          url: pb.files.getUrl(item, item.file),
+          type: item.type
+        }));
+        
+        setGalleryImages(images);
+      }
     } catch (err) {
       console.error("Error fetching gallery:", err);
     }
