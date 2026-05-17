@@ -316,13 +316,21 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
   const handleDownload = async () => {
     if (!capturedImage) return;
     try {
+      let finalMedia = capturedImage;
+      if (paths.length > 0 || stickers.length > 0 || texts.length > 0) {
+        const edited = await getEditedImage();
+        if (edited) finalMedia = edited;
+      }
+
       if (isNative()) {
         const media = Media as any;
-        await media.savePhoto({ path: capturedImage });
-        // Show some feedback?
+        // Prefix stripping for base64 if needed by the plugin
+        const base64Data = finalMedia.includes('base64,') ? finalMedia.split('base64,')[1] : finalMedia;
+        await media.savePhoto({ path: base64Data });
+        // Optional: show a toast or feedback
       } else {
         const link = document.createElement('a');
-        link.href = capturedImage;
+        link.href = finalMedia;
         link.download = `wexo_${Date.now()}.jpg`;
         link.click();
       }
@@ -536,6 +544,11 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
                   key={sticker.id}
                   drag
                   dragMomentum={false}
+                  onDragEnd={(_, info) => {
+                    setStickers(prev => prev.map(s => 
+                      s.id === sticker.id ? { ...s, x: s.x + info.delta.x, y: s.y + info.delta.y } : s
+                    ));
+                  }}
                   className="absolute text-6xl cursor-move select-none"
                   initial={{ x: sticker.x, y: sticker.y }}
                 >
@@ -548,6 +561,11 @@ const CameraOverlay: React.FC<CameraOverlayProps> = ({ onClose, onShare, initial
                   key={textItem.id}
                   drag
                   dragMomentum={false}
+                  onDragEnd={(_, info) => {
+                    setTexts(prev => prev.map(t => 
+                      t.id === textItem.id ? { ...t, x: t.x + info.delta.x, y: t.y + info.delta.y } : t
+                    ));
+                  }}
                   className="absolute text-white font-bold p-2 text-2xl border border-white/20 bg-black/20 rounded cursor-move select-none"
                   initial={{ x: textItem.x, y: textItem.y }}
                 >
