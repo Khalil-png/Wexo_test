@@ -273,6 +273,7 @@ interface ExtendedMessage extends Message {
   sender_name?: string;
   is_info?: boolean;
   info_type?: string;
+  deleted_message?: boolean;
 }
 
 interface MessagesTabProps {
@@ -566,13 +567,36 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
 
           const lastMsg = messagesCountRes.items[0];
 
+          // S'il n'y a aucun message dans l'historique du chat, on n'affiche PAS la discussion dans l'onglet
+          if (!lastMsg) continue;
+
+          // Déterminer le texte du dernier message, en gérant le statut supprimé et les médias
+          const isMsgDeleted = lastMsg.deleted_message === true || lastMsg.is_deleted_for_everyone === true;
+          let lastMsgText = '';
+          if (isMsgDeleted) {
+            lastMsgText = 'Ce message a été supprimé';
+          } else {
+            lastMsgText = decryptMessage(lastMsg.text || '');
+            if (!lastMsgText && lastMsg.file_url) {
+              if (lastMsg.file_type?.startsWith('image/')) {
+                lastMsgText = '📷 Image';
+              } else if (lastMsg.file_type?.startsWith('video/')) {
+                lastMsgText = '🎥 Vidéo';
+              } else if (lastMsg.file_type?.startsWith('audio/')) {
+                lastMsgText = 'Message vocal';
+              } else {
+                lastMsgText = '📁 Pièce jointe';
+              }
+            }
+          }
+
           convs.push({
             id: otherMember.id,
             chatId: chat.id,
             username: otherMember.username,
             avatar_url: otherMember.avatar_url,
             display_name: otherMember.name || otherMember.username,
-            lastMessage: decryptMessage(lastMsg?.text || ''),
+            lastMessage: lastMsgText || 'Membre Wexo',
             lastMessageTime: lastMsg ? new Date(lastMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
             unreadCount: 0,
             last_active: otherMember.last_active,
@@ -589,13 +613,38 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
             sort: '-created'
           });
           
+          const lastMsg = messagesCountRes.items[0];
+          
+          // S'il n'y a aucun message, on n'affiche PAS la discussion de groupe
+          if (!lastMsg) continue;
+
+          // Déterminer le texte du dernier message de groupe
+          const isMsgDeleted = lastMsg.deleted_message === true || lastMsg.is_deleted_for_everyone === true;
+          let lastMsgText = '';
+          if (isMsgDeleted) {
+            lastMsgText = 'Ce message a été supprimé';
+          } else {
+            lastMsgText = decryptMessage(lastMsg.text || '');
+            if (!lastMsgText && lastMsg.file_url) {
+              if (lastMsg.file_type?.startsWith('image/')) {
+                lastMsgText = '📷 Image';
+              } else if (lastMsg.file_type?.startsWith('video/')) {
+                lastMsgText = '🎥 Vidéo';
+              } else if (lastMsg.file_type?.startsWith('audio/')) {
+                lastMsgText = 'Message vocal';
+              } else {
+                lastMsgText = '📁 Pièce jointe';
+              }
+            }
+          }
+
           convs.push({
             id: chat.id,
             chatId: chat.id,
             username: chat.name,
             display_name: chat.name,
-            lastMessage: decryptMessage(messagesCountRes.items[0]?.text || ''),
-            lastMessageTime: messagesCountRes.items[0] ? new Date(messagesCountRes.items[0].created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
+            lastMessage: lastMsgText || 'Membre Wexo',
+            lastMessageTime: lastMsg ? new Date(lastMsg.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '',
             unreadCount: 0,
             isGroup: true
           });
@@ -671,6 +720,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
         file_name: m.file_name,
         file_type: m.file_type,
         file_size: m.file_size,
+        deleted_message: m.deleted_message,
         timestamp: new Date(m.created).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
       } as ExtendedMessage));
 
@@ -1794,11 +1844,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     if (!messageToDelete || !user) return;
     
     try {
-      // Migration NAS : Suppression désactivée
-      console.log("Suppression message non effectuée (Migration NAS)");
+      await pb.collection('messages').update(messageToDelete.id, {
+        deleted_message: true,
+        text: encryptMessage('Ce message a été supprimé')
+      });
       setMessageToDelete(null);
+      fetchMessages();
+      fetchConversations();
     } catch (err) {
-      console.error(err);
+      console.error("Erreur suppression de message PocketBase:", err);
       setMessageToDelete(null);
     }
   };
@@ -1935,11 +1989,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                 <div className="flex justify-between items-center mb-0.5">
                   <div className="flex items-center gap-2 truncate">
                     <h4 className={`text-sm font-bold truncate ${c.unreadCount > 0 ? 'text-white' : 'text-slate-200'}`}>{c.username}</h4>
-                    {(() => {
-                      const isOnline = c.active === true || (c.last_active && (Date.now() - new Date(c.last_active).getTime() < 60000));
-                      if (isOnline) return <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />;
-                      return null;
-                    })()}
                   </div>
                   <span className={`text-[9px] font-bold ${c.unreadCount > 0 ? 'text-white' : 'text-slate-500'}`}>{c.lastMessageTime}</span>
                 </div>
@@ -2245,7 +2294,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                                 msg.isGeneratingVideo || 
                                 /\.(mp4|mov|avi|wmv|flv|mkv|webm)$/i.test(msg.file_name || '');
                 const isAudio = msg.file_type?.startsWith('audio/') || /\.(mp3|wav|ogg|webm|m4a)$/i.test(msg.file_name || '');
-                const isDeleted = msg.is_deleted_for_everyone;
+                const isDeleted = msg.is_deleted_for_everyone || msg.deleted_message;
                 const isAI = msg.sender_id === 'gemini';
                 const hasPrevSameSender = idx > 0 && messages[idx - 1].sender_id === msg.sender_id;
                 const hasNextSameSender = idx < messages.length - 1 && messages[idx + 1].sender_id === msg.sender_id;

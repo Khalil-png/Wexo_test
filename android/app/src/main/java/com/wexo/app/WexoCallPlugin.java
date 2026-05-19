@@ -98,7 +98,7 @@ public class WexoCallPlugin extends Plugin {
         if (currentConnection != null) {
             currentConnection.setActive();
         }
-        startForegroundService(name);
+        startForegroundService(name, false);
         JSObject ret = new JSObject();
         ret.put("action", "answer");
         ret.put("callId", currentCallId);
@@ -152,10 +152,13 @@ public class WexoCallPlugin extends Plugin {
         notifyListeners("onCallAction", ret);
     }
 
-    public void startForegroundService(String callerName) {
+    public void startForegroundService(String callerName, boolean isIncoming) {
         Context context = getContext();
         Intent intent = new Intent(context, CallForegroundService.class);
         intent.putExtra("callerName", callerName);
+        if (isIncoming) {
+            intent.setAction(CallForegroundService.ACTION_START_INCOMING);
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent);
         } else {
@@ -181,44 +184,12 @@ public class WexoCallPlugin extends Plugin {
             Context context = getContext();
             TelecomManager telecomManager = (TelecomManager) context.getSystemService(Context.TELECOM_SERVICE);
 
-            // Create notification channel
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-                NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Appels entrants", NotificationManager.IMPORTANCE_HIGH);
-                channel.setImportance(NotificationManager.IMPORTANCE_HIGH);
-                channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-                if (notificationManager != null) {
-                    notificationManager.createNotificationChannel(channel);
-                }
-            }
-
-            // Full-screen intent
-            Intent fullScreenIntent = new Intent(context, IncomingCallActivity.class);
-            fullScreenIntent.putExtra("callerName", name);
-            fullScreenIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
-            PendingIntent fullScreenPendingIntent = PendingIntent.getActivity(
-                    context, 0, fullScreenIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
-                    .setSmallIcon(android.R.drawable.ic_menu_call)
-                    .setContentTitle(name)
-                    .setContentText("Appel entrant...")
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setCategory(NotificationCompat.CATEGORY_CALL)
-                    .setAutoCancel(false)
-                    .setOngoing(true)
-                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                    .setFullScreenIntent(fullScreenPendingIntent, true);
-
-            NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (notificationManager != null) {
-                notificationManager.notify(NOTIFICATION_ID, builder.build());
-            }
+            // Démarrer le service de premier plan pour l'appel entrant (Notification + Plein écran)
+            startForegroundService(name, true);
 
             Bundle extras = new Bundle();
             Uri uri = Uri.fromParts("tel", number, null);
             
-            // CRUCIAL: Passer le PhoneAccountHandle dans les extras
             extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, phoneAccountHandle);
             extras.putParcelable(TelecomManager.EXTRA_INCOMING_CALL_ADDRESS, uri);
             
@@ -246,12 +217,14 @@ public class WexoCallPlugin extends Plugin {
             Bundle extras = new Bundle();
             Uri uri = Uri.fromParts("tel", number, null);
             
-            // CRUCIAL: Associer l'appel sortant à notre compte
             extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, phoneAccountHandle);
             
             Bundle outgoingExtras = new Bundle();
             outgoingExtras.putString("caller_name", name);
             extras.putBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS, outgoingExtras);
+
+            // Pour un appel sortant, on démarre le service en mode "ongoing" immédiatement
+            startForegroundService(name, false);
             
             telecomManager.placeCall(uri, extras);
             call.resolve();

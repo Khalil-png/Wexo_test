@@ -8,17 +8,15 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
-import android.graphics.drawable.Icon;
 import android.os.Build;
 import android.os.IBinder;
-import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.Person;
 
 public class CallForegroundService extends Service {
-    private static final String TAG = "CallForegroundService";
-    private static final String CHANNEL_ID = "channel_appels_wexo";
+    private static final String CHANNEL_ID = "wexo_calls_channel_v2";
     public static final String ACTION_STOP_SERVICE = "STOP_SERVICE";
+    public static final String ACTION_START_INCOMING = "START_INCOMING";
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -34,38 +32,54 @@ public class CallForegroundService extends Service {
         }
 
         String callerName = intent != null ? intent.getStringExtra("callerName") : "Inconnu";
+        boolean isIncoming = intent != null && ACTION_START_INCOMING.equals(intent.getAction());
+        
         createNotificationChannel();
 
-        // PendingIntent for clicking notification (opens app)
-        Intent fullScreenIntent = new Intent(this, MainActivity.class);
-        fullScreenIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        // Intent pour ouvrir l'activité plein écran
+        Intent fullScreenIntent = new Intent(this, IncomingCallActivity.class);
+        fullScreenIntent.putExtra("callerName", callerName);
+        fullScreenIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
+        
         PendingIntent fullScreenPendingIntent = PendingIntent.getActivity(
-                this, 0, fullScreenIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+                this, 0, fullScreenIntent, 
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
         );
 
-        // PendingIntent for Hangup button
+        // Intent pour le bouton Raccrocher (Broadcast)
         Intent hangupIntent = new Intent(this, CallActionReceiver.class);
         hangupIntent.setAction("ACTION_HANGUP");
         PendingIntent hangupPendingIntent = PendingIntent.getBroadcast(
-                this, 0, hangupIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+                this, 0, hangupIntent, 
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
         );
 
-        Person caller = new Person.Builder()
+        // Intent pour Répondre (si c'est un appel entrant dans la notification)
+        Intent answerIntent = new Intent(this, MainActivity.class); // Ou un receiver spécifique
+        PendingIntent answerPendingIntent = PendingIntent.getActivity(
+                this, 1, answerIntent, 
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+        );
+
+        Person person = new Person.Builder()
                 .setName(callerName)
                 .setImportant(true)
                 .build();
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_menu_call) // Default system icon
+                .setSmallIcon(android.R.drawable.ic_menu_call)
                 .setContentTitle(callerName)
-                .setContentText("Appel en cours...")
+                .setContentText(isIncoming ? "Appel entrant..." : "Appel en cours...")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setFullScreenIntent(fullScreenPendingIntent, true)
-                .setOngoing(true)
-                .setStyle(
-                    NotificationCompat.CallStyle.forOngoingCall(caller, hangupPendingIntent)
-                );
+                .setOngoing(true);
+
+        if (isIncoming) {
+            builder.setStyle(NotificationCompat.CallStyle.forIncomingCall(person, hangupPendingIntent, answerPendingIntent));
+        } else {
+            builder.setStyle(NotificationCompat.CallStyle.forOngoingCall(person, hangupPendingIntent));
+        }
 
         Notification notification = builder.build();
 
@@ -82,11 +96,11 @@ public class CallForegroundService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
-                    "Appels en cours",
+                    "Appels Wexo",
                     NotificationManager.IMPORTANCE_HIGH
             );
-            channel.setDescription("Notification pour les appels actifs");
-            channel.setSound(null, null); // No default notification sound
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            channel.setSound(null, null); // Géré par le système ou TelecomManager
             NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (manager != null) {
                 manager.createNotificationChannel(channel);

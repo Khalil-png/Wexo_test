@@ -48,7 +48,7 @@ public class WexoConnectionService extends ConnectionService {
             if (extras != null && extras.getBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS) != null) {
                  name = extras.getBundle(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS).getString("caller_name", "Appel en cours");
             }
-            plugin.startForegroundService(name);
+            plugin.startForegroundService(name, false);
         }
         
         return connection;
@@ -75,11 +75,12 @@ class WexoConnection extends Connection {
             String name = "Appel en cours";
             Bundle extras = getExtras();
             if (extras != null) {
+                // Essayer de récupérer le nom depuis les incoming extras ou directemement
                 Bundle incomingExtras = extras.getBundle(TelecomManager.EXTRA_INCOMING_CALL_EXTRAS);
-                if (incomingExtras != null) {
-                    name = incomingExtras.getString("caller_name", "Appel en cours");
-                } else {
-                    name = extras.getString("caller_name", "Appel en cours");
+                if (incomingExtras != null && incomingExtras.getString("caller_name") != null) {
+                    name = incomingExtras.getString("caller_name");
+                } else if (extras.getString("caller_name") != null) {
+                    name = extras.getString("caller_name");
                 }
             }
             plugin.onNativeCallAnswered(name);

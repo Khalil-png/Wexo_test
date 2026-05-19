@@ -52,6 +52,7 @@
         <service 
             android:name=".CallForegroundService"
             android:foregroundServiceType="phoneCall"
+            android:permission="android.permission.FOREGROUND_SERVICE"
             android:exported="false">
         </service>
 
@@ -68,7 +69,9 @@
             android:showOnLockScreen="true"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
-            android:screenOrientation="portrait">
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
         </activity>
     </application>
 

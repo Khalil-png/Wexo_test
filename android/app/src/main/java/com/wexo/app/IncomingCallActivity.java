@@ -1,6 +1,8 @@
 package com.wexo.app;
 
 import android.app.Activity;
+import android.app.KeyguardManager;
+import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
@@ -15,15 +17,8 @@ public class IncomingCallActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // Allow the activity to show over the lock screen and turn the screen on
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true);
-            setTurnScreenOn(true);
-        } else {
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-                    | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-                    | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        }
+        // Configuration pour l'affichage au-dessus de l'écran de verrouillage
+        handleLockScreenVisibility();
 
         setContentView(R.layout.activity_incoming_call);
 
@@ -41,10 +36,7 @@ public class IncomingCallActivity extends Activity {
             public void onClick(View v) {
                 WexoCallPlugin plugin = WexoCallPlugin.getInstance();
                 if (plugin != null) {
-                    // Logic to accept the call handled via JS or native bridge
-                    // Since the native TelecomManager UI handles the actual call acceptance,
-                    // this activity usually triggers the same flow.
-                    plugin.onNativeCallAnswered(name != null ? name : "Appel en cours");
+                    plugin.onNativeCallAnswered(name != null ? name : "Wexo Call");
                 }
                 finish();
             }
@@ -62,8 +54,25 @@ public class IncomingCallActivity extends Activity {
         });
     }
 
+    private void handleLockScreenVisibility() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+            KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+            if (keyguardManager != null) {
+                keyguardManager.requestDismissKeyguard(this, null);
+            }
+        } else {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                    | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                    | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                    | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                    | WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON);
+        }
+    }
+
     @Override
     public void onBackPressed() {
-        // Disable back button to force user to choose accept or decline
+        // Interdire le bouton retour pour forcer le choix
     }
 }
