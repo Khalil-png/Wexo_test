@@ -1363,8 +1363,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
   };
 
   const handleMessageClick = (id: string, e: React.MouseEvent) => {
-    if (!isMobileDevice()) return;
-    
     // If we have selections, any tap toggles selection
     if (selectedMessageIds.size > 0) {
       e.preventDefault();
@@ -1844,15 +1842,38 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
     if (!messageToDelete || !user) return;
     
     try {
-      await pb.collection('messages').update(messageToDelete.id, {
-        deleted_message: true,
-        text: encryptMessage('Ce message a été supprimé')
-      });
+      const isMultiDelete = selectedMessageIds.has(messageToDelete.id) && selectedMessageIds.size > 1;
+      
+      if (isMultiDelete) {
+        const messageIdsToDelete = Array.from(selectedMessageIds);
+        await Promise.all(
+          messageIdsToDelete.map(id =>
+            pb.collection('messages').update(id, {
+              deleted_message: true,
+              text: encryptMessage('Ce message a été supprimé')
+            })
+          )
+        );
+        setSelectedMessageIds(new Set());
+      } else {
+        await pb.collection('messages').update(messageToDelete.id, {
+          deleted_message: true,
+          text: encryptMessage('Ce message a été supprimé')
+        });
+        if (selectedMessageIds.has(messageToDelete.id)) {
+          setSelectedMessageIds(prev => {
+            const next = new Set(prev);
+            next.delete(messageToDelete.id);
+            return next;
+          });
+        }
+      }
+      
       setMessageToDelete(null);
       fetchMessages();
       fetchConversations();
     } catch (err) {
-      console.error("Erreur suppression de message PocketBase:", err);
+      console.error("Erreur suppression de(s) message(s) PocketBase:", err);
       setMessageToDelete(null);
     }
   };
@@ -2560,7 +2581,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
                       </div>
 
                       {!isDeleted && !isMobileDevice() && (
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                          <button 
+                            onClick={() => toggleMessageSelection(msg.id)}
+                            className={`p-2 rounded-2xl transition-all ${selectedMessageIds.has(msg.id) ? 'text-primary bg-primary/10' : 'text-slate-500 hover:text-white hover:bg-white/10'}`}
+                            title="Sélectionner"
+                          >
+                            <Check size={14} />
+                          </button>
                           <button 
                             onClick={() => {
                               navigator.clipboard.writeText((msg.text || '').replace(/\u200B$/, ''));
@@ -2795,7 +2823,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ user, profile, isKeyboardActi
               <div className="fixed inset-0 bg-[#0f0f0f]/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
                 <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl w-full max-w-xs overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
                   <div className="p-6 text-center">
-                    <h3 className="text-lg font-bold text-white mb-2">Supprimer le message ?</h3>
+                    <h3 className="text-lg font-bold text-white mb-2">
+                      {selectedMessageIds.has(messageToDelete.id) && selectedMessageIds.size > 1
+                        ? `Supprimer les ${selectedMessageIds.size} messages ?`
+                        : "Supprimer le message ?"
+                      }
+                    </h3>
                     <p className="text-xs text-slate-400 mb-6">Cette action ne peut pas être annulée.</p>
                     
                     <div className="flex flex-col gap-2">
