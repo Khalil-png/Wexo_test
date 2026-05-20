@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import admin from "firebase-admin";
 import { EventSource } from "eventsource";
+import fs from "fs";
 
 // Polyfill EventSource pour PocketBase SDK sur Node.js
 (global as any).EventSource = EventSource;
@@ -12,18 +13,33 @@ import { EventSource } from "eventsource";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Lecture de la configuration Firebase de l'applet
+let firebaseConfig: any = null;
+try {
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  }
+} catch (e) {
+  console.error("⚠️ Impossible de lire firebase-applet-config.json:", e);
+}
+
 // Initialisation de Firebase Admin
-// Dans cet environnement, il utilise les identifiants par défaut du projet
 if (!admin.apps.length) {
   try {
-    admin.initializeApp();
-    console.log("✅ Firebase Admin initialisé");
+    const initOptions: any = {};
+    if (firebaseConfig && firebaseConfig.projectId) {
+      initOptions.projectId = firebaseConfig.projectId;
+    }
+    admin.initializeApp(initOptions);
+    console.log(`✅ Firebase Admin initialisé pour le projet: ${initOptions.projectId || 'par défaut'}`);
   } catch (error) {
     console.error("❌ Erreur initialisation Firebase Admin:", error);
   }
 }
 
-const db = admin.firestore();
+const firestoreDbId = firebaseConfig?.firestoreDatabaseId;
+const db = firestoreDbId ? admin.firestore(firestoreDbId) : admin.firestore();
 
 async function startServer() {
   const app = express();

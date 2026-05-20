@@ -141,11 +141,30 @@ public class WexoCallPlugin extends Plugin {
             currentConnection.onReject();
             call.resolve();
         } else {
-            call.reject("No active connection to reject");
+            stopForegroundService();
+            cancelNotification();
+            call.resolve();
         }
     }
 
+    @PluginMethod
+    public void endCall(PluginCall call) {
+        if (currentConnection != null) {
+            try {
+                currentConnection.setDisconnected(new android.telecom.DisconnectCause(android.telecom.DisconnectCause.LOCAL));
+                currentConnection.destroy();
+                currentConnection = null;
+            } catch (Exception e) {
+                Log.e(TAG, "Error ending call", e);
+            }
+        }
+        stopForegroundService();
+        cancelNotification();
+        call.resolve();
+    }
+
     public void onNativeCallDisconnected() {
+        currentConnection = null;
         stopForegroundService();
         JSObject ret = new JSObject();
         ret.put("action", "disconnect");

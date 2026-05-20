@@ -400,6 +400,11 @@ const AppContent: React.FC = () => {
         await updateDoc(doc(db, 'calls', callId), { status: 'rejected', updatedAt: new Date().toISOString() }).catch(err => handleFirestoreError(err, OperationType.UPDATE, `calls/${callId}`));
         log('Call rejected (Firebase):', callId);
       }
+
+      if (isNative()) {
+        WexoCallNative.endCall().catch((e: any) => log("Error native declineCall:", e));
+      }
+
       setIncomingCall(null);
       LocalNotifications.cancel({ notifications: [{ id: 999 }] });
     } catch (e) {
@@ -1227,6 +1232,10 @@ const AppContent: React.FC = () => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
       localStreamRef.current = null;
+    }
+
+    if (isNative()) {
+      WexoCallNative.endCall().catch((e: any) => log("Error native endCall:", e));
     }
 
     setActiveCall(null);
